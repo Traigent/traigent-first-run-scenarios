@@ -895,6 +895,16 @@ export async function buildCustomerBundle(
     options.outputDirectory ?? path.join(distDirectory, BUNDLE_DIRECTORY_NAME);
   const repositoryDirectory = options.repositoryDirectory ?? repositoryRoot;
   const spec = validatePresentationContent(options.spec ?? presentation);
+  const evidenceStates = [
+    ...new Set(spec.slides.map((slide) => slide.evidenceState)),
+  ].sort(comparePaths);
+  const guideContractSourceRevisions = [
+    ...new Set(
+      spec.slides
+        .filter((slide) => slide.evidenceState === "guide-contract")
+        .map((slide) => slide.sourceRevision as string),
+    ),
+  ].sort(comparePaths);
   const gitMetadata =
     options.gitMetadata ?? resolveGitMetadata(repositoryDirectory);
   const generatedAt = resolveBuildTimestamp(
@@ -957,7 +967,7 @@ export async function buildCustomerBundle(
       ),
   );
   const manifest = {
-    schema_version: 1,
+    schema_version: 2,
     generated_at: generatedAt,
     source: {
       revision: gitMetadata.revision,
@@ -969,12 +979,14 @@ export async function buildCustomerBundle(
       schema_version: spec.schemaVersion,
       scenario_slug: spec.scenario.slug,
       scenario_legacy_id: spec.scenario.legacyId,
-      evidence_state: "scenario-contract",
-      guide_sha: null,
-      guide_sha_reason:
-        "not applicable: this expected-contract deck does not record an executed guide",
+      evidence_states: evidenceStates,
+      guide_contract_source_revisions: guideContractSourceRevisions,
       slide_count: spec.slides.length,
-      slide_ids: spec.slides.map((slide) => slide.id),
+      slides: spec.slides.map((slide) => ({
+        id: slide.id,
+        evidence_state: slide.evidenceState,
+        source_revision: slide.sourceRevision ?? null,
+      })),
     },
     offline: {
       self_contained_html: true,

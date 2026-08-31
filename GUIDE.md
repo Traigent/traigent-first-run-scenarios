@@ -121,7 +121,7 @@ The captain observes the run and stops it at the first question or decision
 that belongs to the human. For this Phase A opening:
 
 - do not provide a Traigent or model-provider credential;
-- do not approve a paid or remote Traigent/provider call;
+- do not approve a paid or remote Traigent or model-provider call;
 - do not send customer data or permit production mutation;
 - do not install software unless a separate authorized procedure permits it;
 - allow only local inspection and the exact deterministic evaluator calibration
@@ -183,11 +183,14 @@ Record:
 
 Use one of the presentation evidence labels consistently:
 
-- **Expected scenario contract** for published expectations without a captured
-  verified run;
+- **Guide contract · no recorded run** for behavior pinned to an exact public
+  guide revision, without a referenced captured run;
+- **Scenario contract · no recorded run** for published scenario facts or
+  expectations, without a referenced captured run;
 - **Verified run evidence** only when the referenced run artifact exists and
   verification passed; or
-- **Not demonstrated** for any later behavior that was not exercised.
+- **Not demonstrated in this deck** for any later behavior or outcome that was
+  not exercised.
 
 ## 7. Keep Phase B separate
 

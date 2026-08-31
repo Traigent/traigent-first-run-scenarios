@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { presentation } from "../src/content";
-import type { PresentationSpec } from "../src/model";
+import { coreSlideCount, presentation } from "../src/content";
+import { evidenceLabel, type PresentationSpec } from "../src/model";
+import { repositoryRoot } from "../scripts/runtime";
 import {
   ContentValidationError,
   validatePresentationContent,
@@ -24,10 +28,21 @@ function expectValidationIssue(
 }
 
 describe("presentation content validation", () => {
-  it("accepts the canonical expected-contract deck and public catalog", () => {
+  it("accepts the canonical contract-only deck and public catalog", () => {
     const validated = validatePresentationContent(presentation);
 
-    expect(validated.slides).toHaveLength(25);
+    expect(validated.slides).toHaveLength(28);
+    expect(coreSlideCount).toBe(10);
+    expect(
+      validated.slides
+        .slice(0, coreSlideCount)
+        .every((slide) => slide.section === "core"),
+    ).toBe(true);
+    expect(
+      validated.slides
+        .slice(coreSlideCount)
+        .every((slide) => slide.section === "appendix"),
+    ).toBe(true);
     expect(validated.catalog).toHaveLength(1);
     expect(validated.slides.every((slide) => slide.notes.length > 0)).toBe(
       true,
@@ -37,60 +52,86 @@ describe("presentation content validation", () => {
     );
   });
 
-  it("places source-verified scoring and ceiling explanations inside Readiness", () => {
+  it("places scoring and ceiling detail inside the Readiness appendix sequence", () => {
     const ids = presentation.slides.map((slide) => slide.id);
     const readinessIndex = ids.indexOf("stage-readiness");
     const scoringIndex = ids.indexOf("readiness-scoring");
-    const ceilingsIndex = ids.indexOf("readiness-ceilings");
-    const baselineIndex = ids.indexOf("stage-baseline");
+    const foundationCapsIndex = ids.indexOf("readiness-ceilings-foundations");
+    const evidenceCapsIndex = ids.indexOf("readiness-ceilings-evidence");
+    const expectedOpeningIndex = ids.indexOf("expected-opening");
 
     expect([
       readinessIndex,
       scoringIndex,
-      ceilingsIndex,
-      baselineIndex,
+      foundationCapsIndex,
+      evidenceCapsIndex,
+      expectedOpeningIndex,
     ]).toEqual([
       readinessIndex,
       readinessIndex + 1,
       readinessIndex + 2,
       readinessIndex + 3,
+      readinessIndex + 4,
     ]);
+    expect(readinessIndex).toBeGreaterThanOrEqual(coreSlideCount);
 
     const scoring = presentation.slides[scoringIndex]!;
     expect(scoring.bullets.join("\n")).toContain("Dataset - 40 points");
     expect(scoring.bullets.join("\n")).toContain("Evaluation - 35 points");
     expect(scoring.bullets.join("\n")).toContain("Agent - 25 points");
     expect(scoring.bullets.join("\n")).toContain("below 0.75");
-    expect(scoring.bullets.join("\n")).toContain("a lower band stays lower");
+    expect(scoring.bullets.join("\n")).toContain("lower bands are unchanged");
 
-    const ceilings = presentation.slides[ceilingsIndex]?.matrix;
-    expect(ceilings?.map((row) => row.safestNextStep).join("\n")).toContain(
-      "Ceiling 25",
+    const capRows = [foundationCapsIndex, evidenceCapsIndex].flatMap(
+      (index) => presentation.slides[index]?.matrix ?? [],
     );
-    expect(ceilings?.map((row) => row.safestNextStep).join("\n")).toContain(
-      "Ceiling 45",
-    );
-    expect(ceilings?.map((row) => row.safestNextStep).join("\n")).toContain(
-      "Ceiling 65",
-    );
-    expect(ceilings?.map((row) => row.safestNextStep).join("\n")).toContain(
-      "Ceiling 74",
-    );
+    const capText = capRows.map((row) => row.safestNextStep).join("\n");
+    expect(capText).toContain("Ceiling 25");
+    expect(capText).toContain("Ceiling 45");
+    expect(capText).toContain("Ceiling 65");
+    expect(capText).toContain("Ceiling 74");
   });
 
   it("keeps coverage targets distinct from the one published scenario", () => {
-    const matrix = presentation.slides.find(
-      (slide) => slide.id === "different-starting-points",
-    )?.scenarioMatrix;
+    const matrix = presentation.slides
+      .filter((slide) => slide.id.startsWith("coverage-roadmap-"))
+      .flatMap((slide) => slide.scenarioMatrix ?? []);
 
-    expect(matrix).toHaveLength(5);
-    expect(matrix?.filter((row) => row.coverage === "published")).toHaveLength(
+    expect(matrix).toHaveLength(7);
+    expect(matrix.filter((row) => row.coverage === "published")).toHaveLength(
       1,
     );
     expect(
-      matrix?.filter((row) => row.coverage === "coverage-target"),
-    ).toHaveLength(4);
+      matrix.filter((row) => row.coverage === "coverage-target"),
+    ).toHaveLength(6);
     expect(presentation.catalog[0]?.slug).toBe("incident-severity-triage");
+  });
+
+  it("pins every published-guide claim to the full reviewed revision", () => {
+    const guideSlides = presentation.slides.filter(
+      (slide) => slide.evidenceState === "guide-contract",
+    );
+
+    expect(guideSlides.length).toBeGreaterThan(0);
+    expect(
+      guideSlides.every(
+        (slide) =>
+          slide.sourceRevision === "6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a guide-contract slide without an exact source revision", () => {
+    const candidate = copyPresentation();
+    const guideSlide = candidate.slides.find(
+      (slide) => slide.evidenceState === "guide-contract",
+    )!;
+    delete guideSlide.sourceRevision;
+
+    expectValidationIssue(
+      candidate,
+      "guide-contract slides require an exact source revision",
+    );
   });
 
   it("explains the bounded search and held-out selection without claiming an exhaustive run", () => {
@@ -100,10 +141,16 @@ describe("presentation content validation", () => {
     const selection = presentation.slides.find(
       (slide) => slide.id === "selection-and-heldout",
     )!;
+    const optimizeStep = selection.steps.find(
+      (step) => step.label === "Run managed search",
+    )!;
 
     expect(searchSpace.title).toContain("54 candidate configurations");
-    expect(searchSpace.body).toContain("tests up to 12");
-    expect(searchSpace.body).toContain("approved space with its own count");
+    expect(searchSpace.body).toContain(
+      "does not establish the final approved search space",
+    );
+    expect(searchSpace.body).not.toContain("up to 12");
+    expect(optimizeStep.detail).toContain("tests up to 12");
     expect(selection.body).toContain("Only that locked recommendation");
     expect(selection.body).toContain("never choose it");
     expect(selection.notes.join("\n")).toContain(
@@ -113,7 +160,7 @@ describe("presentation content validation", () => {
 
   it("requires matrix slides to provide exactly one table dataset", () => {
     const candidate = copyPresentation();
-    const slide = candidate.slides.find((item) => item.kind === "matrix")!;
+    const slide = candidate.slides.find((item) => item.matrix !== undefined)!;
     slide.testMatrix = [
       {
         layer: "extra",
@@ -188,59 +235,43 @@ describe("presentation content validation", () => {
     );
   });
 
-  it("requires verified-run slides to cite a JSON run artifact", () => {
+  it("fails closed on verified-run slides until retained evidence has a strict schema", () => {
     const candidate = copyPresentation();
     const slide = candidate.slides[0]!;
     slide.evidenceState = "verified-run";
-    slide.evidence = ["A verbal recollection of a prior run"];
+    delete slide.sourceRevision;
 
     expectValidationIssue(
       candidate,
-      "verified-run slides require a JSON run artifact reference",
+      "verified-run slides are disabled until retained evidence validates revisions",
     );
   });
 
-  it("accepts green metrics only with a readable JSON run artifact", () => {
-    const repositoryDirectory = mkdtempSync(
-      path.join(tmpdir(), "presentation-evidence-"),
+  it("keeps the four public evidence labels consistent across documentation", () => {
+    const vocabularyDocuments = [
+      "GUIDE.md",
+      "docs/methodology.md",
+      "presentation/README.md",
+    ].map((relativePath) =>
+      readFileSync(path.join(repositoryRoot, relativePath), "utf8"),
     );
-    mkdirSync(path.join(repositoryDirectory, "runs"));
-    writeFileSync(
-      path.join(repositoryDirectory, "runs", "release-evidence.json"),
-      "{}\n",
-      "utf8",
-    );
-    const candidate = copyPresentation();
-    const slide = candidate.slides.find((item) => item.metrics.length > 0)!;
-    slide.evidenceState = "verified-run";
-    slide.evidence = ["runs/release-evidence.json"];
-    slide.metrics[0]!.tone = "green";
-
-    try {
-      expect(() =>
-        validatePresentationContent(candidate, { repositoryDirectory }),
-      ).not.toThrow();
-    } finally {
-      rmSync(repositoryDirectory, { recursive: true, force: true });
+    const labels = [
+      evidenceLabel("guide-contract"),
+      evidenceLabel("scenario-contract"),
+      evidenceLabel("verified-run"),
+      evidenceLabel("not-demonstrated"),
+    ];
+    for (const document of vocabularyDocuments) {
+      for (const label of labels) {
+        expect(document).toContain(label);
+      }
     }
-  });
-
-  it("rejects a verified-run reference whose JSON artifact is absent", () => {
-    const repositoryDirectory = mkdtempSync(
-      path.join(tmpdir(), "presentation-evidence-"),
-    );
-    const candidate = copyPresentation();
-    const slide = candidate.slides.find((item) => item.metrics.length > 0)!;
-    slide.evidenceState = "verified-run";
-    slide.evidence = ["runs/missing.json"];
-    slide.metrics[0]!.tone = "green";
-
-    try {
-      expect(() =>
-        validatePresentationContent(candidate, { repositoryDirectory }),
-      ).toThrowError("does not resolve to a readable file");
-    } finally {
-      rmSync(repositoryDirectory, { recursive: true, force: true });
+    const legacyLabelDocuments = [
+      readFileSync(path.join(repositoryRoot, "README.md"), "utf8"),
+      ...vocabularyDocuments,
+    ];
+    for (const document of legacyLabelDocuments) {
+      expect(document).not.toMatch(/Expected\s+scenario\s+contract/);
     }
   });
 
@@ -265,6 +296,3 @@ describe("presentation content validation", () => {
     );
   });
 });
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";

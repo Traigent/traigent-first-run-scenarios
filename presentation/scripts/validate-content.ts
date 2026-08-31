@@ -1,6 +1,3 @@
-import { lstatSync, readFileSync } from "node:fs";
-import path from "node:path";
-
 import { ZodError } from "zod";
 
 import { presentation } from "../src/content";
@@ -9,7 +6,7 @@ import {
   type PresentationSpec,
   type SlideSpec,
 } from "../src/model";
-import { isMainModule, repositoryRoot } from "./runtime";
+import { isMainModule } from "./runtime";
 
 const POSITIVE_RUN_CLAIMS = [
   /\bwe (?:achieved|measured|observed|reduced|improved|increased)\b/i,
@@ -18,8 +15,6 @@ const POSITIVE_RUN_CLAIMS = [
   /\b(?:quality|latency|cost) (?:fell|rose|dropped|improved|decreased|increased|reduced)\b/i,
   /\bverified (?:live )?(?:run|result|optimization|improvement)\b/i,
 ] as const;
-
-const RUN_ARTIFACT_REFERENCE = /(?:^|\/)runs?\/.+\.json$/i;
 
 export class ContentValidationError extends Error {
   readonly issues: readonly string[];
@@ -139,73 +134,20 @@ function validateTemplateContract(slide: SlideSpec): string[] {
   return issues;
 }
 
-function validateRunArtifactReference(
-  reference: string,
-  repositoryDirectory: string,
-): string | null {
-  if (!RUN_ARTIFACT_REFERENCE.test(reference)) {
-    return "is not a runs/*.json reference";
-  }
-  if (
-    reference.includes("\\") ||
-    path.posix.normalize(reference) !== reference ||
-    reference.startsWith("/") ||
-    reference.startsWith("../")
-  ) {
-    return "must be a normalized repository-relative POSIX path";
-  }
-  const resolvedRepository = path.resolve(repositoryDirectory);
-  const artifactPath = path.resolve(resolvedRepository, reference);
-  const relative = path.relative(resolvedRepository, artifactPath);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return "resolves outside the repository";
-  }
-  try {
-    const metadata = lstatSync(artifactPath);
-    if (metadata.isSymbolicLink() || !metadata.isFile()) {
-      return "must resolve to a regular non-symbolic-link file";
-    }
-    JSON.parse(readFileSync(artifactPath, "utf8"));
-  } catch (error: unknown) {
-    return error instanceof SyntaxError
-      ? "must contain valid JSON"
-      : "does not resolve to a readable file";
-  }
-  return null;
-}
-
-function validateEvidenceContract(
-  slide: SlideSpec,
-  repositoryDirectory: string,
-): string[] {
+function validateEvidenceContract(slide: SlideSpec): string[] {
   const issues: string[] = [];
   const claimText = visibleClaimText(slide);
   const hasPositiveRunClaim = POSITIVE_RUN_CLAIMS.some((pattern) =>
     pattern.test(claimText),
   );
-  const runArtifactReferences = slide.evidence.filter((reference) =>
-    RUN_ARTIFACT_REFERENCE.test(reference),
-  );
 
   if (hasPositiveRunClaim && slide.evidenceState !== "verified-run") {
     issues.push("positive run claims require evidenceState verified-run");
   }
-  if (
-    slide.evidenceState === "verified-run" &&
-    runArtifactReferences.length === 0
-  ) {
-    issues.push("verified-run slides require a JSON run artifact reference");
-  }
   if (slide.evidenceState === "verified-run") {
-    for (const reference of runArtifactReferences) {
-      const artifactIssue = validateRunArtifactReference(
-        reference,
-        repositoryDirectory,
-      );
-      if (artifactIssue !== null) {
-        issues.push(`verified-run artifact ${reference} ${artifactIssue}`);
-      }
-    }
+    issues.push(
+      "verified-run slides are disabled until retained evidence validates revisions, semantic verification, exit status, handoff, environment, and stop point",
+    );
   }
   if (
     slide.evidenceState !== "verified-run" &&
@@ -220,13 +162,10 @@ function validateEvidenceContract(
   return issues;
 }
 
-function validateSlide(
-  slide: SlideSpec,
-  repositoryDirectory: string,
-): string[] {
+function validateSlide(slide: SlideSpec): string[] {
   const issues = [
     ...validateTemplateContract(slide),
-    ...validateEvidenceContract(slide, repositoryDirectory),
+    ...validateEvidenceContract(slide),
     ...uniqueIssues(slide.bullets, "bullets"),
     ...uniqueIssues(slide.evidence, "evidence"),
     ...uniqueIssues(slide.notes, "notes"),
@@ -251,10 +190,7 @@ function schemaIssues(error: ZodError): string[] {
   });
 }
 
-export function validatePresentationContent(
-  value: unknown,
-  options: { repositoryDirectory?: string } = {},
-): PresentationSpec {
+export function validatePresentationContent(value: unknown): PresentationSpec {
   let parsed: PresentationSpec;
   try {
     parsed = parsePresentation(value);
@@ -265,10 +201,7 @@ export function validatePresentationContent(
     throw error;
   }
 
-  const repositoryDirectory = options.repositoryDirectory ?? repositoryRoot;
-  const issues = parsed.slides.flatMap((slide) =>
-    validateSlide(slide, repositoryDirectory),
-  );
+  const issues = parsed.slides.flatMap((slide) => validateSlide(slide));
   if (issues.length > 0) {
     throw new ContentValidationError(issues);
   }

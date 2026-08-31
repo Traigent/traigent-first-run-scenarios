@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Reject private-only references from files that could be published."""
+"""Reject private-only references from files that could be published.
+
+The rule set is a denylist backstop, not a completeness claim: it catches the
+reference classes that have actually leaked from sibling repositories, and a
+clean run means only that none of those classes matched. Publication review
+still owns the judgment call.
+"""
 
 from __future__ import annotations
 
 import argparse
+import codecs
 import os
 import re
 import stat
@@ -99,6 +106,41 @@ _RULES = (
             ),
             re.IGNORECASE,
         ),
+    ),
+)
+
+# Conservative offline allowlist, verified against the public Traigent GitHub
+# organization on 2026-09-01. Explicit references to any other repository in
+# that organization fail by default. Private repository names therefore never
+# need to live in this public source tree.
+_PUBLIC_TRAIGENT_REPOSITORIES = frozenset(
+    {
+        "traigent",
+        "traigent-first-run",
+        "traigent-first-run-scenarios",
+        "traigentschema",
+        "traigent-skills",
+        "tvl",
+    }
+)
+_TRAIGENT_REPOSITORY_REFERENCE_PATTERNS = (
+    re.compile(
+        r"\bhttps?://github\.com/(?P<owner>Traigent)/"
+        r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*?)"
+        r"(?:\.git)?(?=$|[/?#\s\"'<>),.;:])",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bgit@github\.com:(?P<owner>Traigent)/"
+        r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*?)"
+        r"(?:\.git)?(?=$|[/?#\s\"'<>),.;:])",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?<![@A-Za-z0-9_.-])(?P<owner>Traigent)/"
+        r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*)"
+        r"(?=$|[/?#\s\"'<>),.;:])",
+        re.IGNORECASE,
     ),
 )
 
@@ -258,29 +300,114 @@ def _display(path: str) -> str:
     return path.encode("unicode_escape", errors="backslashreplace").decode("ascii")
 
 
-def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
+def _decoded_variants(content: bytes) -> tuple[tuple[str, ...], bool]:
+    """Return useful text views and whether the file declares a safe encoding.
+
+    The denylist patterns are ASCII. Strict UTF-8 and BOM-declared UTF-16/32 are
+    accepted text encodings. NUL-normalized and replacement views are still
+    scanned so an unsupported encoding cannot hide a match, but unsupported or
+    ambiguous bytes also produce a finding for explicit publication review.
+    """
+    variants: list[str] = []
+    supported_encoding = False
+    try:
+        variants.append(content.decode("utf-8"))
+        supported_encoding = b"\x00" not in content
+    except UnicodeDecodeError:
+        pass
+
+    wide_encoding: str | None = None
+    if content.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+        wide_encoding = "utf-32"
+    elif content.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        wide_encoding = "utf-16"
+    if wide_encoding is not None:
+        try:
+            variants.append(content.decode(wide_encoding))
+            supported_encoding = True
+        except UnicodeDecodeError:
+            supported_encoding = False
+
+    if b"\x00" in content:
+        for encoding in (
+            "utf-16-le",
+            "utf-16-be",
+            "utf-32-le",
+            "utf-32-be",
+        ):
+            try:
+                variants.append(content.decode(encoding))
+            except UnicodeDecodeError:
+                continue
+    variants.append(content.replace(b"\x00", b"").decode("utf-8", errors="replace"))
+    return tuple(dict.fromkeys(variants)), supported_encoding
+
+
+def _repository_reference_findings(
+    surface: str, relative_path: str, line_number: int, line: str
+) -> list[Finding]:
     findings: list[Finding] = []
-    text = content.decode("utf-8", errors="replace")
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        for rule in _RULES:
-            if rule.pattern.search(line):
+    for pattern in _TRAIGENT_REPOSITORY_REFERENCE_PATTERNS:
+        for match in pattern.finditer(line):
+            if match.group("owner").casefold() != "traigent":
+                continue
+            repository = (
+                match.group("repository").casefold().rstrip(".,;:").removesuffix(".git")
+            )
+            if repository not in _PUBLIC_TRAIGENT_REPOSITORIES:
                 findings.append(
                     Finding(
                         surface=surface,
                         path=relative_path,
                         line=line_number,
-                        rule=rule.name,
+                        rule="repository reference outside the public allowlist",
                     )
                 )
     return findings
 
 
+def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
+    findings: list[Finding] = []
+    variants, supported_encoding = _decoded_variants(content)
+    for text in variants:
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for rule in _RULES:
+                if rule.pattern.search(line):
+                    findings.append(
+                        Finding(
+                            surface=surface,
+                            path=relative_path,
+                            line=line_number,
+                            rule=rule.name,
+                        )
+                    )
+            findings.extend(
+                _repository_reference_findings(
+                    surface, relative_path, line_number, line
+                )
+            )
+    if not supported_encoding:
+        findings.append(
+            Finding(
+                surface=surface,
+                path=relative_path,
+                line=0,
+                rule="unsupported or ambiguous text encoding requires review",
+            )
+        )
+    return findings
+
+
 def _scan_path(relative_path: str) -> list[Finding]:
-    return [
+    findings = [
         Finding(surface="path", path=relative_path, line=1, rule=rule.name)
         for rule in _RULES
         if rule.pattern.search(relative_path)
     ]
+    findings.extend(
+        _repository_reference_findings("path", relative_path, 1, relative_path)
+    )
+    return findings
 
 
 def check_repository(repo_root: Path) -> ScanResult:

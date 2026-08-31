@@ -1,6 +1,6 @@
 # Customer Presentation
 
-This directory builds one presales story from one validated semantic source:
+This directory builds one customer-facing story from one validated semantic source:
 
 - a self-contained HTML presentation for a browser; and
 - an editable PowerPoint presentation with native text, shapes, and speaker
@@ -10,6 +10,10 @@ The presentation explains the public scenario contract and the boundary between
 catalog validation, a Phase A opening, and a separately approved Phase B live
 optimization. The current content does not claim that a fresh worker run has
 been recorded or verified.
+
+The first 10 slides form the presales/CTO core story. The remaining 18 slides
+are a clearly marked technical appendix with stage detail, scoring mechanics,
+scenario organization, and the public coverage roadmap.
 
 ## Source of truth
 
@@ -52,6 +56,8 @@ not be presented as verified run evidence.
 
 - Node.js 20.19 or newer
 - npm with the committed lockfile
+- Google Chrome or Chromium on `PATH`, or `CHROME_BIN` pointing to it, for
+  the two-pass, isolated 1366x768 and 1600x900 browser-fit gate
 
 Install locked dependencies and run the complete validation and build:
 
@@ -72,6 +78,7 @@ npm run validate     # validate semantic content and claims
 npm run build:web    # build the self-contained HTML
 npm run build:pptx   # build the editable PowerPoint
 npm run build:bundle # assemble the customer handoff bundle
+npm run fit:browser  # render every slide at both required browser sizes
 ```
 
 Run `npm run build` when the validated final outputs are needed together.
@@ -99,7 +106,10 @@ and shapes editable and includes the presenter notes from the semantic source.
 The customer bundle gives the two formats stable names and includes the
 repository's Apache-2.0 `LICENSE` and `NOTICE`, a build manifest, transfer
 checksums, and notices for third-party runtime software. The manifest and
-checksums cover both repository legal files. Bundle creation fails without
+checksums cover both repository legal files. The manifest records every
+slide's evidence state and the exact source revision for each guide-contract
+slide; the current manifest therefore makes the absence of verified-run slides
+explicit. Bundle creation fails without
 replacing an existing bundle when either repository legal file is missing,
 empty, outside the repository, or a symbolic link. Verify the checksums after
 copying the bundle to another machine using the customer's approved tooling.
@@ -109,16 +119,17 @@ copying the bundle to another machine using the customer's approved tooling.
 Every slide must contain at least one evidence reference, at least one speaker
 note, and exactly one evidence state:
 
-| Label                             | Use                                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Expected scenario contract**    | Published scenario facts or expected opening values without a referenced recorded run      |
-| **Verified run evidence**         | A claim directly supported by a supplied retained run artifact and successful verification |
-| **Not demonstrated in this deck** | A live path, improvement, or other outcome that was not exercised                          |
+| Label                                   | Use                                                                                        |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Guide contract · no recorded run**    | Guide behavior pinned to an exact 40-character public guide revision                       |
+| **Scenario contract · no recorded run** | Published scenario facts or expected values without a referenced recorded run              |
+| **Verified run evidence**               | A claim directly supported by a supplied retained run artifact and successful verification |
+| **Not demonstrated in this deck**       | A live path, improvement, or other outcome that was not exercised                          |
 
-The current deck uses only expected-contract and not-demonstrated states. Do not
-change a slide to verified-run merely because its expected values look correct.
-A verified claim requires the referenced run evidence and the matching semantic
-verification result.
+The current deck uses guide-contract, scenario-contract, and not-demonstrated
+states. Do not change a slide to verified-run merely because its expected
+values look correct. A verified claim requires the referenced run evidence and
+the matching semantic verification result.
 
 Content validation rejects unsupported live-value and improvement claims. It
 also prevents an absent result from becoming an implied green outcome. An

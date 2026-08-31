@@ -90,8 +90,8 @@ output and final status.
 A successful comparison may be called **Verified run evidence** only when the
 report also identifies both repository revisions, `run.json`, worker and
 environment, exact handoff, captured result, and stop point. Otherwise use
-**Expected scenario contract**. Anything beyond the opening is **Not
-demonstrated**.
+**Scenario contract · no recorded run**. Anything beyond the opening is **Not
+demonstrated in this deck**.
 
 Phase B is a separate live exercise and requires explicit human approval for
 all applicable credential, account, network, installation, data-egress, cost,

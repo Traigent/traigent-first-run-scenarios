@@ -36,6 +36,7 @@ const COMMITTED_GIT_METADATA: GitMetadata = {
 };
 
 interface ManifestShape {
+  schema_version: number;
   generated_at: string;
   source: {
     revision: string;
@@ -43,10 +44,15 @@ interface ManifestShape {
     commit_sha: string | null;
   };
   deck: {
-    evidence_state: string;
-    guide_sha: string | null;
+    schema_version: number;
+    evidence_states: string[];
+    guide_contract_source_revisions: string[];
     slide_count: number;
-    slide_ids: string[];
+    slides: Array<{
+      id: string;
+      evidence_state: string;
+      source_revision: string | null;
+    }>;
   };
   offline: {
     self_contained_html: boolean;
@@ -243,7 +249,7 @@ describe("customer bundle", () => {
     expect(notices).not.toContain("vite@");
   });
 
-  it("builds a deterministic expected-contract bundle with stable checksums", async () => {
+  it("builds a deterministic contract-only bundle with stable checksums", async () => {
     const temporaryRoot = await temporaryDirectory("presentation-bundle-");
     const distDirectory = path.join(temporaryRoot, "dist");
     const outputDirectory = path.join(distDirectory, "customer-bundle");
@@ -277,17 +283,33 @@ describe("customer bundle", () => {
     const manifest = JSON.parse(
       await readFile(second.manifestPath, "utf8"),
     ) as ManifestShape;
+    expect(manifest.schema_version).toBe(2);
     expect(manifest.generated_at).toBe("2027-01-15T08:00:00.000Z");
     expect(manifest.source).toEqual({
       revision: COMMITTED_GIT_METADATA.revision,
       state: "committed",
       commit_sha: COMMITTED_GIT_METADATA.commitSha,
     });
-    expect(manifest.deck.evidence_state).toBe("scenario-contract");
-    expect(manifest.deck.guide_sha).toBeNull();
+    expect(manifest.deck.evidence_states).toEqual([
+      "guide-contract",
+      "not-demonstrated",
+      "scenario-contract",
+    ]);
+    expect(manifest.deck.guide_contract_source_revisions).toEqual([
+      "6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9",
+    ]);
+    expect(manifest.deck.schema_version).toBe(2);
+    expect(manifest.deck).not.toHaveProperty("evidence_state");
+    expect(manifest.deck).not.toHaveProperty("guide_sha");
+    expect(manifest.deck).not.toHaveProperty("guide_sha_reason");
+    expect(manifest.deck).not.toHaveProperty("slide_ids");
     expect(manifest.deck.slide_count).toBe(presentation.slides.length);
-    expect(manifest.deck.slide_ids).toEqual(
-      presentation.slides.map((slide) => slide.id),
+    expect(manifest.deck.slides).toEqual(
+      presentation.slides.map((slide) => ({
+        id: slide.id,
+        evidence_state: slide.evidenceState,
+        source_revision: slide.sourceRevision ?? null,
+      })),
     );
     expect(manifest.offline).toEqual({
       self_contained_html: true,
@@ -345,6 +367,31 @@ describe("customer bundle", () => {
     await expect(
       readFile(path.join(second.outputDirectory, "NOTICE")),
     ).resolves.toEqual(await readFile(path.join(repositoryRoot, "NOTICE")));
+
+    const alternateGuideRevision = "1".repeat(40);
+    const mutatedSpec = structuredClone(presentation);
+    for (const slide of mutatedSpec.slides) {
+      if (slide.evidenceState === "guide-contract") {
+        slide.sourceRevision = alternateGuideRevision;
+      }
+    }
+    mutatedSpec.slides[0]!.evidenceState = "not-demonstrated";
+    delete mutatedSpec.slides[0]!.sourceRevision;
+    const mutated = await buildCustomerBundle({
+      ...buildOptions,
+      spec: mutatedSpec,
+    });
+    const mutatedManifest = JSON.parse(
+      await readFile(mutated.manifestPath, "utf8"),
+    ) as ManifestShape;
+    expect(mutatedManifest.deck.guide_contract_source_revisions).toEqual([
+      alternateGuideRevision,
+    ]);
+    expect(mutatedManifest.deck.slides[0]).toEqual({
+      id: mutatedSpec.slides[0]!.id,
+      evidence_state: "not-demonstrated",
+      source_revision: null,
+    });
   });
 
   it("refuses a same-named output directory outside the selected dist directory", async () => {
