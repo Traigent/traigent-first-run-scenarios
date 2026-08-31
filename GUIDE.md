@@ -1,6 +1,6 @@
 # Guide
 
-Use this guide to inspect a public scenario or captain one reproducible Phase A
+Use this guide to inspect a public scenario or captain one reproducible opening
 opening run. It does not authorize a credentialed optimization.
 
 The repository currently publishes one reference scenario and its expected
@@ -39,7 +39,7 @@ python scenario.py check 46
 python scenario.py check
 ```
 
-`list` discovers published scenarios. `show` prints one validated manifest,
+`list` discovers the available scenarios. `show` prints one validated manifest,
 including its starting condition, component states, dataset profiles, expected
 route, limitations, and evidence scope. `check CASE` validates those declared
 facts against the materialized paths and data, then validates the strict
@@ -118,7 +118,7 @@ previous attempts. Do not place this repository or `run.json` in the worker's
 supplied context.
 
 The captain observes the run and stops it at the first question or decision
-that belongs to the human. For this Phase A opening:
+that belongs to the human. For this opening assessment:
 
 - do not provide a Traigent or model-provider credential;
 - do not approve a paid or remote Traigent/provider call;
@@ -159,7 +159,7 @@ executes verifier code. A match
 supports only this statement:
 
 > Under the recorded scenario, guide, and isolation conditions, the captured
-> opening fields matched the published Phase A contract.
+> opening fields matched the published opening contract.
 
 It does not establish that a baseline or optimization ran, that quality or cost
 improved, or that another project will receive the same result.
@@ -183,18 +183,18 @@ Record:
 
 Use one of the presentation evidence labels consistently:
 
-- **Expected scenario contract** for published expectations without a captured
+- **what the scenario expects** for published expectations without a captured
   verified run;
-- **Verified run evidence** only when the referenced run artifact exists and
+- **a recorded run** only when the referenced run artifact exists and
   verification passed; or
 - **Not demonstrated** for any later behavior that was not exercised.
 
-## 7. Keep Phase B separate
+## 7. Keep the paid run separate
 
-Phase B is a later human-guided run of the live value path. It begins only after
+A paid run is a later human-guided run of the live value path. It begins only after
 an authorized person reviews and explicitly approves every applicable
 credential, network, installation, data-egress, cost, mutation, and
-optimization boundary. Phase A never transitions to Phase B automatically.
+optimization boundary. The opening never starts a paid run on its own.
 
 Use [docs/customer-pc-runbook.md](docs/customer-pc-runbook.md) for the operating
 checklist and [docs/methodology.md](docs/methodology.md) for the claims model.

@@ -4,7 +4,7 @@
 
 This repository currently publishes one scenario:
 
-| Public scenario | Starting state | Dataset | Evaluator | Expected Phase A route |
+| Scenario | Starting state | Dataset | Evaluator | Expected opening route |
 | --- | --- | --- | --- | --- |
 | `incident-severity-triage` (legacy case 46) | Agent, labeled data, evaluator, and four varying controls are present | 120 Traigent-authored synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 surface labels mapped to four severity classes | Deterministic, non-executing normalized exact match with two supplied calibration probes | Explain the ready state and stop at the human's baseline approval |
 
@@ -84,8 +84,8 @@ Coverage and evidence are separate:
 | Layer | A pass supports | It does not prove |
 | --- | --- | --- |
 | Catalog check | Published files and the semantic contract are structurally valid and match declared materialized facts | Worker behavior or live value |
-| Phase A opening | The captured opening fields matched the public contract in that recorded, context-isolated run | Paid baseline or managed optimization |
-| Phase B live path | Evidence for the explicitly approved baseline, search, and result that actually ran | A universal outcome, another environment, or production safety |
+| Opening assessment | The captured opening fields matched the public contract in that recorded, context-isolated run | Paid baseline or managed optimization |
+| Paid run | Evidence for the explicitly approved baseline, search, and result that actually ran | A universal outcome, another environment, or production safety |
 
 The onboarding goal is to route every supported starting state as far toward
 optimization as its evidence and human approvals permit. Missing foundations

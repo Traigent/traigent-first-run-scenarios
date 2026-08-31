@@ -7,20 +7,20 @@ for observing how a fresh coding agent begins the Guided First Run. The
 repository separates the files needed for reproducibility from the information
 withheld from the worker during an individual run.
 
-The current release publishes one scenario and its expected Phase A opening
+The current release publishes one scenario and its expected opening assessment
 contract. It does not include a captured, verified worker run. Its values may be
-presented as **Expected scenario contract**, never as a completed result.
+presented as **what the scenario expects**, never as a completed result.
 
 ## Three evidence layers
 
 | Layer | Subject | Required evidence | Limit |
 | --- | --- | --- | --- |
 | Catalog check | Public package | Successful `list`, `show`, and `check` output | No worker behavior was observed |
-| Phase A opening | Fresh worker in the prepared project | Exact revisions, `run.json`, transcript, opening JSON, and successful semantic verification | No baseline, managed service, or optimization claim |
-| Phase B live optimization | Human-approved real value path | Explicit approvals plus the complete credentialed run record | Supports only the path and outcomes actually measured |
+| opening assessment | Fresh worker in the prepared project | Exact revisions, `run.json`, transcript, opening JSON, and successful semantic verification | No baseline, managed service, or optimization claim |
+| paid optimization run | Human-approved real value path | Explicit approvals plus the complete credentialed run record | Supports only the path and outcomes actually measured |
 
 Evidence does not flow upward automatically. A structurally valid package is
-not a Phase A pass, and a Phase A match is not proof of a Phase B optimization.
+not a the opening pass, and a opening match is not proof of a a paid run optimization.
 
 ## Structured released-scenario catalog
 
@@ -58,7 +58,7 @@ profile kinds and undeclared or unreadable files fail loudly.
 
 ## Roles and information boundaries
 
-Each Phase A run has four logical roles:
+Each the opening run has four logical roles:
 
 - The **customer owner** approves the machine, agent service, and evidence
   policy.
@@ -123,7 +123,7 @@ project contains no verifier.
 
 `run.json` records:
 
-- schema version and Phase A scope;
+- schema version and the opening scope;
 - scenario slug and legacy identifier;
 - worker directory and exact handoff;
 - both committed source revisions;
@@ -140,9 +140,9 @@ invokes local Git read-only, but runs no scenario code, guide code, shell,
 worker, or network operation. It provides a deterministic content boundary, not
 a runtime sandbox.
 
-## Phase A opening
+## opening assessment
 
-Phase A observes the first useful readiness opening and stops at the first
+the opening observes the first useful readiness opening and stops at the first
 question or decision that belongs to the human. It tests whether the worker can
 inspect what already exists, explain the readiness state, and surface the next
 governed choice without being coached toward the expected result.
@@ -153,7 +153,7 @@ admits that specific local path. This narrow allowance does not authorize
 arbitrary project code, dependencies, remote services, credentials, paid calls,
 customer-data egress, production mutation, a baseline, or an optimization.
 
-A Phase A match supports only this claim:
+A opening match supports only this claim:
 
 > Under the recorded scenario, guide, worker, and isolation conditions, the
 > captured opening fields matched the published semantic contract.
@@ -183,14 +183,14 @@ or verifier code. Display scores in the expected contract support an honest
 preview of the scenario's intended opening; they do not broaden the semantic
 match and are not recorded-run evidence.
 
-## Phase B live value path
+## a paid run live value path
 
-Phase B is a separate human-guided exercise of the real value path. It begins
+A paid run is a separate human-guided exercise of the real value path. It begins
 only after an authorized person inspects the actual environment and approves
 every applicable credential, account, network, installation, data-egress,
 provider, cost, mutation, and optimization boundary.
 
-Phase A never transitions into Phase B automatically. Phase B evidence must
+the opening never transitions into a paid run automatically. paid-run evidence must
 identify the approvals, exact configuration, data boundary, services, spend,
 trials, stop condition, and measured outcome. Behavior not exercised remains
 **Not demonstrated**.
@@ -229,16 +229,16 @@ Approved content enters this repository as a curated copy of current files and
 new public commits. It does not retain another repository's Git history,
 branches, tags, deleted material, commit messages, `.git` data, or unrelated
 context. The public repository revision and `run.json` hashes become the
-reproducible identity of the published scenario.
+reproducible identity of the scenario.
 
 ## Presentation evidence labels
 
 The browser presentation and editable PowerPoint use the same semantic content
 and one of three labels on every slide:
 
-- **Expected scenario contract**: published facts or expectations, without a
+- **what the scenario expects**: published facts or expectations, without a
   referenced captured run.
-- **Verified run evidence**: a claim directly supported by a retained run
+- **a recorded run**: a claim directly supported by a retained run
   artifact and successful verification.
 - **Not demonstrated**: a path or outcome that was not exercised.
 

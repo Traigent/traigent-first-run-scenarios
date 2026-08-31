@@ -1,7 +1,7 @@
 # Customer PC Runbook
 
 This runbook is for a presales engineer or customer representative reproducing
-the public Phase A opening scenario on a customer-controlled computer.
+the public opening scenario on a customer-controlled computer.
 
 It covers package validation, preparation, a context-isolated worker run, and
 semantic verification. It does not authorize the later credentialed
@@ -31,9 +31,9 @@ Before touching the machine, confirm:
 - whether a container, virtual machine, or restricted account is required;
 - where command output and agent transcripts may be retained;
 - which directories, repositories, services, and data are out of scope; and
-- who can authorize a separate Phase B exercise.
+- who can authorize a separate paid run.
 
-Phase A requires no Traigent access code, model-provider key, customer dataset,
+The opening requires no Traigent access code, model-provider key, customer dataset,
 paid service, or product account. The coding-agent service itself may be remote
 or billed, so approve that service separately.
 
@@ -75,7 +75,7 @@ published files. It also confirms that the expected opening has valid strict
 structure and value ranges. It still proves package integrity only, not agent
 behavior.
 
-If any command fails, stop. Do not repair the published scenario on the
+If any command fails, stop. Do not repair the scenario on the
 customer machine or substitute other data.
 
 ## 4. Prepare a new run root
@@ -122,7 +122,7 @@ Before starting the worker, check all of the following:
   this scenario.
 - Production repositories, credentials, private datasets, and unrelated home
   directories are outside the approved scope.
-- Network and tool permissions match the Phase A boundary.
+- Network and tool permissions match the boundary of the opening.
 
 For stronger machine isolation, expose only `customer-project/` to a disposable
 container, virtual machine, or restricted account. Starting a worker in that
@@ -135,7 +135,7 @@ the project's evaluator but not the captain-side semantic verifier, expected
 opening, or prior result. A worker that deliberately looks up those excluded
 materials makes the run ineligible.
 
-## 6. Run the Phase A opening
+## 6. Run the opening assessment
 
 Start the fresh worker with its working directory set to
 `../incident-triage-run/customer-project`. Paste only the exact handoff printed
@@ -151,7 +151,7 @@ or coaching.
 
 The captain may allow local inspection and the deterministic evaluator
 calibration only when the first-run guide admits the exact path through its
-safety gate. During Phase A, do not:
+safety gate. During the opening, do not:
 
 - provide a Traigent or provider credential;
 - approve a paid or remote Traigent/provider request;
@@ -180,10 +180,10 @@ scenario Git revision in `run.json`, and compares only `band`, `status`,
 caps are condition slugs; full captured cap objects are compared by their
 `condition` fields. It reports every mismatch and does not execute the verifier.
 
-A matching result may be labeled **Verified run evidence** only when the report
+A matching result may be labeled **a recorded run** only when the report
 also identifies the captured result, both repository revisions, `run.json`, the
 worker, environment, handoff, and stop point. Without that evidence, the public
-values remain an **Expected scenario contract**.
+values remain an **what the scenario expects**.
 
 ## 8. Retain and remove evidence deliberately
 
@@ -196,15 +196,15 @@ Retain only what the customer approved:
 - complete commands, output, and final statuses;
 - exact handoff and worker response;
 - opening-result JSON and verifier output; and
-- explicit approvals if a later Phase B run occurs.
+- explicit approvals if a later paid run occurs.
 
 Remove secrets and customer data before sharing. Retain or delete the disposable
 directories according to the customer's policy; do not silently leave them on
 the machine.
 
-## 9. Authorize Phase B separately
+## 9. Authorize a paid run separately
 
-Phase B exercises a live value path. Before it begins, write down and obtain
+A paid run exercises a live value path. Before it begins, write down and obtain
 approval for every applicable item:
 
 | Boundary | Required decision |
@@ -217,6 +217,6 @@ approval for every applicable item:
 | Mutation | Which files, repositories, services, or records may change |
 | Optimization | The candidate space, evaluation, trial, and stopping boundaries |
 
-An approval for Phase A is not approval for Phase B. If any boundary is unclear,
-stop and ask the authorized human. Report Phase B evidence separately; never use
-a Phase A match as proof of a live optimization or business improvement.
+Approving the opening is not approving a paid run. If any boundary is unclear,
+stop and ask the authorized human. Report paid-run evidence separately; never use
+a opening match as proof of a live optimization or business improvement.

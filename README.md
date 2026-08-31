@@ -1,31 +1,54 @@
 # Traigent First Run Scenarios
 
-Public, reproducible simulated-project scenarios for demonstrating how a coding
-agent begins the [Traigent Guided First Run](https://github.com/Traigent/traigent-first-run)
-from a realistic starting point.
+Realistic example projects you can hand to a coding agent to show what the
+[Traigent Guided First Run](https://github.com/Traigent/traigent-first-run)
+actually does -- without touching a customer's code, data, or credentials.
 
-The first published scenario is an optimization-ready incident-severity triage
-project. It contains a synthetic agent, labeled rows, a deterministic evaluator,
-and the public contract for the expected opening assessment. The repository does
-not include a recorded worker run, so the current result is labeled **Expected
-scenario contract**, not **Verified run evidence**.
+## Who this is for
 
-The Guided First Run is intended to route every supported component-readiness
-state toward optimization. Ready projects advance to the baseline approval;
-incomplete projects create, repair, or review what is missing; invalid
-measurement stops before paid work; and unsafe code/SQL execution routes to
-manual containment. This is a governed path toward optimization, not a promise
-that every project can optimize immediately or earn an Excellent opening.
+A sales engineer who needs to demonstrate the first run, or a customer who wants
+to watch it happen on their own machine before pointing it at anything of theirs.
+Everything here is public and runs offline.
 
-## Published scenario catalog
+## What a scenario is
 
-The catalog currently contains one released scenario. Other starting
-conditions may be described as coverage targets, but they are not published
-scenarios until their complete directory and validated manifest exist here.
+**A scenario is one customer's starting state.** Real projects arrive in very
+different conditions: some have a dataset but no way to score it, some have a
+scorer nobody has checked, some have an agent with nothing worth varying. The
+first run is supposed to take each of those somewhere useful -- and what it can
+promise depends entirely on which one you brought.
+
+So each scenario exists to show a **different** starting state. They are not
+variations on one project; if two scenarios would route the same way for the
+same reason, only one of them is worth publishing.
+
+## What this repository demonstrates, and what it does not
+
+The scenario here is the **ready** starting state: an incident-severity triage
+project whose agent, labeled data, and scorer are all present and usable. It is
+the case where nothing is holding the score down -- which is exactly why it is
+the wrong case to generalize from.
+
+Two boundaries worth being straight about:
+
+- **It demonstrates the free opening**, the inspect-and-readiness assessment that
+  costs nothing and calls no provider. It does not demonstrate a paid run through
+  to a result.
+- **No recorded run ships with it.** What is published is the answer the scenario
+  is *designed to expect*, not a transcript of one that happened. The commands
+  below check the files and that expectation; they do not run an agent.
+
+## What you can run today
+
+**One scenario is available.** The other starting states are planned and named as
+such -- a starting state is not listed as available until its complete directory
+and validated catalog entry exist in this repository. See
+[Scenario and dataset coverage](docs/scenario-coverage.md) for the five families
+being built and what each is meant to exercise.
 
 | Scenario | Starting condition | Components | Expected route | Evidence scope |
 | --- | --- | --- | --- | --- |
-| `incident-severity-triage` (46) | All required components ready | Agent, dataset, and evaluator are present; four agent controls | Proceed, because the required components are ready | Expected Phase A opening contract; no captured worker run or live optimization |
+| `incident-severity-triage` (46) | All required components ready | Agent, dataset, and evaluator are present; four agent controls | Proceed, because the required components are ready | Expected opening assessment contract; no captured worker run or live optimization |
 
 Its primary dataset is declared and checked as data rather than presentation
 copy:
@@ -41,7 +64,7 @@ with the materialized files. The presentation can render those facts, but it
 does not own a second copy of them.
 
 See [Scenario and dataset coverage](docs/scenario-coverage.md) for the current
-public case, the explicitly not-yet-published coverage roadmap, dataset-origin
+public case, the starting states not built yet, dataset-origin
 rules, and the claim supported by each test layer.
 
 ## What you can do here
@@ -59,7 +82,7 @@ python scenario.py check
 These commands inspect and validate the published files, including the expected
 opening contract. They do not launch an agent or execute scenario code.
 
-To prepare a context-isolated Phase A opening run, first clone the public guide
+To prepare a sealed opening run, first clone the public guide
 beside this repository, then choose a new output path whose parent already
 exists:
 
@@ -102,11 +125,11 @@ before using a customer-controlled machine.
 | Layer | What happens | What a pass means |
 | --- | --- | --- |
 | Catalog check | `list`, `show`, and `check` inspect public files | The package and expected opening contract are structurally valid and fully materialized |
-| Phase A opening | A fresh worker receives only the prepared project and exact handoff | The captured opening fields match the declared scenario contract |
-| Phase B live optimization | A human separately approves credentials, services, data movement, cost, and mutations | Only the explicitly approved live path was exercised |
+| opening assessment | A fresh worker receives only the prepared project and exact handoff | The captured opening fields match the declared scenario contract |
+| paid optimization run | A human separately approves credentials, services, data movement, cost, and mutations | Only the explicitly approved live path was exercised |
 
-A catalog check is not an agent run. A Phase A match is not a live optimization
-or end-to-end result. Phase B is never an automatic continuation of Phase A.
+A catalog check is not an agent run. A opening match is not a live optimization
+or end-to-end result. A paid run never follows the opening automatically.
 
 ## Public scenario, context-isolated run
 
