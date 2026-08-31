@@ -1,0 +1,14 @@
+{
+  "name": "image-size",
+  "version": "3.0.0-traigent-disabled.0",
+  "description": "Fail-closed replacement for an unused image parser in the presentation build graph",
+  "private": true,
+  "license": "Apache-2.0",
+  "main": "index.cjs",
+  "exports": "./index.cjs",
+  "files": [
+    "index.cjs",
+    "LICENSE",
+    "README.md"
+  ]
+}

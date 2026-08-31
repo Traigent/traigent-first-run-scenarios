@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "scope": "phase-a-opening",
+  "band": "EXCELLENT",
+  "status": "OK",
+  "recommended_action": "proceed",
+  "caps": [],
+  "display": {
+    "overall": {
+      "score": 92,
+      "confidence": 0.95
+    },
+    "pillars": {
+      "agent": {
+        "score": 70,
+        "confidence": 0.81
+      },
+      "dataset": {
+        "score": 98,
+        "confidence": 1.0
+      },
+      "evaluation": {
+        "score": 100,
+        "confidence": 1.0
+      }
+    }
+  }
+}

@@ -1,0 +1,547 @@
+import { createHash } from "node:crypto";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  assertNoForbiddenRuntimeSource,
+  assertSelfContainedHtml,
+  buildCustomerBundle,
+  buildThirdPartyNotices,
+  BundleBuildError,
+  discoverRuntimePackageNames,
+  resolveBuildTimestamp,
+  resolveGitMetadata,
+  type GitMetadata,
+} from "../scripts/build-bundle";
+import { pptxFileName } from "../scripts/build-pptx";
+import { presentationRoot, repositoryRoot } from "../scripts/runtime";
+import { presentation } from "../src/content";
+
+const temporaryDirectories: string[] = [];
+const COMMITTED_GIT_METADATA: GitMetadata = {
+  revision: "0123456789abcdef0123456789abcdef01234567",
+  state: "committed",
+  commitSha: "0123456789abcdef0123456789abcdef01234567",
+  commitEpochSeconds: 1_700_000_000,
+};
+
+interface ManifestShape {
+  generated_at: string;
+  source: {
+    revision: string;
+    state: string;
+    commit_sha: string | null;
+  };
+  deck: {
+    evidence_state: string;
+    guide_sha: string | null;
+    slide_count: number;
+    slide_ids: string[];
+  };
+  offline: {
+    self_contained_html: boolean;
+    runtime_network_dependencies: boolean;
+  };
+  licensing: {
+    repository_spdx_license: string;
+    repository_license_file: string;
+    repository_notice_file: string;
+    third_party_notices_file: string;
+  };
+  artifacts: Array<{
+    path: string;
+    bytes: number;
+    sha256: string;
+  }>;
+}
+
+async function temporaryDirectory(prefix: string): Promise<string> {
+  const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+function hash(value: Uint8Array): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+describe("offline bundle validation", () => {
+  it("allows an inline deck and visible hyperlink without a network dependency", () => {
+    const html =
+      '<!doctype html><a href="https://example.invalid">Source</a><style>.icon{background:url(data:image/svg+xml;base64,AA==)}</style><script>const schema={url(value){return value}}</script>';
+
+    expect(() => assertSelfContainedHtml(html)).not.toThrow();
+  });
+
+  it.each([
+    '<script src="app.js"></script>',
+    '<link rel="stylesheet" href="styles.css">',
+    '<link rel="icon" href="https://example.invalid/icon.ico">',
+    '<img src="remote.png">',
+    '<img srcset="small.png 1x, large.png 2x">',
+    '<style>.hero{background:url("remote.png")}</style>',
+    '<style>@import "remote.css";</style>',
+    '<base href="https://example.invalid/">',
+    '<object data="https://example.invalid/object"></object>',
+    '<embed src="https://example.invalid/embed">',
+    '<video poster="https://example.invalid/poster.png"></video>',
+    '<svg><image href="https://example.invalid/image.svg"/></svg>',
+    '<meta http-equiv="refresh" content="0;url=https://example.invalid">',
+    '<form action="https://example.invalid"><button>Submit</button></form>',
+    '<a href="https://example.invalid" ping="https://tracker.invalid">Source</a>',
+    '<html manifest="https://example.invalid/deck.appcache"></html>',
+  ])("rejects external runtime resources: %s", (html) => {
+    expect(() => assertSelfContainedHtml(html)).toThrowError(BundleBuildError);
+  });
+
+  it("rejects network calls in presentation source", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "unsafe.ts"),
+      'export async function load() { return fetch("https://example.invalid"); }\n',
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).rejects.toThrowError("fetch");
+  });
+
+  it("rejects aliased network capabilities in presentation source", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "unsafe.ts"),
+      'const request = fetch; export function load() { return request("https://example.invalid"); }\n',
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).rejects.toThrowError("fetch");
+  });
+
+  it("accepts local, declarative presentation source", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "safe.ts"),
+      'export const customerLink = "https://example.invalid";\n',
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects symbolic links anywhere in a presentation source walk", async () => {
+    const temporaryRoot = await temporaryDirectory("presentation-source-");
+    const sourceDirectory = path.join(temporaryRoot, "src");
+    await mkdir(sourceDirectory);
+    await writeFile(
+      path.join(temporaryRoot, "outside.ts"),
+      "export const value = 1;\n",
+    );
+    await symlink(
+      path.join(temporaryRoot, "outside.ts"),
+      path.join(sourceDirectory, "linked.ts"),
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).rejects.toThrowError("Symbolic links are not allowed");
+  });
+
+  it("discovers nested static, dynamic, and CommonJS runtime imports", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-imports-");
+    const nestedDirectory = path.join(sourceDirectory, "nested");
+    await mkdir(nestedDirectory);
+    await writeFile(
+      path.join(sourceDirectory, "entry.ts"),
+      [
+        'import React from "react";',
+        'export const visibleLink = "https://example.invalid";',
+        'export { createPortal } from "react-dom";',
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(nestedDirectory, "runtime.ts"),
+      [
+        'export async function load() { return import("react-dom/client"); }',
+        'export function validate() { return require("zod"); }',
+      ].join("\n"),
+    );
+
+    await expect(discoverRuntimePackageNames(sourceDirectory)).resolves.toEqual(
+      ["react", "react-dom", "zod"],
+    );
+  });
+
+  it("rejects nonliteral dynamic dependencies because they cannot be inventoried", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-imports-");
+    await writeFile(
+      path.join(sourceDirectory, "runtime.ts"),
+      "export async function load(name: string) { return import(name); }\n",
+    );
+
+    await expect(
+      discoverRuntimePackageNames(sourceDirectory),
+    ).rejects.toThrowError("Dynamic import must use a string literal");
+  });
+
+  it("fails explicitly when no Git checkout can provide provenance", async () => {
+    const directory = await temporaryDirectory("presentation-no-git-");
+
+    expect(() => resolveGitMetadata(directory)).toThrowError(
+      "Unable to resolve Git revision",
+    );
+  });
+
+  it("uses SOURCE_DATE_EPOCH when supplied and otherwise uses commit time", () => {
+    expect(resolveBuildTimestamp(10, undefined)).toBe(
+      "1970-01-01T00:00:10.000Z",
+    );
+    expect(resolveBuildTimestamp(10, "20")).toBe("1970-01-01T00:00:20.000Z");
+    expect(() => resolveBuildTimestamp(10, "now")).toThrowError(
+      BundleBuildError,
+    );
+  });
+});
+
+describe("customer bundle", () => {
+  it("includes full notices only for runtime code emitted into the web deck", async () => {
+    const notices = await buildThirdPartyNotices(
+      presentationRoot,
+      path.join(presentationRoot, "src"),
+    );
+
+    expect(notices).toContain("react@19.2.8");
+    expect(notices).toContain("react-dom@19.2.8");
+    expect(notices).toContain("scheduler@0.27.0");
+    expect(notices).toContain("zod@4.5.4");
+    expect(notices).toContain("MIT License");
+    expect(notices).toContain("Copyright");
+    expect(notices).not.toContain("pptxgenjs@");
+    expect(notices).not.toContain("image-size@");
+    expect(notices).not.toContain("vite@");
+  });
+
+  it("builds a deterministic expected-contract bundle with stable checksums", async () => {
+    const temporaryRoot = await temporaryDirectory("presentation-bundle-");
+    const distDirectory = path.join(temporaryRoot, "dist");
+    const outputDirectory = path.join(distDirectory, "customer-bundle");
+    await mkdir(distDirectory, { recursive: true });
+    await writeFile(
+      path.join(distDirectory, "index.html"),
+      '<!doctype html><html><body><script>document.body.dataset.ready="yes"</script></body></html>\n',
+      "utf8",
+    );
+    await writeFile(
+      path.join(distDirectory, pptxFileName),
+      "pptx-fixture",
+      "utf8",
+    );
+
+    const buildOptions = {
+      distDirectory,
+      outputDirectory,
+      packageDirectory: presentationRoot,
+      sourceDirectory: path.join(presentationRoot, "src"),
+      gitMetadata: COMMITTED_GIT_METADATA,
+      sourceDateEpoch: "1800000000",
+      spec: presentation,
+    } as const;
+    const first = await buildCustomerBundle(buildOptions);
+    const firstChecksums = await readFile(first.checksumsPath, "utf8");
+    const second = await buildCustomerBundle(buildOptions);
+    const secondChecksums = await readFile(second.checksumsPath, "utf8");
+
+    expect(secondChecksums).toBe(firstChecksums);
+    const manifest = JSON.parse(
+      await readFile(second.manifestPath, "utf8"),
+    ) as ManifestShape;
+    expect(manifest.generated_at).toBe("2027-01-15T08:00:00.000Z");
+    expect(manifest.source).toEqual({
+      revision: COMMITTED_GIT_METADATA.revision,
+      state: "committed",
+      commit_sha: COMMITTED_GIT_METADATA.commitSha,
+    });
+    expect(manifest.deck.evidence_state).toBe("scenario-contract");
+    expect(manifest.deck.guide_sha).toBeNull();
+    expect(manifest.deck.slide_count).toBe(presentation.slides.length);
+    expect(manifest.deck.slide_ids).toEqual(
+      presentation.slides.map((slide) => slide.id),
+    );
+    expect(manifest.offline).toEqual({
+      self_contained_html: true,
+      runtime_network_dependencies: false,
+    });
+    expect(manifest.licensing).toEqual({
+      repository_spdx_license: "Apache-2.0",
+      repository_license_file: "LICENSE",
+      repository_notice_file: "NOTICE",
+      third_party_notices_file: "THIRD_PARTY_NOTICES.txt",
+    });
+    expect(manifest.artifacts.map((artifact) => artifact.path)).toEqual([
+      "LICENSE",
+      "NOTICE",
+      "THIRD_PARTY_NOTICES.txt",
+      "presentation.html",
+      "presentation.pptx",
+    ]);
+    for (const artifact of manifest.artifacts) {
+      const contents = await readFile(
+        path.join(second.outputDirectory, artifact.path),
+      );
+      expect(artifact.bytes).toBe(contents.byteLength);
+      expect(artifact.sha256).toBe(hash(contents));
+    }
+
+    const checksumLines = secondChecksums.trim().split("\n");
+    const checksumPaths = checksumLines.map((line) => line.slice(66));
+    expect(checksumPaths).toEqual([...checksumPaths].sort());
+    expect(checksumPaths).toEqual([
+      "LICENSE",
+      "NOTICE",
+      "THIRD_PARTY_NOTICES.txt",
+      "build-manifest.json",
+      "presentation.html",
+      "presentation.pptx",
+    ]);
+    expect(checksumPaths).not.toContain("checksums.txt");
+    for (const line of checksumLines) {
+      const [expectedHash, relativePath] = line.split("  ");
+      expect(expectedHash).toBe(
+        hash(await readFile(path.join(second.outputDirectory, relativePath!))),
+      );
+    }
+
+    const notices = await readFile(
+      path.join(second.outputDirectory, "THIRD_PARTY_NOTICES.txt"),
+      "utf8",
+    );
+    expect(notices).not.toContain("pptxgenjs@");
+    expect(notices).not.toContain("image-size@");
+    await expect(
+      readFile(path.join(second.outputDirectory, "LICENSE")),
+    ).resolves.toEqual(await readFile(path.join(repositoryRoot, "LICENSE")));
+    await expect(
+      readFile(path.join(second.outputDirectory, "NOTICE")),
+    ).resolves.toEqual(await readFile(path.join(repositoryRoot, "NOTICE")));
+  });
+
+  it("refuses a same-named output directory outside the selected dist directory", async () => {
+    const temporaryRoot = await temporaryDirectory("presentation-bundle-path-");
+    const distDirectory = path.join(temporaryRoot, "dist");
+    const outputDirectory = path.join(
+      temporaryRoot,
+      "other",
+      "customer-bundle",
+    );
+    await mkdir(outputDirectory, { recursive: true });
+    const sentinelPath = path.join(outputDirectory, "keep.txt");
+    await writeFile(sentinelPath, "keep\n");
+
+    await expect(
+      buildCustomerBundle({
+        distDirectory,
+        outputDirectory,
+        gitMetadata: COMMITTED_GIT_METADATA,
+      }),
+    ).rejects.toThrowError("must be exactly");
+    await expect(readFile(sentinelPath, "utf8")).resolves.toBe("keep\n");
+  });
+
+  it("preserves an existing bundle when notice generation fails", async () => {
+    const temporaryRoot = await temporaryDirectory(
+      "presentation-bundle-notice-",
+    );
+    const distDirectory = path.join(temporaryRoot, "dist");
+    const outputDirectory = path.join(distDirectory, "customer-bundle");
+    const invalidPackageDirectory = path.join(temporaryRoot, "invalid-package");
+    await mkdir(outputDirectory, { recursive: true });
+    await mkdir(invalidPackageDirectory);
+    await writeFile(path.join(outputDirectory, "keep.txt"), "known-good\n");
+    await writeFile(
+      path.join(distDirectory, "index.html"),
+      "<!doctype html>\n",
+    );
+    await writeFile(path.join(distDirectory, pptxFileName), "pptx-fixture");
+
+    await expect(
+      buildCustomerBundle({
+        distDirectory,
+        outputDirectory,
+        packageDirectory: invalidPackageDirectory,
+        sourceDirectory: path.join(presentationRoot, "src"),
+        gitMetadata: COMMITTED_GIT_METADATA,
+      }),
+    ).rejects.toThrowError("Unable to load");
+    await expect(
+      readFile(path.join(outputDirectory, "keep.txt"), "utf8"),
+    ).resolves.toBe("known-good\n");
+  });
+
+  it.each(["LICENSE", "NOTICE"] as const)(
+    "preserves an existing bundle when repository %s is absent",
+    async (missingFileName) => {
+      const temporaryRoot = await temporaryDirectory(
+        "presentation-bundle-legal-",
+      );
+      const repositoryDirectory = path.join(temporaryRoot, "repository");
+      const distDirectory = path.join(temporaryRoot, "dist");
+      const outputDirectory = path.join(distDirectory, "customer-bundle");
+      const retainedFileName =
+        missingFileName === "LICENSE" ? "NOTICE" : "LICENSE";
+      await mkdir(repositoryDirectory, { recursive: true });
+      await mkdir(outputDirectory, { recursive: true });
+      await writeFile(
+        path.join(repositoryDirectory, retainedFileName),
+        await readFile(path.join(repositoryRoot, retainedFileName)),
+      );
+      await writeFile(path.join(outputDirectory, "keep.txt"), "known-good\n");
+
+      await expect(
+        buildCustomerBundle({
+          distDirectory,
+          outputDirectory,
+          repositoryDirectory,
+          gitMetadata: COMMITTED_GIT_METADATA,
+        }),
+      ).rejects.toThrowError(`Repository ${missingFileName} is missing`);
+      await expect(
+        readFile(path.join(outputDirectory, "keep.txt"), "utf8"),
+      ).resolves.toBe("known-good\n");
+    },
+  );
+
+  it.each(["LICENSE", "NOTICE"] as const)(
+    "preserves an existing bundle when repository %s is a symbolic link",
+    async (linkedFileName) => {
+      const temporaryRoot = await temporaryDirectory(
+        "presentation-bundle-legal-link-",
+      );
+      const repositoryDirectory = path.join(temporaryRoot, "repository");
+      const distDirectory = path.join(temporaryRoot, "dist");
+      const outputDirectory = path.join(distDirectory, "customer-bundle");
+      const externalFilePath = path.join(
+        temporaryRoot,
+        `external-${linkedFileName.toLowerCase()}`,
+      );
+      const retainedFileName =
+        linkedFileName === "LICENSE" ? "NOTICE" : "LICENSE";
+      await mkdir(repositoryDirectory, { recursive: true });
+      await mkdir(outputDirectory, { recursive: true });
+      await writeFile(
+        externalFilePath,
+        await readFile(path.join(repositoryRoot, linkedFileName)),
+      );
+      await symlink(
+        externalFilePath,
+        path.join(repositoryDirectory, linkedFileName),
+      );
+      await writeFile(
+        path.join(repositoryDirectory, retainedFileName),
+        await readFile(path.join(repositoryRoot, retainedFileName)),
+      );
+      await writeFile(path.join(outputDirectory, "keep.txt"), "known-good\n");
+
+      await expect(
+        buildCustomerBundle({
+          distDirectory,
+          outputDirectory,
+          repositoryDirectory,
+          gitMetadata: COMMITTED_GIT_METADATA,
+        }),
+      ).rejects.toThrowError(
+        `Repository ${linkedFileName} must be a regular file, not a symbolic link`,
+      );
+      await expect(
+        readFile(path.join(outputDirectory, "keep.txt"), "utf8"),
+      ).resolves.toBe("known-good\n");
+    },
+  );
+
+  it.each(["LICENSE", "NOTICE"] as const)(
+    "preserves an existing bundle when repository %s is empty",
+    async (emptyFileName) => {
+      const temporaryRoot = await temporaryDirectory(
+        "presentation-bundle-legal-empty-",
+      );
+      const repositoryDirectory = path.join(temporaryRoot, "repository");
+      const distDirectory = path.join(temporaryRoot, "dist");
+      const outputDirectory = path.join(distDirectory, "customer-bundle");
+      const retainedFileName =
+        emptyFileName === "LICENSE" ? "NOTICE" : "LICENSE";
+      await mkdir(repositoryDirectory, { recursive: true });
+      await mkdir(outputDirectory, { recursive: true });
+      await writeFile(path.join(repositoryDirectory, emptyFileName), "");
+      await writeFile(
+        path.join(repositoryDirectory, retainedFileName),
+        await readFile(path.join(repositoryRoot, retainedFileName)),
+      );
+      await writeFile(path.join(outputDirectory, "keep.txt"), "known-good\n");
+
+      await expect(
+        buildCustomerBundle({
+          distDirectory,
+          outputDirectory,
+          repositoryDirectory,
+          gitMetadata: COMMITTED_GIT_METADATA,
+        }),
+      ).rejects.toThrowError(`Repository ${emptyFileName} is empty`);
+      await expect(
+        readFile(path.join(outputDirectory, "keep.txt"), "utf8"),
+      ).resolves.toBe("known-good\n");
+    },
+  );
+
+  it("preserves an existing bundle when LICENSE is not Apache-2.0", async () => {
+    const temporaryRoot = await temporaryDirectory(
+      "presentation-bundle-legal-wrong-license-",
+    );
+    const repositoryDirectory = path.join(temporaryRoot, "repository");
+    const distDirectory = path.join(temporaryRoot, "dist");
+    const outputDirectory = path.join(distDirectory, "customer-bundle");
+    await mkdir(repositoryDirectory, { recursive: true });
+    await mkdir(outputDirectory, { recursive: true });
+    await writeFile(
+      path.join(repositoryDirectory, "LICENSE"),
+      "A different license\n",
+    );
+    await writeFile(
+      path.join(repositoryDirectory, "NOTICE"),
+      await readFile(path.join(repositoryRoot, "NOTICE")),
+    );
+    await writeFile(path.join(outputDirectory, "keep.txt"), "known-good\n");
+
+    await expect(
+      buildCustomerBundle({
+        distDirectory,
+        outputDirectory,
+        repositoryDirectory,
+        gitMetadata: COMMITTED_GIT_METADATA,
+      }),
+    ).rejects.toThrowError("is not an Apache License 2.0 text");
+    await expect(
+      readFile(path.join(outputDirectory, "keep.txt"), "utf8"),
+    ).resolves.toBe("known-good\n");
+  });
+});

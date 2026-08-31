@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "slug": "incident-severity-triage",
+  "legacy_id": 46,
+  "title": "Optimization-ready incident severity triage",
+  "summary": "A customer-shaped incident-classification project with a configurable agent, labeled synthetic reports, a deterministic severity evaluator, and calibration probes.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "all-components-ready",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "prompt_style",
+          "retrieval",
+          "output_format"
+        ]
+      },
+      "data": {
+        "state": "ready",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "normalized-exact-match",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 2
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "incident-reports",
+        "state": "ready",
+        "path": "project/dataset.jsonl",
+        "task": "closed-label-classification",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 120,
+        "unique_inputs": 120,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 100,
+            "holdout": 20
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 30,
+            "medium": 30,
+            "hard": 30,
+            "very-hard": 30
+          }
+        },
+        "label_shape": {
+          "kind": "mapped-labels",
+          "surface_label_count": 12,
+          "normalized_class_count": 4,
+          "normalization_map": {
+            "SEV1": "severity-1",
+            "P1": "severity-1",
+            "Critical": "severity-1",
+            "SEV2": "severity-2",
+            "P2": "severity-2",
+            "High": "severity-2",
+            "SEV3": "severity-3",
+            "P3": "severity-3",
+            "Medium": "severity-3",
+            "SEV4": "severity-4",
+            "P4": "severity-4",
+            "Low": "severity-4"
+          }
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "closed-label-task"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "all-required-components-ready",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    }
+  },
+  "tags": [
+    "closed-label",
+    "exact-evaluator",
+    "incident-triage",
+    "labeled-data",
+    "optimization-ready",
+    "synthetic-data"
+  ]
+}

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+runs/
+presentation/node_modules/
+presentation/dist/
+reports/review/
+reports/verification/
