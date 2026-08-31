@@ -409,11 +409,11 @@ function staticImportSpecifier(
     return first.value;
   }
   for (let index = start; index < tokens.length; index += 1) {
-    const sourceToken = tokens[index]!;
-    if (sourceToken.kind === SyntaxKind.SemicolonToken) {
+    const lexeme = tokens[index]!;
+    if (lexeme.kind === SyntaxKind.SemicolonToken) {
       return null;
     }
-    if (sourceToken.value === "from") {
+    if (lexeme.value === "from") {
       const specifier = tokens[index + 1];
       return specifier?.kind === SyntaxKind.StringLiteral
         ? specifier.value
@@ -428,11 +428,11 @@ function staticExportSpecifier(
   start: number,
 ): string | null {
   for (let index = start; index < tokens.length; index += 1) {
-    const sourceToken = tokens[index]!;
-    if (sourceToken.kind === SyntaxKind.SemicolonToken) {
+    const lexeme = tokens[index]!;
+    if (lexeme.kind === SyntaxKind.SemicolonToken) {
       return null;
     }
-    if (sourceToken.value === "from") {
+    if (lexeme.value === "from") {
       const specifier = tokens[index + 1];
       return specifier?.kind === SyntaxKind.StringLiteral
         ? specifier.value
@@ -447,10 +447,10 @@ function runtimeImports(filePath: string, source: string): string[] {
   const tokens = sourceTokens(source);
 
   for (let index = 0; index < tokens.length; index += 1) {
-    const sourceToken = tokens[index]!;
+    const lexeme = tokens[index]!;
     const previous = tokens[index - 1];
     const next = tokens[index + 1];
-    if (sourceToken.kind === SyntaxKind.ImportKeyword) {
+    if (lexeme.kind === SyntaxKind.ImportKeyword) {
       if (next?.kind === SyntaxKind.TypeKeyword) {
         continue;
       }
@@ -474,7 +474,7 @@ function runtimeImports(filePath: string, source: string): string[] {
       continue;
     }
     if (
-      sourceToken.kind === SyntaxKind.ExportKeyword &&
+      lexeme.kind === SyntaxKind.ExportKeyword &&
       next?.kind !== SyntaxKind.TypeKeyword
     ) {
       const specifier = staticExportSpecifier(tokens, index + 1);
@@ -484,7 +484,7 @@ function runtimeImports(filePath: string, source: string): string[] {
       continue;
     }
     if (
-      sourceToken.value === "require" &&
+      lexeme.value === "require" &&
       next?.kind === SyntaxKind.OpenParenToken &&
       previous?.kind !== SyntaxKind.DotToken &&
       previous?.kind !== SyntaxKind.QuestionDotToken
