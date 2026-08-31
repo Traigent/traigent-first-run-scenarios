@@ -4,18 +4,42 @@ Public, reproducible simulated-project scenarios for demonstrating how a coding
 agent begins the [Traigent Guided First Run](https://github.com/Traigent/traigent-first-run)
 from a realistic starting point.
 
+**How the pieces fit.** Three things carry the name Traigent here:
+
+- [`Traigent/traigent-first-run`](https://github.com/Traigent/traigent-first-run) -
+  the **guide**: the workflow a coding agent follows on a customer's own
+  project, announced to the user as five stages (Inspect, Readiness, Baseline,
+  Optimize, Results).
+- **This repository** - simulated customer-shaped projects plus a CLI to check
+  them, prepare a context-isolated copy, and verify what a fresh agent's
+  opening said against a published contract.
+- The **Traigent SDK and managed service** - the product the guide routes
+  toward; licensed separately and not included here (see
+  [Content origin and licensing](#content-origin-and-licensing)).
+
+**Phase A** is the guide's free opening: the agent inspects what exists,
+explains the readiness state, and stops at the first question or decision that
+belongs to the human - no credentials, paid calls, or optimization. **Phase B**
+is the later human-approved live path (baseline, managed optimization,
+results). Phase A never becomes Phase B automatically. Case `46` in the
+commands below is a stable numeric alias for `incident-severity-triage`, not a
+count of published scenarios.
+
 The first published scenario is an optimization-ready incident-severity triage
 project. It contains a synthetic agent, labeled rows, a deterministic evaluator,
 and the public contract for the expected opening assessment. The repository does
 not include a recorded worker run, so the current result is labeled **Expected
 scenario contract**, not **Verified run evidence**.
 
-The Guided First Run is intended to route every supported component-readiness
-state toward optimization. Ready projects advance to the baseline approval;
-incomplete projects create, repair, or review what is missing; invalid
-measurement stops before paid work; and unsafe code/SQL execution routes to
-manual containment. This is a governed path toward optimization, not a promise
-that every project can optimize immediately or earn an Excellent opening.
+The released guide already routes every supported component-readiness state
+toward optimization: ready projects advance to the baseline approval;
+incomplete projects create, repair, or review what is missing, with the user's
+approval; invalid measurement stops before paid work; and unsafe code/SQL
+execution stops for human-reviewed containment. What this repository adds is
+the public, context-isolated test for each route - one route is published
+today. It is a governed path, not a promise that every project can optimize
+immediately or earn an Excellent opening; the full claims model is in
+[docs/methodology.md](docs/methodology.md).
 
 ## Published scenario catalog
 
@@ -38,11 +62,28 @@ These facts come from the scenario's strict `scenario.json` catalog. `check`
 compares its declared paths, row and unique-input counts, split and difficulty
 counts, label coverage, normalized classes, and evaluator calibration count
 with the materialized files. The presentation can render those facts, but it
-does not own a second copy of them.
+does not own a second copy of them. Field-by-field meaning, with a sample row:
+[reading the dataset](scenarios/incident-severity-triage/README.md#reading-datasetjsonl).
 
 See [Scenario and dataset coverage](docs/scenario-coverage.md) for the current
 public case, the explicitly not-yet-published coverage roadmap, dataset-origin
 rules, and the claim supported by each test layer.
+
+### Scenario families
+
+The guide's routing for every family below ships today in
+[`Traigent/traigent-first-run`](https://github.com/Traigent/traigent-first-run);
+what this repository tracks is the public, context-isolated test case for each
+route. One is published; five are planned coverage, not test results.
+
+| Family | Starting state the customer brings | What the Guided First Run does | Public case today |
+| --- | --- | --- | --- |
+| Ready control | Agent, labeled data, evaluator, and four varying controls all present | Explain the ready state and stop at the human's baseline approval | `incident-severity-triage` (case 46) - expected Phase A contract only; no captured run |
+| Missing material | Agent, dataset, expected outputs, or evaluator absent while other material remains usable | Preserve what exists; ask once; create or repair only a dependency the selected task requires; otherwise disclose the limitation; re-check before paid work | Planned |
+| Dataset integrity | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage | Repair invalid comparison material; do not optimize against evidence that cannot support the claim | Planned |
+| Evidence strength | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution | Label a bounded demonstration honestly, request human review where required, and limit the claim | Planned |
+| Ruler quality | Missing, slow, opaque, inconsistent, or invalid evaluator | Validate or repair the evaluator before relying on its measurements | Planned |
+| Execution safety and search space | Evaluator path executes candidate code/SQL, or the agent has no meaningful varying controls or has unwired settings | Stop for human-reviewed containment when execution is unsafe; otherwise establish real variation before paid search | Planned |
 
 ## What you can do here
 
@@ -97,6 +138,22 @@ compares their `condition` fields and ignores display-only cap details. Follow
 the complete workflow and [the customer-PC runbook](docs/customer-pc-runbook.md)
 before using a customer-controlled machine.
 
+### The reproduction flow at a glance
+
+```mermaid
+flowchart TD
+    A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
+    B --> C["scenario.py prepare 46<br/>--guide-src ../traigent-first-run --output ../incident-triage-run"]
+    C --> D["customer-project/ + run.json<br/>tracked Git blobs only; the verifier, expected opening,<br/>and scenario manifest stay outside"]
+    D --> E["One fresh coding-agent session opened in customer-project/,<br/>given only the handoff printed by prepare"]
+    E --> F["The operator stops the run at the first question<br/>or decision that belongs to the human"]
+    F --> G["Save the session's opening readiness JSON<br/>outside the project copy"]
+    G --> H["scenario.py verify 46<br/>--run-record run.json --result opening-result.json"]
+    H -->|"band, status, recommended_action, caps all match"| I["PASS - the captured Phase A opening<br/>matched the published contract"]
+    H -->|"any mismatch"| J["FAIL - every mismatched field reported"]
+    I -.->|"never automatic - separate human approvals"| K["Phase B: live optimization"]
+```
+
 ## Three distinct proof layers
 
 | Layer | What happens | What a pass means |
@@ -143,7 +200,7 @@ Each scenario is fully materialized. A run never assembles fragments from a
 hidden shared dataset. This keeps each published starting point independently
 reviewable, resettable, and reproducible.
 
-## Presales presentation
+## Customer presentation
 
 [`presentation/`](presentation/README.md) renders one validated semantic story
 as a self-contained HTML file and an editable PowerPoint with speaker notes.

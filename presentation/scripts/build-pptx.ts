@@ -497,7 +497,7 @@ function addStartingPointMatrix(
       row.safestNextStep,
       row.coverage === "published"
         ? "Available here: case 46"
-        : "Planned; not released or passed",
+        : "Shipped in the guide; public test case planned",
     ];
     let cellX = CONTENT_X;
     values.forEach((value, columnIndex) => {
@@ -566,12 +566,12 @@ function addScenarioCoverageMatrix(
   slideSpec: SlideSpec,
 ): void {
   if (slideSpec.scenarioMatrix === undefined) return;
-  const widths = [1.85, 3.55, 4.55, 1.75];
+  const widths = [1.7, 3.4, 4.3, 2.29];
   const headers = [
     "SCENARIO FAMILY",
     "MATERIAL AND DATASET ARCHETYPE",
     "BEHAVIOR THE SCENARIO SHOULD EXERCISE",
-    "RELEASE STATUS",
+    "PUBLIC TEST CASE",
   ];
   let x = CONTENT_X;
   headers.forEach((header, index) => {
@@ -595,7 +595,7 @@ function addScenarioCoverageMatrix(
       row.expectedRoute,
       row.coverage === "published"
         ? "Available here: case 46"
-        : "Planned; not released or passed",
+        : "Shipped in the guide; public test case planned",
     ];
     let cellX = CONTENT_X;
     values.forEach((value, columnIndex) => {

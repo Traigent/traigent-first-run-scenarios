@@ -106,15 +106,15 @@ function ScenarioCoverageMatrix({ slide }: { slide: SlideSpec }) {
       </span>
       <table className="starting-matrix scenario-coverage-matrix">
         <caption>
-          Scenario family, material under test, expected route, and release
-          status
+          Scenario family, material under test, expected route, and public
+          test-case status
         </caption>
         <thead>
           <tr>
             <th scope="col">Scenario family</th>
             <th scope="col">Material and dataset archetype</th>
             <th scope="col">Behavior the scenario should exercise</th>
-            <th scope="col">Release status</th>
+            <th scope="col">Public test case</th>
           </tr>
         </thead>
         <tbody>
@@ -127,7 +127,7 @@ function ScenarioCoverageMatrix({ slide }: { slide: SlideSpec }) {
                 <span className={`coverage coverage-${row.coverage}`}>
                   {row.coverage === "published"
                     ? "Available here: case 46"
-                    : "Planned; not released or passed"}
+                    : "Shipped in the guide; public test case planned"}
                 </span>
               </td>
             </tr>
@@ -167,7 +167,7 @@ function StartingPointMatrix({ slide }: { slide: SlideSpec }) {
                 <span className={`coverage coverage-${row.coverage}`}>
                   {row.coverage === "published"
                     ? "Available here: case 46"
-                    : "Planned; not released or passed"}
+                    : "Shipped in the guide; public test case planned"}
                 </span>
               </td>
             </tr>
@@ -262,6 +262,10 @@ function Slide({ slide }: { slide: SlideSpec }) {
       aria-labelledby={`${slide.id}-title`}
     >
       <div className="slide-glow" aria-hidden="true" />
+      <div className="slide-brand" aria-hidden="true">
+        <img src={traigentLogoPngDataUri} alt="" />
+        <span>{brandName}</span>
+      </div>
       <header className="slide-heading">
         <p className="eyebrow">
           <span aria-hidden="true" />

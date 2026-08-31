@@ -1,6 +1,6 @@
 # Customer Presentation
 
-This directory builds one presales story from one validated semantic source:
+This directory builds one customer-facing story from one validated semantic source:
 
 - a self-contained HTML presentation for a browser; and
 - an editable PowerPoint presentation with native text, shapes, and speaker

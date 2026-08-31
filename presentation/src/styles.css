@@ -186,6 +186,24 @@ main:focus-visible {
   max-width: 72rem;
 }
 
+.slide-brand {
+  position: absolute;
+  top: clamp(1.1rem, 2.2vw, 2rem);
+  right: clamp(1.4rem, 3vw, 3rem);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.015em;
+}
+
+.slide-brand img {
+  width: auto;
+  height: 1.1rem;
+}
+
 .eyebrow {
   display: flex;
   align-items: center;

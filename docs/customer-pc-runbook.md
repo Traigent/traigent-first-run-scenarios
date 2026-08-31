@@ -1,6 +1,6 @@
 # Customer PC Runbook
 
-This runbook is for a presales engineer or customer representative reproducing
+This runbook is for a Traigent engineer or customer representative reproducing
 the public Phase A opening scenario on a customer-controlled computer.
 
 It covers package validation, preparation, a context-isolated worker run, and

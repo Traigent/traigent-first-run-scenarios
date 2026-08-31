@@ -196,8 +196,10 @@ const labelSummary =
   dataset.label_shape.normalized_class_count !== undefined
     ? `${dataset.label_shape.surface_label_count} surface labels normalized to ${dataset.label_shape.normalized_class_count} classes`
     : humanize(dataset.label_shape.kind);
-const expectedRouteSummary = `${expected.band} / ${expected.status} / ${expected.recommended_action} / ${
-  expected.caps.length === 0 ? "no caps" : `${expected.caps.length} cap(s)`
+const expectedRouteSummary = `band ${expected.band} · status ${expected.status}${
+  expected.status === "OK" ? " (not blocked)" : ""
+} · action ${expected.recommended_action} · ${
+  expected.caps.length === 0 ? "caps none" : `caps ${expected.caps.length}`
 }`;
 const contentOriginLabel =
   scenario.content.origin === "traigent-authored"
@@ -234,12 +236,13 @@ const rawPresentation = {
         `Evaluator (${scenario.catalog.components.evaluator.state}): ${humanize(scenario.catalog.components.evaluator.method ?? "not declared")}`,
         `Calibration material: ${calibrationCount} deterministic ${calibrationCount === 1 ? "case" : "cases"} supplied`,
       ],
-      dataset: `${contentOriginLabel} content under ${scenario.content.license}; ${dataset.rows} rows (${dataset.unique_inputs} unique); ${splitSummary}; difficulty: ${difficultySummary}; ${labelSummary}. Limitations: ${dataset.limitations.map(humanize).join(", ")}. Row provenance values are simulated scorer metadata, not source-origin claims.`,
+      dataset: `${contentOriginLabel} content under ${scenario.content.license}; ${dataset.rows} rows (${dataset.unique_inputs} unique); ${splitSummary}; difficulty: ${difficultySummary}; ${labelSummary}. Limitations: ${dataset.limitations.map(humanize).join(", ")}. Row provenance values are the simulated user's declarations read by the readiness scorer, not source-origin claims.`,
       evaluator: `${sentenceCase(dataset.task ?? "task not declared")} with ${humanize(scenario.catalog.components.evaluator.method ?? "no evaluator method declared")}; ${calibrationCount} deterministic calibration ${calibrationCount === 1 ? "case is" : "cases are"} supplied, but no calibration execution or model accuracy is claimed.`,
       expectedRouting: `Case-specific opening contract: ${expectedRouteSummary}. Rationale: ${humanize(scenario.catalog.expected_route.rationale)}.`,
       testedLayer: `${scenario.catalog.evidence.demonstrates.map(sentenceCase).join("; ")}. No recorded coding-agent run is supplied in this release.`,
-      notProven:
-        scenario.catalog.evidence.does_not_demonstrate.map(sentenceCase),
+      notProven: scenario.catalog.evidence.does_not_demonstrate
+        .map(sentenceCase)
+        .map((value) => value.replace(/\bworker\b/g, "coding-agent")),
     },
   ],
   slides: [
@@ -250,12 +253,15 @@ const rawPresentation = {
       title:
         "Start with the project you have. Leave with a justified next step.",
       accent: "justified next step",
-      body: "For supported non-executing comparison tasks, the coding agent inspects what exists, keeps usable material, names the consequential gaps, and routes the team to proceed, repair, create, review, or stop. Classification, extraction, and short-answer QA fit this first-run path; candidate code or SQL execution is a containment stop outside it.",
+      body: "The coding agent inspects what exists, keeps usable material, names the consequential gaps, and routes the team to proceed, repair, create, review, or stop - creating missing pieces with the user's approval. Every route ships in the public guide today. Tasks graded by comparing text answers fit this path: classification, extraction, and short-answer QA. If an evaluator would execute generated code or SQL, the guide stops before anything runs and hands that path to a separate, human-reviewed containment step.",
       bullets: [],
       metrics: [],
       steps: [],
       evidenceState: "not-demonstrated",
-      evidence: ["Method preview; no fresh coding-agent run supplied"],
+      evidence: [
+        "Method preview; no fresh coding-agent run supplied",
+        "Footer legend: Expected scenario contract = published expectation, no recorded run",
+      ],
       notes: [
         "Lead with routing. Never promise a band - the customer's own material decides the ceiling before we run anything.",
         "The coding agent inspects and prepares. The human owns domain choices and approvals. The Traigent service is used only later for an explicitly approved managed search.",
@@ -309,7 +315,7 @@ const rawPresentation = {
       evidenceState: "scenario-contract",
       evidence: ["First-run human decision and approval boundaries"],
       notes: [
-        "The boundary a presales engineer must draw: stages 1-2 make no model-provider or Traigent service calls. Stage 3 is the first provider-model stage, on the customer's approved key and cost boundary.",
+        "The boundary the presenter must draw: stages 1-2 make no model-provider or Traigent service calls. Stage 3 is the first provider-model stage, on the customer's approved key and cost boundary.",
         "The intention is to take every supported component-readiness state as far toward optimization as its evidence and approvals permit. It is not a promise that every project can optimize immediately or inside one session.",
         'A run that ends at stage 2 with "your evaluator scores a wrong answer above a right one, fix that first" is a successful run. Say so plainly rather than treating it as a partial outcome.',
         "Stage 4 is a separate approval from stage 3 on purpose: the baseline preserves the user's existing local space, or uses the guide's bounded 12-configuration sweep only when a baseline is missing; managed optimization is the broader search.",
@@ -359,13 +365,13 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "STAGE 2 OF 5 - READINESS",
       title: "Turn the starting state into a route, not a sales score.",
-      body: "The coding agent evaluates the agent, dataset, and evaluator; runs the evaluator only on a path proven local, side-effect-free, and non-executing; applies evidence ceilings; and names the shortest justified next action.",
+      body: "The coding agent evaluates the agent, dataset, and evaluator; runs the evaluator only after proving its code path is local, side-effect-free, and never executes the agent's output as code or SQL; applies evidence ceilings; and names the shortest justified next action.",
       bullets: [
-        "Ready: explain the opening and stop at the human's baseline approval",
+        "Ready: explain the opening - the readiness answer produced before any paid work - and stop at the human's baseline approval",
         "Missing: ask once, then create or repair one coherent component set if the human agrees",
         "Limited evidence: allow only a clearly bounded demonstration or request stronger material",
         "Invalid evaluator: repair and revalidate before any paid comparison",
-        "Candidate code/SQL execution: stop and route to manual containment outside this guide",
+        "Candidate code/SQL execution: stop before anything runs and hand the evaluator to a separate, human-reviewed containment step outside this guide",
         "After a repair: re-check the gate and continue; never rewrite the original opening as though the gap never existed",
       ],
       metrics: [],
@@ -386,9 +392,9 @@ const rawPresentation = {
       bullets: [
         "Dataset - 40 points: answers to score against; examples to compare on; range of difficulty; repeated or dominant answers; where the rows came from",
         "Evaluation - 35 points: checked on known-good and known-bad; right kind of check for this output; same answer every time; separates good answers from bad",
-        "Agent - 25 points: settings-combinations to try; what the model is told and shown; whether the answer shape is pinned down; whether it ends and on what; tools it declares and can reach",
+        "Agent - 25 points: settings-combinations to try; what the model is told and shown; whether the answer shape is pinned down; whether the agent is guaranteed to stop, and what stops it; tools it declares and can reach",
         "Bands: NOT READY 0-29; PARTIAL 30-54; WORKABLE 55-74; STRONG 75-89; EXCELLENT 90-100",
-        "Thin-evidence rule: if overall or any pillar confidence is below 0.75, only a would-be STRONG or EXCELLENT band is capped at WORKABLE; a lower band stays lower",
+        "Thin-evidence rule: confidence is the share of check weight the scorer could actually measure; below 0.75 overall or in any pillar, a score that would land STRONG or EXCELLENT is held at WORKABLE, and lower bands are unchanged",
       ],
       metrics: [],
       steps: [],
@@ -405,7 +411,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - WHAT CAPS THE SCORE",
       title: "A cap is a maximum, not a deduction.",
-      body: "A cap is the highest overall score a specific evidence condition permits. The customer's material therefore sets a ceiling before paid work begins. Only the ready-control row has a complete public scenario here; the other rows are readiness-scorer rules and planned scenario coverage.",
+      body: "A cap is the highest overall score a specific evidence condition permits. The customer's material therefore sets a ceiling before paid work begins. Only the all-components-ready row has a complete public test case here - case 46, the numeric ID of the one published scenario, incident-severity-triage. The other rows are shipped readiness-scorer rules whose public test cases are planned.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -463,7 +469,7 @@ const rawPresentation = {
       body: "Only after the readiness route and explicit human approval does the coding agent run the customer's existing local baseline exactly as defined, or, when none exists, prepare the guide's bounded 12-configuration sweep. It uses the approved provider credential, dataset, evaluator, and cost limit.",
       bullets: [
         "Human approves the provider, credential path, data boundary, expected calls, and cost cap",
-        "A user-owned baseline keeps its exact configuration space, row count, and selection behavior; it is never padded or weakened for the walkthrough",
+        "A user-owned baseline keeps its exact configuration space, row count, and how it selects rows and configurations; it is never padded or weakened for the walkthrough",
         "Only a missing baseline gets the guide's generated 12-configuration local grid",
         "The run records quality plus available cost and latency evidence for that exact setup",
         "Provider errors, missing credentials, or cost-boundary failures stop loudly; access is never invented",
@@ -482,9 +488,9 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "STAGE 4 OF 5 - OPTIMIZE",
       title: "Search only the space the customer understands and approves.",
-      body: "Managed Traigent search starts under its own approval after the baseline. The coding agent submits the bounded configuration space, monitors the declared limits, and preserves the baseline as the comparison anchor.",
+      body: "Managed Traigent search starts under its own approval after the baseline. The coding agent submits the bounded configuration space, monitors the declared limits, and preserves the baseline as the comparison anchor. The aim is a configuration that beats the preserved baseline on the approved objectives, within the approved space and spend.",
       bullets: [
-        "Human separately approves Traigent access, provider use, data movement, trial bound, and spend",
+        "Human separately approves Traigent access, provider use, data movement, the trial bound (maximum number of configurations tested), and spend",
         "Only controls proven meaningful and wired into requests belong in the search space",
         "The search compares configurations against the same dataset and evaluator contract",
         "Credential, service, provider, or budget failures stop; no mock or random result replaces them",
@@ -501,9 +507,10 @@ const rawPresentation = {
     {
       id: "case-46-search-space",
       kind: "evidence",
-      eyebrow: "CASE 46 - STATIC CONTROL INVENTORY",
-      title: "Four declared controls create 54 candidate configurations.",
-      body: "That is case 46's static control inventory, not a recorded paid run or the final approved search space. The live path verifies wiring and resolves an approved space with its own count; Traigent then tests up to 12 configurations from that space.",
+      eyebrow: "CASE 46 - THE FOUR TUNABLE SETTINGS",
+      title:
+        "Four declared tunable settings create 54 candidate configurations.",
+      body: "That is case 46's static settings inventory, not a recorded paid run or the final approved search space. In a live run the guide first verifies each setting actually changes the request, then fixes the approved search space - whose size may differ from 54; Traigent then tests up to 12 configurations from it.",
       bullets: [],
       metrics: [
         {
@@ -557,7 +564,7 @@ const rawPresentation = {
         {
           label: "Measure the baseline",
           detail:
-            "Preserve the user's existing local baseline exactly, or use the guide's 12-configuration default only when missing, subject to an approved disclosed reduction.",
+            "Preserve the user's existing local baseline exactly, or use the guide's 12-configuration default only when missing; any reduction from that target is disclosed and approved first.",
           executor: "Coding agent",
           humanGate: "Human approves provider spend",
         },
@@ -571,7 +578,7 @@ const rawPresentation = {
         {
           label: "Lock one recommendation",
           detail:
-            "Compare baseline and enhanced tuning evidence; include the accuracy-cost frontier when cost is measured; then select without reading held-out scores.",
+            "Compare baseline and managed-search tuning evidence; include the accuracy-cost frontier when cost is measured; then select without reading held-out scores.",
           executor: "Coding agent",
         },
         {
@@ -590,7 +597,7 @@ const rawPresentation = {
       notes: [
         "Case 46 declares 100 tuning and 20 holdout rows. That is the public dataset inventory, not a claim that every paid first run uses all 120 rows; the run plan must record the selected row IDs and any bounded subset.",
         "Selecting the best of several configurations on the same tuning rows partly selects sample noise. Held-out scoring checks that risk; it does not eliminate it or prove generalization.",
-        "The guide calls assistant-visible or assistant-authored reserved rows held-back and non-blind, not a sealed holdout.",
+        "When the coding agent has seen or authored the reserved rows, the guide calls the result held-back and non-blind - kept out of tuning but not hidden from the agent - rather than a sealed holdout.",
       ],
     },
     {
@@ -603,8 +610,8 @@ const rawPresentation = {
       bullets: [
         "Name the recommended configuration in full and compare its tuning evidence with the best baseline configuration",
         "Show each run's accuracy-cost frontier where cost is measured; otherwise say why no frontier is available; report missing latency as not measured",
-        "Disclose the recommended configuration's held-out score once, with its sample-size and any applicable non-blind limits",
-        "Keep failures, stop reason, persistence, remaining readiness caps, data provenance, and scope visible",
+        "Disclose the recommended configuration's held-out score once, with its sample-size limit and - when the coding agent could see or wrote the reserved rows - the non-blind limit",
+        "Keep failures, stop reason, result-save status (portal persistence), remaining readiness caps, data provenance, and scope visible",
         "Human chooses adoption, more evidence, another bounded search, or no change; no configuration is applied automatically",
         "No single run proves universal quality, production safety, generalization, or a guaranteed business outcome",
       ],
@@ -626,7 +633,7 @@ const rawPresentation = {
       bullets: [
         "Anyone can inspect and reproduce the scenario",
         "The coding-agent session is not given the expected result or the verifier kept by the test operator",
-        "Public availability is not adversarial benchmark secrecy",
+        "Public means inspectable; we do not claim the expected answers are hidden from someone who deliberately looks them up",
       ],
       metrics: [],
       steps: [],
@@ -647,7 +654,7 @@ const rawPresentation = {
         `${dataset.rows} authored incident reports and ${dataset.unique_inputs} unique inputs; the declared pool is ${splitSummary}`,
         `Even difficulty coverage: ${difficultySummary}, so the public pool does not win its score by concentrating only on easy cases`,
         `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison`,
-        "A row value such as provenance: real is fictional user-declared scorer input, not a statement about where the repository file came from",
+        "A row value such as provenance: real is part of the scenario's fiction - the simulated user's declaration read by the readiness scorer - not a claim about where the repository file came from",
         "The scenario and expected result are public for inspection; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
         "The 100/20 split demonstrates separate tuning and holdout pools; a paid run must still record the exact bounded rows it actually uses",
       ],
@@ -668,7 +675,7 @@ const rawPresentation = {
       kind: "evidence",
       eyebrow: "ONLY PUBLISHED SCENARIO TODAY",
       title: scenario.title,
-      body: `${scenario.summary} It is a complete control case for the ready-components route. Its expected opening is case-specific; it is not the score other projects are promised or required to reach.`,
+      body: `${scenario.summary} It is a complete control case - a known-good reference - for the ready-components route. Its expected opening is case-specific; it is not the score other projects are promised or required to reach.`,
       bullets: [],
       metrics: [
         {
@@ -696,7 +703,7 @@ const rawPresentation = {
         {
           label: "Calibration cases",
           value: String(calibrationCount),
-          detail: "Supplied; no execution claimed",
+          detail: "Included; not run in this release",
           tone: "violet",
         },
       ],
@@ -722,7 +729,7 @@ const rawPresentation = {
       bullets: [
         "scenarios/<slug>/project: files copied into the fresh coding-agent session",
         "scenarios/<slug>/scenario.json: identity, component state, dataset facts, expected route, and evidence limits",
-        "scenarios/<slug>/verifier: the test operator's semantic contract; never copied into the session's project",
+        "scenarios/<slug>/verifier: the test operator's expected-result contract (what the run should conclude); never copied into the session's project",
         "scenario.py: list, show, check, prepare, and verify without importing scenario code",
         "docs and GUIDE.md: evidence model plus customer-PC operating procedure",
         "presentation: one validated content source rendered as browser HTML and editable PowerPoint",
@@ -771,7 +778,8 @@ const rawPresentation = {
       testMatrix: [
         {
           layer: "Catalog check",
-          action: "Validate files and semantic contract",
+          action:
+            "Validate the files and the expected-result contract (scenario.py check)",
           passSupports: "Package is structurally ready to prepare",
           doesNotProve: "Agent behavior or live value",
         },
@@ -825,7 +833,7 @@ const rawPresentation = {
         {
           label: "Verify",
           detail:
-            "Bind run.json to its recorded Git contract, then compare captured readiness fields.",
+            "Confirm run.json records the exact scenario version that was run, then compare the captured readiness fields with the published contract.",
           executor: "Verifier",
         },
       ],
@@ -840,7 +848,7 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "VISIBLE HUMAN CONTROL",
       title:
-        "The opening scope covers preparation behavior, not managed optimization.",
+        "A Phase A opening covers preparation behavior only; it says nothing about managed optimization.",
       body: "Credentials, paid calls, private-data egress, installation, mutation, and optimization remain separate approval gates. A Phase A result does not authorize Phase B.",
       bullets: [
         "Phase A stops at the first material human decision",
@@ -885,8 +893,8 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "PUBLIC CATALOG APPENDIX - CURRENT AND PLANNED",
       title:
-        "Available now: one complete scenario. The wider bank is a roadmap.",
-      body: "Case 46 is the only complete scenario directory included in this repository today. The other rows are design targets: they have no complete public case and no pass result here. An executing-evaluator path would run candidate code or SQL, or shell out with it; that stop-route is planned coverage, not a current scenario test.",
+        "Every route ships in the guide today. Public test cases: one so far.",
+      body: "The released guide already routes all five starting states - creating or repairing missing pieces with one user approval. What each row still lacks is a public, context-isolated test scenario in this repository: case 46 covers the ready route; the other four are planned test coverage, not missing capability. An executing-evaluator path stops by design before anything runs, routed to a separate human-reviewed containment step; that shipped stop's public test is likewise planned.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -917,7 +925,7 @@ const rawPresentation = {
         {
           family: "Evidence strength",
           setup:
-            "Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer keys; small comparison sets or coarse outcome resolution",
+            "Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer keys; small comparison sets, or outcomes graded only on a coarse scale (for example pass/fail)",
           expectedRoute:
             "Label a bounded demonstration honestly, ask for human review where required, and limit the claim",
           coverage: "coverage-target",
@@ -927,18 +935,19 @@ const rawPresentation = {
           setup:
             "Missing, uncalibrated, inconsistent, or candidate-executing evaluator; no meaningful varying agent controls; unwired settings",
           expectedRoute:
-            "Validate or repair the evaluator, establish real variation, or stop for manual containment before paid search",
+            "Validate or repair the evaluator, establish real variation, or stop it for human-reviewed containment before paid search",
           coverage: "coverage-target",
         },
       ],
       evidenceState: "not-demonstrated",
       evidence: [
-        "Case 46 is available and catalog-checkable; all other scenario families are planned only",
+        `Routes shipped in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; public test cases: case 46 today, others planned`,
       ],
       notes: [
         "Do not call the planned rows tests that passed. They describe the next public scenario families to implement and verify.",
         "Invalid means the evaluator fails known-good/known-bad calibration or cannot make a trustworthy comparison. Unsafe means its resolved path executes candidate code or SQL, shells out with it, or submits it to an execution engine; the current guide stops and routes to manual containment.",
         "The current public guide supports non-executing comparison evaluators such as classification, extraction, and short-answer QA.",
+        "Middle evidence tier: the guide repo's offline behavioral-contract suite already exercises the missing, weak, invalid, and zero-anchor routes in CI - deterministic contract tests, not Phase A coding-agent runs. Never call a planned row passed.",
       ],
     },
     {

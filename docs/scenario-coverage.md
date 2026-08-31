@@ -49,6 +49,18 @@ verifier contract are present in this repository.
 | Ruler quality | Missing, slow, opaque, inconsistent, or invalid evaluator | Validate or repair the ruler before relying on its measurements | Planned; not released or passed |
 | Execution safety and search space | Evaluator path executes candidate code/SQL, or the agent has no meaningful varying controls or has unwired settings | Stop for manual containment when execution is unsafe; otherwise establish real variation before paid search | Planned; not released or passed |
 
+"Planned" describes the public, context-isolated test scenario for a family,
+not the guide behavior itself: the routing in the "Behavior to exercise"
+column ships today in the released guide, and the guide repository's offline
+behavioral-contract suite exercises the missing, weak, invalid, and
+zero-anchor routes in CI. Those are deterministic contract tests, not Phase A
+coding-agent runs, so no planned family may be described as passed.
+
+The customer presentation renders this taxonomy with one difference: it merges
+the **Ruler quality** and **Execution safety and search space** families into
+a single "Evaluator and execution boundary" row, so the deck shows five rows
+where this document lists six (the ready control plus five planned families).
+
 In this document, **invalid evaluator** means a ruler that cannot make a
 trustworthy comparison, for example because it does not distinguish known-good
 and known-bad calibration answers. **Unsafe evaluator path** means a resolved

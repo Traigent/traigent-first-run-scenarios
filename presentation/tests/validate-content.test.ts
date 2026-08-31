@@ -61,7 +61,7 @@ describe("presentation content validation", () => {
     expect(scoring.bullets.join("\n")).toContain("Evaluation - 35 points");
     expect(scoring.bullets.join("\n")).toContain("Agent - 25 points");
     expect(scoring.bullets.join("\n")).toContain("below 0.75");
-    expect(scoring.bullets.join("\n")).toContain("a lower band stays lower");
+    expect(scoring.bullets.join("\n")).toContain("lower bands are unchanged");
 
     const ceilings = presentation.slides[ceilingsIndex]?.matrix;
     expect(ceilings?.map((row) => row.safestNextStep).join("\n")).toContain(
@@ -103,7 +103,7 @@ describe("presentation content validation", () => {
 
     expect(searchSpace.title).toContain("54 candidate configurations");
     expect(searchSpace.body).toContain("tests up to 12");
-    expect(searchSpace.body).toContain("approved space with its own count");
+    expect(searchSpace.body).toContain("whose size may differ from 54");
     expect(selection.body).toContain("Only that locked recommendation");
     expect(selection.body).toContain("never choose it");
     expect(selection.notes.join("\n")).toContain(
