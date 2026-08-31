@@ -277,27 +277,27 @@ const rawPresentation = {
       kind: "journey",
       eyebrow: "AGENT-LED, HUMAN-GOVERNED",
       title: "Five stages. Three actors. Human approval stays explicit.",
-      body: "Every supported project enters Inspect. Gaps loop through a human choice, creation, repair, or review. Ready foundations move only after approval. An identified unsafe execution path ends this guide run; containment and any restart are separate. The coding agent coordinates, the human governs, and Traigent executes only an approved managed search.",
+      body: "Every supported project enters Inspect. Gaps loop through a human choice, creation, repair, or review. Ready foundations move only after approval. An evaluator path that would execute generated code or SQL ends this guide run before candidate output executes; containment and any restart are separate. The coding agent coordinates, the human governs, and Traigent executes only an approved managed search.",
       bullets: [],
       metrics: [],
       steps: [
         {
           label: "1 Inspect",
           detail:
-            "Find the agent, dataset, and evaluator; preserve what is usable.",
+            "Find the agent, dataset, and evaluator; preserve what is usable. Reads files locally only: no project code runs, no provider or Traigent calls.",
           executor: "Coding agent",
         },
         {
           label: "2 Readiness",
           detail:
-            "Score evidence, apply evidence ceilings (caps), and explain the safest next route.",
+            "Score evidence, apply evidence ceilings (caps), and explain the safest next route. Stop before paid work when the evaluator cannot tell good from bad answers.",
           executor: "Coding agent",
           humanGate: "Human decides",
         },
         {
           label: "3 Baseline",
           detail:
-            "Measure the existing baseline, or prepare a bounded sweep only when none exists.",
+            "Preserve and measure the existing baseline, or prepare a fixed 12-configuration grid only when none exists. The first model-provider stage.",
           executor: "Coding agent",
           humanGate: "Human approves",
         },
@@ -311,7 +311,7 @@ const rawPresentation = {
         {
           label: "5 Results",
           detail:
-            "Report the comparison, cost evidence, and limits; the human decides.",
+            "Report the comparison, cost evidence, and limits, closing with one recommended next action; the human decides.",
           executor: "Coding agent",
           humanGate: "Human reviews",
         },
@@ -325,7 +325,7 @@ const rawPresentation = {
         "The boundary the presenter must draw: stages 1-2 make no calls to the customer's project-model provider or the Traigent service and incur no spend with either. The coding-agent service used to follow the guide may itself be remote and billed. Stage 3 is the first project-model stage, on the customer's approved key and cost boundary.",
         "The intention is to take every supported component-readiness state as far toward optimization as its evidence and approvals permit. It is not a promise that every project can optimize immediately or inside one session.",
         'A run that ends at stage 2 with "your evaluator scores a wrong answer above a right one, fix that first" is a successful run. Say so plainly rather than treating it as a partial outcome.',
-        "Stage 4 is a separate approval from stage 3 on purpose: the baseline preserves the user's existing local space, or uses the guide's bounded 12-configuration sweep only when a baseline is missing; managed optimization is the broader search.",
+        "Stage 4 is a separate approval from stage 3 on purpose: the baseline preserves the user's existing local space, or uses the guide's fixed 12-configuration grid only when a baseline is missing; managed optimization is the broader search.",
       ],
     },
     {
@@ -357,9 +357,9 @@ const rawPresentation = {
       body: "The coding agent performs read-only discovery of the project and identifies the selected agent, comparison data, evaluator, and meaningful tunable settings without importing or executing project code.",
       bullets: [
         "Input: the customer's project, stated task, and files already present",
-        "Agent action: cite the discovered component paths and distinguish real components from walkthrough substitutes",
+        "Agent action: cite the discovered component paths and distinguish real components from temporary substitutes created for the walkthrough",
         "Human role: resolve ambiguous project intent or choose among multiple plausible components",
-        "Exit evidence: a component inventory with present, limited, missing, or invalid states",
+        "Stage output: a list of the components found, each marked present, limited, missing, or invalid",
         "Next route: continue to Readiness; do not replace usable material merely to make a demo easier",
       ],
       metrics: [],
@@ -502,14 +502,14 @@ const rawPresentation = {
       eyebrow: "STAGE 3 OF 5 - BASELINE",
       title:
         "Measure the current configuration before searching for a better one.",
-      body: "Only after the readiness route and explicit human approval does the coding agent run the customer's existing local baseline exactly as defined, or, when none exists, prepare the guide's bounded 12-configuration sweep. It uses the approved provider credential, dataset, evaluator, and cost limit.",
+      body: "Only after the readiness route and explicit human approval does the coding agent run the customer's existing local baseline exactly as defined, or, when none exists, prepare the guide's fixed grid of 12 configurations, each run once locally. It uses the approved provider credential, dataset, evaluator, and cost limit.",
       bullets: [
         "Human approves the provider, credential path, data boundary, expected calls, and cost cap",
         "A user-owned baseline keeps its exact configuration space, row count, and how it selects rows and configurations; it is never padded or weakened for the walkthrough",
         "Only a missing baseline gets the guide's generated 12-configuration local grid",
         "The run records quality plus available cost and latency evidence for that exact setup",
         "Provider errors, missing credentials, or cost-boundary failures stop loudly; access is never invented",
-        "Exit evidence: the baseline artifact and a separate decision on whether managed search is justified",
+        "Stage output: the saved baseline result and a separate decision on whether managed search is justified",
       ],
       metrics: [],
       steps: [],
@@ -520,6 +520,7 @@ const rawPresentation = {
       ],
       notes: [
         "The coding-agent service itself may already be remote or billed. Baseline is specifically the first model-provider execution stage in this workflow.",
+        "An existing baseline is never replaced: even a one-row or SDK-incompatible baseline is preserved unchanged (the path pauses instead). Only a truly missing baseline gets the generated grid - an exact, pre-declared 12 configurations, each run once, with count and cost approved before any spend; it can shrink only by approved disclosure and never grows.",
       ],
     },
     {
@@ -527,13 +528,13 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "STAGE 4 OF 5 - OPTIMIZE",
       title: "Search only the space the customer understands and approves.",
-      body: "Managed Traigent search starts under its own approval after the baseline. The coding agent submits the bounded configuration space, monitors the declared limits, and preserves the baseline as the comparison anchor. The aim is a configuration that beats the preserved baseline on the approved objectives, within the approved space and spend; finding none is a reported outcome, not a failure.",
+      body: "Managed Traigent search starts under its own approval after the baseline. The coding agent submits the bounded configuration space, monitors the declared limits, and keeps the baseline result unchanged as the reference every candidate is compared against. The aim is a configuration that beats the preserved baseline on the approved objectives, within the approved space and spend; finding none is a reported outcome, not a failure.",
       bullets: [
         "Human separately approves Traigent access, provider use, data movement, the trial bound (maximum number of configurations tested), and spend",
-        "Only tunable settings proven meaningful and wired into requests belong in the search space",
+        "Only tunable settings proven to change the request actually sent to the model belong in the search space",
         "The search compares configurations against the same dataset and evaluator contract",
         "Credential, service, provider, or budget failures stop; no mock or random result replaces them",
-        "Exit evidence: the exact search configuration, trial record, and measured candidates",
+        "Stage output: the exact search space submitted, every configuration tested, and its measured scores",
       ],
       metrics: [],
       steps: [],
@@ -587,7 +588,7 @@ const rawPresentation = {
         "Say the multiplication aloud: three models x three prompt styles x three retrieval depths x two output formats = 54 possible configurations.",
         "The model control spans OpenAI and Anthropic in this public simulation. Do not claim current prices; no price evidence is bundled here.",
         "The code defaults are gpt-4o-mini, plain, retrieval 0, and label. Those defaults describe one initial configuration, not proof that a customer's preserved baseline has only one row.",
-        "Do not imply that the static 54-item inventory is the final submitted space. The optimization-stage slide separately explains the guide's bounded managed-search contract.",
+        "The managed first-run search tests up to 12 configurations chosen from an approved space larger than that 12-trial budget, so Traigent selects what to test rather than running everything. Do not imply that the static 54-item inventory is the final submitted space. The optimization-stage slide separately explains the guide's bounded managed-search contract.",
       ],
     },
     {
@@ -617,7 +618,7 @@ const rawPresentation = {
         {
           label: "Lock one recommendation",
           detail:
-            "Compare baseline and managed-search tuning evidence; include the accuracy-cost frontier when cost is measured; then select without reading held-out scores.",
+            "Compare baseline and managed-search tuning evidence; include the accuracy-versus-cost trade-off (the frontier) when cost is measured; then select without reading held-out scores.",
           executor: "Coding agent",
         },
         {
@@ -918,6 +919,7 @@ const rawPresentation = {
         "Audit verification: save the machine-readable readiness answer; compare it with the published expected result identified in the run metadata",
         "Real-project inspection: paste the public clone prompt into the coding agent already working in the repository",
         "Shared boundary: neither path authorizes later provider calls, Traigent service use, managed search, or spend",
+        "After a first result, the guide offers the public SDK skills: npx skills add Traigent/traigent-skills --list",
       ],
       metrics: [],
       steps: [],
@@ -929,6 +931,7 @@ const rawPresentation = {
       notes: [
         "The two available paths are alternatives: audit the public scenario, or try the guide on the customer's own project.",
         "The context-isolated audit uses the separate handoff printed by prepare, while the real project uses the clone prompt.",
+        "The SDK skills are Apache-2.0 documentation; the SDK they drive is licensed separately (AGPL-3.0-only or commercial). Installing skills authorizes nothing - Phase B still needs its own approval.",
       ],
     },
     {
