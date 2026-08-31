@@ -68,6 +68,43 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("passed for 2 file(s)", result.stdout)
 
+    def test_a_secret_in_a_utf16_file_is_still_found(self) -> None:
+        secret = "/" + "home" + "/example-user/project"
+        (self.repo / "leak.txt").write_bytes(secret.encode("utf-16"))
+        self._git("add", "leak.txt")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("leak.txt", result.stderr)
+
+    def test_an_ordinary_utf16_file_is_not_reported(self) -> None:
+        """The false-red half. A decode fallback that refuses everything is
+        as useless as one that reads nothing."""
+        (self.repo / "clean.txt").write_bytes(
+            "An ordinary sentence about triage.\n".encode("utf-16")
+        )
+        self._git("add", "clean.txt")
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_a_file_that_cannot_be_decoded_is_reported_not_passed(self) -> None:
+        """Unreadable is not clean.
+
+        Returning no findings for bytes nothing can decode says the file was
+        checked and found fine. It was not checked at all, and that is the
+        same shape as scanning NUL-interleaved text and reporting nothing.
+        """
+        (self.repo / "opaque.bin").write_bytes(bytes([0xFF, 0xFE, 0x00, 0x9C, 0xFF]))
+        self._git("add", "opaque.bin")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("opaque.bin", result.stderr)
+
     def test_planted_leaks_are_rejected_with_locations(self) -> None:
         planted_values = {
             "private-work-item": "".join(("internal", " ", "issue")),

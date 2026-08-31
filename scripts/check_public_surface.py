@@ -260,7 +260,29 @@ def _display(path: str) -> str:
 
 def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
     findings: list[Finding] = []
-    text = content.decode("utf-8", errors="replace")
+    try:
+        text = content.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+            try:
+                text = content.decode(encoding, errors="strict")
+                break
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        else:
+            # Unreadable is not clean. A file this cannot decode is a file
+            # nobody has checked, and returning an empty finding list says the
+            # opposite -- the same shape as scanning NUL-interleaved text and
+            # reporting nothing, which is the hole this file already closed one
+            # decoding over.
+            return [
+                Finding(
+                    surface=surface,
+                    path=relative_path,
+                    line=0,
+                    rule="file could not be decoded as text and was not scanned",
+                )
+            ]
     for line_number, line in enumerate(text.splitlines(), start=1):
         for rule in _RULES:
             if rule.pattern.search(line):
