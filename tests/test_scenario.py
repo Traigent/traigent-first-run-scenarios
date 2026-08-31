@@ -7,6 +7,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -2098,6 +2099,54 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(0, prepare_status, prepare_error)
         self.assertEqual(0, verify_status, verify_error)
         self.assertFalse(sentinel.exists())
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_MATCH_EXAMPLE_ROOT = (
+    REPOSITORY_ROOT
+    / "scenarios"
+    / "incident-severity-triage"
+    / "verifier"
+    / "contract-match-example"
+)
+
+
+class CommittedContractMatchExampleTests(unittest.TestCase):
+    def test_example_is_minimal_and_matches_pinned_opening_contract(self) -> None:
+        result_path = CONTRACT_MATCH_EXAMPLE_ROOT / "result.json"
+        self.assertEqual(
+            {
+                "band": "EXCELLENT",
+                "caps": [],
+                "recommended_action": "proceed",
+                "status": "OK",
+            },
+            json.loads(result_path.read_text(encoding="utf-8")),
+        )
+
+        process = subprocess.run(
+            [
+                sys.executable,
+                os.fspath(REPOSITORY_ROOT / "scenario.py"),
+                "verify",
+                "46",
+                "--run-record",
+                os.fspath(CONTRACT_MATCH_EXAMPLE_ROOT / "run-record.json"),
+                "--result",
+                os.fspath(result_path),
+            ],
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, process.returncode, process.stderr)
+        self.assertEqual(
+            "PASS: incident-severity-triage opening result matches band, status, "
+            "recommended_action, caps in the captain-recorded contract\n",
+            process.stdout,
+        )
 
 
 if __name__ == "__main__":
