@@ -119,17 +119,24 @@ copying the bundle to another machine using the customer's approved tooling.
 Every slide must contain at least one evidence reference, at least one speaker
 note, and exactly one evidence state:
 
-| Label                                   | Use                                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Guide contract · no recorded run**    | Guide behavior pinned to an exact 40-character public guide revision                       |
-| **Scenario contract · no recorded run** | Published scenario facts or expected values without a referenced recorded run              |
-| **Verified run evidence**               | A claim directly supported by a supplied retained run artifact and successful verification |
-| **Not demonstrated in this deck**       | A live path, improvement, or other outcome that was not exercised                          |
+| Label                                   | Use                                                                           |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| **Guide contract · no recorded run**    | Guide behavior pinned to an exact 40-character public guide revision          |
+| **Scenario contract · no recorded run** | Published scenario facts or expected values without a referenced recorded run |
+| **Verified run evidence**               | Complete retained Phase A report plus successful semantic verification        |
+| **Not demonstrated in this deck**       | A live path, improvement, or other outcome that was not exercised             |
 
 The current deck uses guide-contract, scenario-contract, and not-demonstrated
 states. Do not change a slide to verified-run merely because its expected
-values look correct. A verified claim requires the referenced run evidence and
-the matching semantic verification result.
+values look correct. A run record, result JSON, and `PASS` alone are
+insufficient. A verified claim requires both the matching semantic verification
+and a retained report identifying the revisions, worker and session,
+environment and isolation boundary, exact handoff and response, captured JSON,
+complete commands, output and final statuses, verifier output, and stop point.
+
+The validator currently rejects every verified-run slide until that evidence
+has a strict retained schema and validator. This is an intentional fail-closed
+boundary, not a missing checkbox that prose can satisfy.
 
 Content validation rejects unsupported live-value and improvement claims. It
 also prevents an absent result from becoming an implied green outcome. An

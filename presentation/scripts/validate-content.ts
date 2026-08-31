@@ -146,7 +146,7 @@ function validateEvidenceContract(slide: SlideSpec): string[] {
   }
   if (slide.evidenceState === "verified-run") {
     issues.push(
-      "verified-run slides are disabled until retained evidence validates revisions, semantic verification, exit status, handoff, environment, and stop point",
+      "verified-run slides are disabled until retained evidence validates revisions, worker and session identity, environment and isolation boundary, exact handoff and response, captured JSON, complete commands and final statuses, verifier output, and stop point",
     );
   }
   if (

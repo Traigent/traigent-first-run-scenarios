@@ -12,8 +12,8 @@ optimization path.
 
 - The **customer owner** approves the machine, coding-agent service, evidence
   retention, and any later live boundaries.
-- The **captain** prepares the project, gives the worker the exact handoff,
-  enforces the stop point, and retains evidence.
+- The **captain (test operator)** prepares the project, gives the worker the
+  exact handoff, enforces the stop point, and retains evidence.
 - The **worker** is a fresh coding-agent conversation that receives only the
   prepared project and printed handoff.
 - The **verifier** is the local data-only comparison performed after the worker
@@ -183,9 +183,12 @@ caps are condition slugs; full captured cap objects are compared by their
 `condition` fields. It reports every mismatch and does not execute the verifier.
 
 A matching result may be labeled **Verified run evidence** only when the report
-also identifies the captured result, both repository revisions, `run.json`, the
-worker, environment, handoff, and stop point. Without that evidence, the public
-values remain a **Scenario contract · no recorded run**.
+also retains the captured result, both repository revisions, `run.json`, worker
+and session identity, environment and isolation boundary, exact handoff and
+worker response, complete commands, output and final statuses, verifier output,
+and stop point. A run record, result JSON, and `PASS` alone are insufficient.
+Without the complete evidence package, the public values remain a **Scenario
+contract · no recorded run**.
 
 ## 8. Retain and remove evidence deliberately
 
@@ -194,7 +197,7 @@ Retain only what the customer approved:
 - scenario and guide revisions;
 - scenario slug and legacy identifier;
 - `run.json`;
-- environment and worker description;
+- worker, session, environment, and isolation-boundary description;
 - complete commands, output, and final statuses;
 - exact handoff and worker response;
 - opening-result JSON and verifier output; and

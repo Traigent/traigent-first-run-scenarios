@@ -11,8 +11,8 @@ from a realistic starting point.
   project, announced to the user as five stages (Inspect, Readiness, Baseline,
   Optimize, Results).
 - **This repository** - simulated customer-shaped projects plus a CLI to check
-  them, prepare a context-isolated copy, and verify what a fresh agent's
-  opening said against a published contract.
+  them, prepare a context-isolated copy, and compare supplied opening fields
+  with a published contract at a pinned scenario revision.
 - The **Traigent SDK and managed service** - the product the guide routes
   toward; licensed separately and not included here (see
   [Content origin and licensing](#content-origin-and-licensing)).
@@ -27,6 +27,11 @@ project context supplied to it; that service is a separate customer boundary.
 optimization, results). Phase A never becomes Phase B automatically. Case `46`
 in the commands below is a stable numeric alias for
 `incident-severity-triage`, not a count of published scenarios.
+
+The testing instructions call the human test operator the **captain**. This is
+the person who prepares the isolated project, gives the coding agent its exact
+handoff, enforces the stop point, and retains evidence; it is not a product
+role.
 
 The first published scenario is an optimization-ready incident-severity triage
 project. It contains a synthetic agent, labeled rows, a deterministic evaluator,

@@ -92,6 +92,24 @@ describe("presentation content validation", () => {
     expect(capText).toContain("Ceiling 74");
   });
 
+  it("introduces the five-stage route before the prompt and keeps scores out of the core", () => {
+    const coreSlides = presentation.slides.slice(0, coreSlideCount);
+
+    expect(coreSlides.slice(0, 6).map((slide) => slide.id)).toEqual([
+      "ready-to-optimize",
+      "shared-control",
+      "one-customer-prompt",
+      "different-starting-points",
+      "case-46",
+      "next-step",
+    ]);
+    expect(
+      coreSlides
+        .flatMap((slide) => slide.metrics)
+        .map((metric) => metric.label),
+    ).not.toContain("Expected opening");
+  });
+
   it("keeps coverage targets distinct from the one published scenario", () => {
     const matrix = presentation.slides
       .filter((slide) => slide.id.startsWith("coverage-roadmap-"))
@@ -243,7 +261,7 @@ describe("presentation content validation", () => {
 
     expectValidationIssue(
       candidate,
-      "verified-run slides are disabled until retained evidence validates revisions",
+      "verified-run slides are disabled until retained evidence validates revisions, worker and session identity",
     );
   });
 
@@ -272,6 +290,20 @@ describe("presentation content validation", () => {
     ];
     for (const document of legacyLabelDocuments) {
       expect(document).not.toMatch(/Expected\s+scenario\s+contract/);
+    }
+
+    const runEvidenceDocuments = [
+      "GUIDE.md",
+      "docs/customer-pc-runbook.md",
+      "docs/methodology.md",
+      "presentation/README.md",
+    ].map((relativePath) =>
+      readFileSync(path.join(repositoryRoot, relativePath), "utf8"),
+    );
+    for (const document of runEvidenceDocuments) {
+      expect(document).toMatch(
+        /A run record,\s+result\s+JSON,\s+and\s+`PASS`\s+alone\s+are\s+insufficient/i,
+      );
     }
   });
 

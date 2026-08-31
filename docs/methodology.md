@@ -17,7 +17,7 @@ result.
 | Layer                     | Subject                              | Required evidence                                                                           | Limit                                                 |
 | ------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Catalog check             | Public package                       | Successful `list`, `show`, and `check` output                                               | No worker behavior was observed                       |
-| Phase A opening           | Fresh worker in the prepared project | Exact revisions, `run.json`, transcript, opening JSON, and successful semantic verification | No baseline, managed service, or optimization claim   |
+| Phase A opening           | Fresh worker in the prepared project | Complete Phase A report defined below plus successful semantic verification                 | No baseline, managed service, or optimization claim   |
 | Phase B live optimization | Human-approved real value path       | Explicit approvals plus the complete credentialed run record                                | Supports only the path and outcomes actually measured |
 
 Evidence does not flow upward automatically. A structurally valid package is
@@ -64,8 +64,8 @@ Each Phase A run has four logical roles:
 
 - The **customer owner** approves the machine, agent service, and evidence
   policy.
-- The **captain** selects the scenario, prepares the run root, controls the
-  worker handoff, enforces the stop point, and retains evidence.
+- The **captain (test operator)** selects the scenario, prepares the run root,
+  controls the worker handoff, enforces the stop point, and retains evidence.
 - The **worker** is a fresh coding-agent context that receives only the
   prepared customer project and exact handoff.
 - The **verifier** performs a data-only semantic comparison after the worker
@@ -158,14 +158,22 @@ egress, production mutation, a baseline, or an optimization. The separately
 approved coding-agent service may itself be remote or billed and receives the
 context supplied to it.
 
-A Phase A match supports only this claim:
+A successful semantic comparison supports only this claim:
 
-> Under the recorded scenario, guide, worker, and isolation conditions, the
-> captured opening fields matched the published semantic contract.
+> The four supplied opening fields matched the published semantic contract at
+> the scenario revision recorded in `run.json`, and the recorded scenario
+> project and contract inventories matched that revision.
 
-It does not establish general coding-agent quality, readiness of another
-project, a live Traigent connection, or an improvement in quality, cost, speed,
-or any business metric.
+It does not establish that a worker produced the result or used the recorded
+guide, environment, handoff, or isolation boundary. A complete Phase A report
+may make a bounded execution claim only when it also retains the worker and
+session identity, environment and isolation boundary, exact handoff and worker
+response, captured JSON bytes, complete commands, output and final statuses,
+verifier output, both repository revisions, and stop point.
+
+Neither the semantic match nor a complete Phase A report establishes general
+coding-agent quality, readiness of another project, a live Traigent connection,
+or an improvement in quality, cost, speed, or any business metric.
 
 ## Semantic verification
 
@@ -208,9 +216,10 @@ expectations and guidance. A run never selects fragments from a shared hidden
 dataset or falls back to generated, random, downloaded, or default content.
 
 The same checked-out scenario and guide revisions produce the same prepared
-inventories and aggregate hashes. A report identifies both revisions,
-`run.json`, the worker and environment, exact handoff, captured opening JSON,
-verifier output, complete command output, final statuses, and stop point.
+inventories and aggregate hashes. A complete Phase A report identifies both
+revisions, `run.json`, the worker and session, environment and isolation
+boundary, exact handoff and worker response, captured opening JSON, verifier
+output, complete command output, final statuses, and stop point.
 
 ## Content origin and in-world provenance
 
@@ -245,8 +254,9 @@ and one of four labels on every slide:
   40-character public guide revision, without a referenced captured run.
 - **Scenario contract · no recorded run**: published scenario facts or
   expectations, without a referenced captured run.
-- **Verified run evidence**: a claim directly supported by a retained run
-  artifact and successful verification.
+- **Verified run evidence**: a claim supported by the complete retained Phase A
+  report described above and successful semantic verification. A run record,
+  result JSON, and `PASS` alone are insufficient.
 - **Not demonstrated in this deck**: a path or outcome that was not exercised.
 
 Presentation rendering never changes verification semantics. Missing evidence
