@@ -1,0 +1,174 @@
+{
+  "band": "EXCELLENT",
+  "band_limited_by_confidence": false,
+  "caps": [],
+  "confidence": 0.95,
+  "gaps": [
+    "agent/search-space: static source verification established possible settings model, output_format, prompt_style; this advisory read assumes the selected source does not rewrite its own functions or imports at runtime. It does not establish final request wiring. your space has 18 distinct configurations; no trial budget was declared, so nothing here says how much of it this run compares; declaring `max_trials` is what lets this reach full credit - undeclared, it is held one step below; retrieval: the cited executable source shows the declared options, but this deliberately narrow static read could not verify that changing this setting changes the request on the selected agent path; no source defect is inferred, and the enhanced run can settle this dimension",
+    "agent/output-contract could not be measured - not independently verified; excluded from this score. Assistant observation: the answer's shape is constrained (agent.py:35-38 instructs either a bare label or {\"severity\": \"<label>\"}, and agent.py:65-79 parse_reply pins the answer to one of SEV1-SEV4 or raises.)",
+    "agent/prompt could not be measured - not independently verified; excluded from this score. Assistant observation: a prompt, 2 worked example(s) in it (agent.py:40-43 WORKED_EXAMPLES holds two report/severity pairs and agent.py:57-58 appends both into the request text build_prompt returns.)",
+    "agent/control-flow could not be measured - not independently verified; excluded from this score. Assistant observation: a loop, and a stop condition to point at (agent.py:57 and agent.py:59 iterate fixed module-level tuples while assembling the prompt; run() at agent.py:102-106 makes one provider call per input with no retry loop.)",
+    "dataset/power: 100 to tune on / 20 held back; 100 examples - substantial comparison set"
+  ],
+  "knobs": [],
+  "overall": 92,
+  "pillars": [
+    {
+      "confidence": 0.81,
+      "name": "agent",
+      "score": 70,
+      "subscores": [
+        {
+          "applicable": true,
+          "evidence": "not independently verified; excluded from this score. Assistant observation: a loop, and a stop condition to point at (agent.py:57 and agent.py:59 iterate fixed module-level tuples while assembling the prompt; run() at agent.py:102-106 makes one provider call per input with no retry loop.)",
+          "maximum": 7.0,
+          "measured": false,
+          "name": "control-flow",
+          "value": 0.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "not independently verified; excluded from this score. Assistant observation: the answer's shape is constrained (agent.py:35-38 instructs either a bare label or {\"severity\": \"<label>\"}, and agent.py:65-79 parse_reply pins the answer to one of SEV1-SEV4 or raises.)",
+          "maximum": 8.0,
+          "measured": false,
+          "name": "output-contract",
+          "value": 0.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "not independently verified; excluded from this score. Assistant observation: a prompt, 2 worked example(s) in it (agent.py:40-43 WORKED_EXAMPLES holds two report/severity pairs and agent.py:57-58 appends both into the request text build_prompt returns.)",
+          "maximum": 8.0,
+          "measured": false,
+          "name": "prompt",
+          "value": 0.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "static source verification established possible settings model, output_format, prompt_style; this advisory read assumes the selected source does not rewrite its own functions or imports at runtime. It does not establish final request wiring. your space has 18 distinct configurations; no trial budget was declared, so nothing here says how much of it this run compares; declaring `max_trials` is what lets this reach full credit - undeclared, it is held one step below; retrieval: the cited executable source shows the declared options, but this deliberately narrow static read could not verify that changing this setting changes the request on the selected agent path; no source defect is inferred, and the enhanced run can settle this dimension",
+          "maximum": 100.0,
+          "measured": true,
+          "name": "search-space",
+          "value": 70.0,
+          "withheld": false
+        },
+        {
+          "applicable": false,
+          "evidence": "the agent declares no tools, so tool wiring does not apply (agent.py declares no tool list and calls none; the only outbound call is the provider completion at agent.py:82-99.)",
+          "maximum": 7.0,
+          "measured": false,
+          "name": "tools",
+          "value": 0.0,
+          "withheld": false
+        }
+      ]
+    },
+    {
+      "confidence": 1.0,
+      "name": "dataset",
+      "score": 98,
+      "subscores": [
+        {
+          "applicable": true,
+          "evidence": "bands present: easy, hard, medium, very-hard",
+          "maximum": 15.0,
+          "measured": true,
+          "name": "difficulty",
+          "value": 15.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "no repeated questions at 70% similarity or more, and no answer that guessing alone would already score well on",
+          "maximum": 20.0,
+          "measured": true,
+          "name": "diversity",
+          "value": 20.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "120/120 rows carry an expected output; the coding assistant read 120 of 120 provided rows; none contradicts its own input, 9 undecided",
+          "maximum": 30.0,
+          "measured": true,
+          "name": "labels",
+          "value": 30.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "100 to tune on / 20 held back; 100 examples - substantial comparison set",
+          "maximum": 25.0,
+          "measured": true,
+          "name": "power",
+          "value": 23.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "120 collected of 120 rows; declared sources: real",
+          "maximum": 10.0,
+          "measured": true,
+          "name": "provenance",
+          "value": 10.0,
+          "withheld": false
+        }
+      ]
+    },
+    {
+      "confidence": 1.0,
+      "name": "evaluation",
+      "score": 100,
+      "subscores": [
+        {
+          "applicable": true,
+          "evidence": "4 calibration case(s); every authored check passed",
+          "maximum": 40.0,
+          "measured": true,
+          "name": "calibration",
+          "value": 40.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "scores a right answer 1.00 above a wrong one, out of 1.00",
+          "maximum": 15.0,
+          "measured": true,
+          "name": "probe-spread",
+          "value": 15.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "deterministic scoring rule",
+          "maximum": 20.0,
+          "measured": true,
+          "name": "reproducibility",
+          "value": 20.0,
+          "withheld": false
+        },
+        {
+          "applicable": true,
+          "evidence": "normalized-exact suits closed-label output",
+          "maximum": 25.0,
+          "measured": true,
+          "name": "task-fit",
+          "value": 25.0,
+          "withheld": false
+        }
+      ]
+    }
+  ],
+  "provenance_assumption": null,
+  "recommended_action": "proceed",
+  "schema_version": 2,
+  "status": "OK",
+  "weighted_average": 92,
+  "weights": {
+    "agent": 25.0,
+    "dataset": 40.0,
+    "evaluation": 35.0
+  }
+}
