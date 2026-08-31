@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.13"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install quality tools
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Check Python formatting
+        if: matrix.python-version == '3.13'
+        run: black --check scenario.py scripts tests
+
+      - name: Lint Python
+        if: matrix.python-version == '3.13'
+        run: ruff check scenario.py scripts tests
+
+      - name: Type-check production Python
+        if: matrix.python-version == '3.13'
+        run: mypy --strict scenario.py scripts/check_public_surface.py
+
+      - name: Check spelling
+        if: matrix.python-version == '3.13'
+        run: >-
+          codespell README.md GUIDE.md SECURITY.md CONTRIBUTING.md docs
+          reports/README.md scenario.py scripts tests schema scenarios skills
+          presentation/README.md presentation/src presentation/scripts
+          presentation/tests presentation/index.html presentation/package.json
+          presentation/tsconfig.json presentation/vite.config.ts
+          presentation/vendor/image-size-disabled/README.md
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Validate published scenario bank
+        run: python scenario.py check
+
+      - name: Check public surface
+        run: python scripts/check_public_surface.py
+
+      - name: Compile Python sources
+        run: python -m compileall -q scenario.py scripts tests
+
+  presentation:
+    name: Presentation artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "20.20.0"
+          cache: npm
+          cache-dependency-path: presentation/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+        working-directory: presentation
+
+      - name: Audit presentation dependencies
+        run: npm audit --audit-level=high
+        working-directory: presentation
+
+      - name: Validate and build presentation
+        run: npm run check
+        working-directory: presentation
+
+      - name: Upload offline presentation bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: first-run-presales-presentation
+          path: presentation/dist/customer-bundle/
+          if-no-files-found: error
+          retention-days: 14

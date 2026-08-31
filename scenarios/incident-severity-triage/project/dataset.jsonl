@@ -1,0 +1,120 @@
+{"input": "Every checkout attempt has returned a 502 for the last eleven minutes.", "output": "SEV1", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Search returns results but takes eleven seconds on every query.", "output": "SEV2", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Export puts commas inside unquoted address fields and the file breaks in Excel.", "output": "SEV3", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The settings icon sits two pixels off centre in the account menu.", "output": "P4", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Report generation fails for any date range longer than a month.", "output": "High", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The date picker will not accept the last day of February in a leap year.", "output": "SEV3", "metadata": {"difficulty": "easy", "split": "holdout", "provenance": "real"}}
+{"input": "A tooltip says Sign In where the button underneath says Log in.", "output": "SEV4", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The public API is answering 503 to every caller and has been since 04:12.", "output": "SEV1", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Pagination shows page three of two when a filter removes the final page.", "output": "P3", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The empty-state illustration is stretched on very wide monitors.", "output": "Low", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Customers open the dashboard and their entire project list is empty.", "output": "SEV1", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The mobile app crashes on launch for users on Android 13.", "output": "SEV2", "metadata": {"difficulty": "easy", "split": "holdout", "provenance": "real"}}
+{"input": "Our footer still shows last year.", "output": "SEV4", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Card captures are all failing at the processor with an authentication error.", "output": "P1", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Notification mail has been arriving roughly forty minutes late since noon.", "output": "High", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Sorting by owner puts lowercase names after every uppercase one.", "output": "SEV3", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Our primary database failed over and the replica refuses every write.", "output": "SEV1", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Bulk import accepts the file and then fails at ninety percent, every time.", "output": "SEV2", "metadata": {"difficulty": "easy", "split": "holdout", "provenance": "real"}}
+{"input": "The help link in the sidebar points at last year's documentation.", "output": "P3", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The spinner keeps turning for a moment after the content has arrived.", "output": "Low", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Two of our five API nodes are unhealthy and requests are timing out.", "output": "SEV2", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Times on the activity feed are UTC while the rest of the product is local.", "output": "SEV3", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Dark mode leaves one divider at the light-mode colour.", "output": "SEV4", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The whole EU region has been unreachable from the internet for twenty minutes.", "output": "P1", "metadata": {"difficulty": "easy", "split": "holdout", "provenance": "real"}}
+{"input": "Deleting a saved view leaves it in the recently-used list.", "output": "Medium", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Counts read as one items when a list holds exactly one entry.", "output": "SEV4", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Nobody in any tenant can obtain a session; sign-in is down.", "output": "SEV1", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The admin console will not load for anyone with more than five hundred users.", "output": "SEV2", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The success message disappears faster than most people can read it.", "output": "P4", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "A production migration dropped the audit table instead of the staging copy.", "output": "Critical", "metadata": {"difficulty": "easy", "split": "holdout", "provenance": "real"}}
+{"input": "Attachments upload but cannot be downloaded again from the ticket view.", "output": "SEV2", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "The API accepts a negative quantity on a line item without complaining.", "output": "SEV3", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Session cookies issued this morning resolve to the wrong customer account.", "output": "SEV1", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Charts render, but the numbers are a day behind the data underneath them.", "output": "P2", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Keyboard shortcuts stop responding after the command palette is closed.", "output": "Medium", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Column widths reset when the table re-renders after a filter change.", "output": "SEV4", "metadata": {"difficulty": "medium", "split": "holdout", "provenance": "real"}}
+{"input": "Single sign-on works for Okta tenants and fails for everyone on Azure AD.", "output": "SEV2", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Two people submitting the form at once can create duplicate tags.", "output": "SEV3", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "The billing subdomain still serves the old logo as its site icon.", "output": "P4", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Enrolment codes for two-factor are being delivered to a stranger's phone.", "output": "Critical", "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{"input": "Filters reset whenever the browser tab regains focus.", "output": "SEV3", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "The billing page has lost the hover state on its secondary buttons.", "output": "SEV4", "metadata": {"difficulty": "medium", "split": "holdout", "provenance": "real"}}
+{"input": "Webhook delivery stopped entirely and the queue is four hundred thousand events deep.", "output": "SEV1", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "The scheduler runs hourly jobs twice, though the second run does nothing.", "output": "P2", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "A dialog offers Cancel for both the safe choice and the destructive one.", "output": "Low", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Nightly backups have written zero bytes for six days and nobody noticed.", "output": "SEV1", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Autocomplete has stopped suggesting anything for non-Latin scripts.", "output": "SEV2", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Long project names overflow the breadcrumb instead of being truncated.", "output": "SEV3", "metadata": {"difficulty": "medium", "split": "holdout", "provenance": "real"}}
+{"input": "The billing job double-charged every subscription that renewed on Tuesday.", "output": "P1", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Our content delivery network is serving stale assets to about a fifth of visitors.", "output": "High", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Our published payload documentation describes a field we removed in March.", "output": "SEV3", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "The onboarding checklist ticks a step before that step has been done.", "output": "SEV4", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Retries have backed off to six hours and partners are complaining about it.", "output": "SEV2", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Percentages in the summary round to a hundred while the rows sum to ninety-nine.", "output": "P3", "metadata": {"difficulty": "hard", "split": "holdout", "provenance": "real"}}
+{"input": "Screen readers announce the sort control as a button with no name.", "output": "Low", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Uploads above two megabytes are silently truncated and the stored file is corrupt.", "output": "SEV1", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "A retried request creates a second comment when the first one had succeeded.", "output": "SEV3", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Focus jumps from the search box straight to the footer on the reports page.", "output": "SEV4", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Our TLS certificate expired at midnight and browsers now refuse the site.", "output": "P1", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "A malformed cursor gets a 200 with a truncated page instead of an error.", "output": "High", "metadata": {"difficulty": "medium", "split": "holdout", "provenance": "real"}}
+{"input": "Our brand blue fails contrast against white at small sizes.", "output": "SEV4", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Indexing wrote one tenant's customer records into another tenant's index.", "output": "SEV1", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "The billing run generates invoices correctly and attaches no PDF.", "output": "SEV2", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Concurrent edits to a description keep whichever save landed last, silently.", "output": "P3", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "The rate limiter is treating all authenticated traffic as anonymous and blocking it.", "output": "Critical", "metadata": {"difficulty": "medium", "split": "tuning", "provenance": "real"}}
+{"input": "Throughput halved after the last deploy and no error rate moved at all.", "output": "SEV2", "metadata": {"difficulty": "hard", "split": "holdout", "provenance": "real"}}
+{"input": "The permission check runs after the query, so a refusal still logs a read.", "output": "SEV3", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Printing drops the table header from every page after the first.", "output": "SEV4", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "A tenant with a custom domain gets signed out every twelve minutes.", "output": "P2", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Bulk actions apply to the filtered set or the selected set depending on click order.", "output": "Medium", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Transitions animate even when the reduce-motion preference is set.", "output": "SEV4", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Reset links sent in the past hour grant access without the token being checked.", "output": "SEV1", "metadata": {"difficulty": "medium", "split": "holdout", "provenance": "real"}}
+{"input": "Limit headers report the wrong window for an hour after a plan upgrade.", "output": "SEV3", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Error text is announced once and removed before it can be read again.", "output": "P4", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Read replicas drifted eleven hours behind and reporting is quoting stale money.", "output": "Critical", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "One integration's retry storm is starving everybody else's queue.", "output": "SEV2", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "The German translation runs forty percent longer and clips in the navigation.", "output": "SEV4", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "A deploy rolled back but half the fleet is still serving the new schema.", "output": "SEV1", "metadata": {"difficulty": "hard", "split": "holdout", "provenance": "real"}}
+{"input": "Metrics show healthy pods while customers see intermittent connection resets.", "output": "P2", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Archived items keep appearing in search until the next reindex, up to an hour.", "output": "Medium", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Support says three enterprise tenants can see each other's invoices.", "output": "SEV1", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Import succeeds and silently skips rows whose currency column is blank.", "output": "SEV2", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "The changelog feed omits entries published while the cache was warming.", "output": "SEV3", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Nobody agrees whether the current wording is wrong or merely unfashionable.", "output": "P4", "metadata": {"difficulty": "very-hard", "split": "holdout", "provenance": "real"}}
+{"input": "Our audit log stopped recording deletions about three weeks ago.", "output": "High", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Two customers describe one symptom and only one of them has the misconfiguration.", "output": "SEV3", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "The design system says one thing and the shipped component says another.", "output": "SEV4", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "The export pipeline has been dropping one row in forty since the weekend.", "output": "SEV1", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "It only happens for accounts created before the schema change in 2023.", "output": "P3", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "It is broken on one designer's monitor and correct on everyone else's.", "output": "Low", "metadata": {"difficulty": "very-hard", "split": "holdout", "provenance": "real"}}
+{"input": "Our queue consumer acknowledges messages it never actually processed.", "output": "SEV1", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Two services disagree about a plan and the interface flickers between them.", "output": "SEV2", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "A customer called it a defect and product calls it the intended behaviour.", "output": "SEV4", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "An expired role is stopping every scheduled job from starting at all.", "output": "P1", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "Background sync drains battery on iOS and people are uninstalling over it.", "output": "High", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "It only takes one click to work around, and nobody can find the click.", "output": "SEV3", "metadata": {"difficulty": "very-hard", "split": "holdout", "provenance": "real"}}
+{"input": "Feature flags evaluated default-on and exposed an unreleased pricing page.", "output": "SEV1", "metadata": {"difficulty": "hard", "split": "tuning", "provenance": "real"}}
+{"input": "It only affects one very large customer, and only during their nightly batch.", "output": "SEV2", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Our REST and GraphQL surfaces behave differently and both look deliberate.", "output": "P3", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "The label is accurate and three people in a row misread it the same way.", "output": "Low", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "The behaviour matches the specification and contradicts what we told the customer.", "output": "SEV2", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "A field is optional in the schema, required in the interface, ignored by the worker.", "output": "SEV3", "metadata": {"difficulty": "very-hard", "split": "holdout", "provenance": "real"}}
+{"input": "It only shows at 110 percent browser zoom, which four accounts use.", "output": "SEV4", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Latency looks normal but a third of API responses carry an empty body.", "output": "P1", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "The report is right; the expectation came from a sales deck two years old.", "output": "Medium", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Changing it would break a screenshot in a published integration guide.", "output": "SEV4", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Only customers on the legacy plan are affected, and they are our largest ten.", "output": "SEV1", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Three reports look identical to support and have three different root causes.", "output": "SEV2", "metadata": {"difficulty": "very-hard", "split": "holdout", "provenance": "real"}}
+{"input": "The spacing is inconsistent with a page we are about to redesign anyway.", "output": "P4", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Nothing is down, yet reconciliation shows forty thousand pounds with no order behind it.", "output": "Critical", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "It reproduces on staging once in fifty attempts and never in production.", "output": "SEV2", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Only Safari on managed devices sees it, and only after a policy sync.", "output": "SEV3", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "It is intermittent and it disappears whenever we attach a debugger.", "output": "SEV1", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "A partner's clock is eight minutes fast and our idempotency window rejects them.", "output": "P2", "metadata": {"difficulty": "very-hard", "split": "holdout", "provenance": "real"}}
+{"input": "Our own internal tenant cannot reproduce it because every flag is on there.", "output": "Medium", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "It is cosmetic today and becomes structural after the migration.", "output": "SEV4", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "The fault is in a dependency we vendored two years ago and no longer patch.", "output": "SEV2", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "It is trivial to fix and it is not trivial to ship mid-quarter.", "output": "SEV3", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "Two teams have each filed it against the other team's component.", "output": "P4", "metadata": {"difficulty": "very-hard", "split": "tuning", "provenance": "real"}}
+{"input": "A vendor changed a default and our webhook signatures no longer verify.", "output": "Critical", "metadata": {"difficulty": "very-hard", "split": "holdout", "provenance": "real"}}

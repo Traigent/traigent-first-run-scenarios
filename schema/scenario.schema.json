@@ -1,0 +1,986 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Traigent first-run scenario manifest",
+  "description": "Manifest for a fully materialized public phase A opening scenario.",
+  "$defs": {
+    "catalogIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "componentState": {
+      "enum": [
+        "limited",
+        "missing",
+        "needs-repair",
+        "ready",
+        "unsafe"
+      ]
+    },
+    "fieldPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(?:\\.[A-Za-z_][A-Za-z0-9_-]*)*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^/\\\\\\x00-\\x1f\\x7f]+(?:/[^/\\\\\\x00-\\x1f\\x7f]+)*$"
+    },
+    "countMap": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "pattern": "\\S"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "countDimension": {
+      "type": "object",
+      "required": [
+        "field",
+        "counts"
+      ],
+      "properties": {
+        "field": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/fieldPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "counts": {
+          "$ref": "#/$defs/countMap"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "field": {
+              "type": "null"
+            },
+            "counts": {
+              "maxProperties": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "field": {
+              "$ref": "#/$defs/fieldPath"
+            },
+            "counts": {
+              "minProperties": 1
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "labelShape": {
+      "type": "object",
+      "required": [
+        "kind",
+        "surface_label_count",
+        "normalized_class_count",
+        "normalization_map"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "absent",
+            "free-text",
+            "mapped-labels",
+            "numeric",
+            "structured",
+            "unmapped-labels"
+          ]
+        },
+        "surface_label_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "normalized_class_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "normalization_map": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "\\S"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/catalogIdentifier"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "mapped-labels"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "surface_label_count": {
+                "minimum": 1
+              },
+              "normalized_class_count": {
+                "minimum": 1
+              },
+              "normalization_map": {
+                "minProperties": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "unmapped-labels"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "surface_label_count": {
+                "minimum": 1
+              },
+              "normalized_class_count": {
+                "const": 0
+              },
+              "normalization_map": {
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "absent",
+                  "free-text",
+                  "numeric",
+                  "structured"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "surface_label_count": {
+                "const": 0
+              },
+              "normalized_class_count": {
+                "const": 0
+              },
+              "normalization_map": {
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "dataset": {
+      "type": "object",
+      "required": [
+        "id",
+        "state",
+        "path",
+        "task",
+        "format",
+        "input_field",
+        "label_field",
+        "rows",
+        "unique_inputs",
+        "splits",
+        "difficulty_strata",
+        "label_shape",
+        "limitations"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/catalogIdentifier"
+        },
+        "state": {
+          "$ref": "#/$defs/componentState"
+        },
+        "path": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/relativePath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task": {
+          "$ref": "#/$defs/catalogIdentifier"
+        },
+        "format": {
+          "enum": [
+            "jsonl",
+            null
+          ]
+        },
+        "input_field": {
+          "$ref": "#/$defs/fieldPath"
+        },
+        "label_field": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/fieldPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unique_inputs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "splits": {
+          "$ref": "#/$defs/countDimension"
+        },
+        "difficulty_strata": {
+          "$ref": "#/$defs/countDimension"
+        },
+        "label_shape": {
+          "$ref": "#/$defs/labelShape"
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/catalogIdentifier"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "missing"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "type": "null"
+              },
+              "format": {
+                "type": "null"
+              },
+              "label_field": {
+                "type": "null"
+              },
+              "rows": {
+                "const": 0
+              },
+              "unique_inputs": {
+                "const": 0
+              },
+              "splits": {
+                "properties": {
+                  "field": {
+                    "type": "null"
+                  },
+                  "counts": {
+                    "maxProperties": 0
+                  }
+                }
+              },
+              "difficulty_strata": {
+                "properties": {
+                  "field": {
+                    "type": "null"
+                  },
+                  "counts": {
+                    "maxProperties": 0
+                  }
+                }
+              },
+              "label_shape": {
+                "properties": {
+                  "kind": {
+                    "const": "absent"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/relativePath"
+              },
+              "format": {
+                "const": "jsonl"
+              },
+              "rows": {
+                "minimum": 1
+              },
+              "unique_inputs": {
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "label_shape": {
+                "properties": {
+                  "kind": {
+                    "const": "absent"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "label_shape"
+            ]
+          },
+          "then": {
+            "properties": {
+              "label_field": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "label_field": {
+                "$ref": "#/$defs/fieldPath"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schema_version",
+    "slug",
+    "legacy_id",
+    "title",
+    "summary",
+    "phase",
+    "content",
+    "paths",
+    "catalog"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "legacy_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "\\S"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "\\S"
+    },
+    "phase": {
+      "const": "phase-a-opening"
+    },
+    "content": {
+      "type": "object",
+      "required": [
+        "origin",
+        "license"
+      ],
+      "properties": {
+        "origin": {
+          "const": "traigent-authored"
+        },
+        "license": {
+          "const": "Apache-2.0"
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "required": [
+        "project",
+        "verifier"
+      ],
+      "properties": {
+        "project": {
+          "const": "project"
+        },
+        "verifier": {
+          "const": "verifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "catalog": {
+      "type": "object",
+      "required": [
+        "starting_condition",
+        "components",
+        "datasets",
+        "expected_route",
+        "evidence"
+      ],
+      "properties": {
+        "starting_condition": {
+          "enum": [
+            "all-components-ready",
+            "approval-gated",
+            "gaps-present"
+          ]
+        },
+        "components": {
+          "type": "object",
+          "required": [
+            "agent",
+            "data",
+            "evaluator"
+          ],
+          "properties": {
+            "agent": {
+              "type": "object",
+              "required": [
+                "state",
+                "path",
+                "controls"
+              ],
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/componentState"
+                },
+                "path": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/relativePath"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "controls": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "state": {
+                        "const": "missing"
+                      }
+                    },
+                    "required": [
+                      "state"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "path": {
+                        "type": "null"
+                      },
+                      "controls": {
+                        "maxItems": 0
+                      }
+                    }
+                  },
+                  "else": {
+                    "properties": {
+                      "path": {
+                        "$ref": "#/$defs/relativePath"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "state": {
+                        "const": "ready"
+                      }
+                    },
+                    "required": [
+                      "state"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "controls": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": false
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "state",
+                "paths"
+              ],
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/componentState"
+                },
+                "paths": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/relativePath"
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "state": {
+                        "const": "missing"
+                      }
+                    },
+                    "required": [
+                      "state"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "paths": {
+                        "maxItems": 0
+                      }
+                    }
+                  },
+                  "else": {
+                    "properties": {
+                      "paths": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": false
+            },
+            "evaluator": {
+              "type": "object",
+              "required": [
+                "state",
+                "path",
+                "method",
+                "calibration"
+              ],
+              "properties": {
+                "state": {
+                  "$ref": "#/$defs/componentState"
+                },
+                "path": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/relativePath"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "method": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/catalogIdentifier"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "calibration": {
+                  "type": "object",
+                  "required": [
+                    "path",
+                    "case_count"
+                  ],
+                  "properties": {
+                    "path": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/relativePath"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "case_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "path": {
+                          "type": "null"
+                        },
+                        "case_count": {
+                          "const": 0
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "path": {
+                          "$ref": "#/$defs/relativePath"
+                        },
+                        "case_count": {
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "state": {
+                        "const": "missing"
+                      }
+                    },
+                    "required": [
+                      "state"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "path": {
+                        "type": "null"
+                      },
+                      "method": {
+                        "type": "null"
+                      },
+                      "calibration": {
+                        "properties": {
+                          "path": {
+                            "type": "null"
+                          },
+                          "case_count": {
+                            "const": 0
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "else": {
+                    "properties": {
+                      "path": {
+                        "$ref": "#/$defs/relativePath"
+                      },
+                      "method": {
+                        "$ref": "#/$defs/catalogIdentifier"
+                      }
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "datasets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/dataset"
+          }
+        },
+        "expected_route": {
+          "type": "object",
+          "required": [
+            "rationale",
+            "verifier_contract"
+          ],
+          "properties": {
+            "rationale": {
+              "$ref": "#/$defs/catalogIdentifier"
+            },
+            "verifier_contract": {
+              "const": "verifier/expected-opening.json"
+            }
+          },
+          "additionalProperties": false
+        },
+        "evidence": {
+          "type": "object",
+          "required": [
+            "demonstrates",
+            "does_not_demonstrate"
+          ],
+          "properties": {
+            "demonstrates": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/catalogIdentifier"
+              }
+            },
+            "does_not_demonstrate": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/catalogIdentifier"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "starting_condition": {
+                "const": "all-components-ready"
+              }
+            },
+            "required": [
+              "starting_condition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "components": {
+                "properties": {
+                  "agent": {
+                    "properties": {
+                      "state": {
+                        "const": "ready"
+                      }
+                    }
+                  },
+                  "data": {
+                    "properties": {
+                      "state": {
+                        "const": "ready"
+                      }
+                    }
+                  },
+                  "evaluator": {
+                    "properties": {
+                      "state": {
+                        "const": "ready"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "starting_condition": {
+                "const": "gaps-present"
+              }
+            },
+            "required": [
+              "starting_condition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "components": {
+                "not": {
+                  "properties": {
+                    "agent": {
+                      "properties": {
+                        "state": {
+                          "const": "ready"
+                        }
+                      }
+                    },
+                    "data": {
+                      "properties": {
+                        "state": {
+                          "const": "ready"
+                        }
+                      }
+                    },
+                    "evaluator": {
+                      "properties": {
+                        "state": {
+                          "const": "ready"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "components": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "state": {
+                        "const": "missing"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "datasets": {
+                "items": {
+                  "properties": {
+                    "state": {
+                      "const": "missing"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "components": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "state": {
+                        "const": "ready"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "datasets": {
+                "items": {
+                  "properties": {
+                    "state": {
+                      "const": "ready"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "tags": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40,
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      }
+    }
+  },
+  "additionalProperties": false
+}

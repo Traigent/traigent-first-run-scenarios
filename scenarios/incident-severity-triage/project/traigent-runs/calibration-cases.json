@@ -1,0 +1,36 @@
+[
+  {
+    "name": "outage - the level written the way the old tracker wrote it",
+    "score_mode": "binary",
+    "expected": "SEV1",
+    "input_data": {
+      "report": "Every checkout attempt has returned a 502 for the last eleven minutes."
+    },
+    "metadata": {
+      "scoring_path": "severity-table"
+    },
+    "probes": {
+      "good": "SEV1",
+      "equivalent_good": "P1",
+      "partial": "SEV2",
+      "bad": "SEV4"
+    }
+  },
+  {
+    "name": "cosmetic - a level recorded as a word rather than a code",
+    "score_mode": "binary",
+    "expected": "Low",
+    "input_data": {
+      "report": "Our footer still shows last year."
+    },
+    "metadata": {
+      "scoring_path": "severity-table"
+    },
+    "probes": {
+      "good": "Low",
+      "equivalent_good": "sev4",
+      "partial": "SEV3",
+      "bad": "Critical"
+    }
+  }
+]
