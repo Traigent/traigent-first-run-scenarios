@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Reject private-only references from files that could be published."""
+"""Reject private-only references from files that could be published.
+
+The rule set is a denylist backstop, not a completeness claim: it catches the
+reference classes that have actually leaked from sibling repositories, and a
+clean run means only that none of those classes matched. Publication review
+still owns the judgment call.
+"""
 
 from __future__ import annotations
 
@@ -82,6 +88,27 @@ _RULES = (
                 r"\b[A-Za-z]:[\\/](?:Us",
                 "ers|Documents and Settings",
                 r")[\\/][^\\/\s\"'<>]+",
+            ),
+            re.IGNORECASE,
+        ),
+    ),
+    Rule(
+        "internal repository reference",
+        re.compile(
+            _fragments(
+                r"\b(?:agents[-_]sk",
+                "ills",
+                r"|traigent[-_]validation[-_]sp",
+                "ine",
+                r"|Traigent(?:Back",
+                "end|Front",
+                r"end|Sch",
+                "ema)",
+                r"|traigent[-_]smart",
+                "opt",
+                r"|traigent[-_]i",
+                "ac",
+                r")\b",
             ),
             re.IGNORECASE,
         ),
@@ -258,20 +285,46 @@ def _display(path: str) -> str:
     return path.encode("unicode_escape", errors="backslashreplace").decode("ascii")
 
 
+def _decoded_variants(content: bytes) -> tuple[str, ...]:
+    """Every readable decoding of the bytes, so no encoding hides a match.
+
+    UTF-16 (or NUL-padded) text decodes byte-for-byte under a plain UTF-8 read
+    with interleaved NULs, which silently breaks every pattern. Scan the strict
+    UTF-8 reading when it exists, plus the UTF-16 readings and a NUL-stripped
+    reading whenever NUL bytes are present, so a leak cannot pass by encoding
+    alone.
+    """
+    variants: list[str] = []
+    try:
+        variants.append(content.decode("utf-8"))
+    except UnicodeDecodeError:
+        variants.append(content.decode("utf-8", errors="replace"))
+    if b"\x00" in content:
+        for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+            try:
+                variants.append(content.decode(encoding))
+            except UnicodeDecodeError:
+                continue
+        variants.append(
+            content.replace(b"\x00", b"").decode("utf-8", errors="replace")
+        )
+    return tuple(dict.fromkeys(variants))
+
+
 def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
     findings: list[Finding] = []
-    text = content.decode("utf-8", errors="replace")
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        for rule in _RULES:
-            if rule.pattern.search(line):
-                findings.append(
-                    Finding(
-                        surface=surface,
-                        path=relative_path,
-                        line=line_number,
-                        rule=rule.name,
+    for text in _decoded_variants(content):
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for rule in _RULES:
+                if rule.pattern.search(line):
+                    findings.append(
+                        Finding(
+                            surface=surface,
+                            path=relative_path,
+                            line=line_number,
+                            rule=rule.name,
+                        )
                     )
-                )
     return findings
 
 

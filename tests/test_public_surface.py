@@ -85,6 +85,45 @@ class PublicSurfaceGuardTests(unittest.TestCase):
                 self.assertEqual(1, result.returncode, result.stdout)
                 self.assertIn(f"untracked:{filename}:2:", result.stderr)
 
+    def test_utf16_encoded_leak_is_rejected(self) -> None:
+        planted_value = "/" + "home" + "/example-user/project"
+        path = self.repo / "wide-notes"
+        path.write_bytes(f"safe first line\n{planted_value}\n".encode("utf-16"))
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("machine-specific POSIX home path", result.stderr)
+
+    def test_internal_repository_reference_is_rejected(self) -> None:
+        planted_values = (
+            "".join(("agents-sk", "ills#314")),
+            "".join(("Traigent", "Back", "end/issues/12")),
+            "".join(("traigent-validation-sp", "ine")),
+        )
+        for index, planted_value in enumerate(planted_values):
+            with self.subTest(planted_value=planted_value):
+                path = self.repo / f"cross-ref-{index}"
+                path.write_text(f"see {planted_value} for details\n", encoding="utf-8")
+                result = self._run_guard()
+                path.unlink()
+
+                self.assertEqual(1, result.returncode, result.stdout)
+                self.assertIn("internal repository reference", result.stderr)
+
+    def test_public_repository_references_are_accepted(self) -> None:
+        path = self.repo / "public-refs"
+        path.write_text(
+            "Merged in PR #1. See Traigent/traigent-first-run#79 and\n"
+            "traigent-first-run-scenarios issue #3 for the follow-up.\n",
+            encoding="utf-8",
+        )
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("passed for 1 file(s)", result.stdout)
+
     def test_staged_leak_is_found_when_worktree_copy_is_safe(self) -> None:
         planted_value = "".join(("private", " ", "ticket"))
         path = self.repo / "staged-notes"
