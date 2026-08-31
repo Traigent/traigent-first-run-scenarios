@@ -242,7 +242,11 @@ const rawPresentation = {
       testedLayer: `${scenario.catalog.evidence.demonstrates.map(sentenceCase).join("; ")}. No recorded coding-agent run is supplied in this release.`,
       notProven: scenario.catalog.evidence.does_not_demonstrate
         .map(sentenceCase)
-        .map((value) => value.replace(/\bworker\b/g, "coding-agent")),
+        .map((value) =>
+          value.replace(/\bworker\b/gi, (match) =>
+            match[0] === "W" ? "Coding-agent" : "coding-agent",
+          ),
+        ),
     },
   ],
   slides: [
@@ -253,7 +257,7 @@ const rawPresentation = {
       title:
         "Start with the project you have. Leave with a justified next step.",
       accent: "justified next step",
-      body: "The coding agent inspects what exists, keeps usable material, names the consequential gaps, and routes the team to proceed, repair, create, review, or stop - creating missing pieces with the user's approval. Every route ships in the public guide today. Tasks graded by comparing text answers fit this path: classification, extraction, and short-answer QA. If an evaluator would execute generated code or SQL, the guide stops before anything runs and hands that path to a separate, human-reviewed containment step.",
+      body: "The coding agent inspects what exists, keeps usable material, names the consequential gaps, and routes the team to proceed, repair, create, review, or stop - creating missing pieces with the user's approval. Every route ships in the public guide today. Tasks graded by comparing text answers fit this path: classification, extraction, and short-answer QA. If an evaluator would execute generated code or SQL, the guide's contract is to stop before anything runs and hand that path to a separate, human-reviewed containment step.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -394,7 +398,7 @@ const rawPresentation = {
         "Evaluation - 35 points: checked on known-good and known-bad; right kind of check for this output; same answer every time; separates good answers from bad",
         "Agent - 25 points: settings-combinations to try; what the model is told and shown; whether the answer shape is pinned down; whether the agent is guaranteed to stop, and what stops it; tools it declares and can reach",
         "Bands: NOT READY 0-29; PARTIAL 30-54; WORKABLE 55-74; STRONG 75-89; EXCELLENT 90-100",
-        "Thin-evidence rule: confidence is the share of check weight the scorer could actually measure; below 0.75 overall or in any pillar, a score that would land STRONG or EXCELLENT is held at WORKABLE, and lower bands are unchanged",
+        "Thin-evidence rule: below 0.75 confidence overall or in any pillar, a score that would land STRONG or EXCELLENT is held at WORKABLE; lower bands are unchanged",
       ],
       metrics: [],
       steps: [],
@@ -403,6 +407,7 @@ const rawPresentation = {
       notes: [
         "The weighting is the argument: 40 points on the dataset says plainly that optimization cannot outrun the data it is measured on.",
         "Each applicable check is measured, withheld, or not applicable. A withheld check keeps its weight and earns no points; it is not dropped from the denominator to flatter the score.",
+        "Confidence is the share of check weight the scorer could actually measure - measurement coverage, not statistical confidence.",
         "The confidence rule is a ceiling, not a floor. It never promotes NOT READY or PARTIAL to WORKABLE.",
       ],
     },
@@ -488,7 +493,7 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "STAGE 4 OF 5 - OPTIMIZE",
       title: "Search only the space the customer understands and approves.",
-      body: "Managed Traigent search starts under its own approval after the baseline. The coding agent submits the bounded configuration space, monitors the declared limits, and preserves the baseline as the comparison anchor. The aim is a configuration that beats the preserved baseline on the approved objectives, within the approved space and spend.",
+      body: "Managed Traigent search starts under its own approval after the baseline. The coding agent submits the bounded configuration space, monitors the declared limits, and preserves the baseline as the comparison anchor. The aim is a configuration that beats the preserved baseline on the approved objectives, within the approved space and spend; finding none is a reported outcome, not a failure.",
       bullets: [
         "Human separately approves Traigent access, provider use, data movement, the trial bound (maximum number of configurations tested), and spend",
         "Only controls proven meaningful and wired into requests belong in the search space",
@@ -894,7 +899,7 @@ const rawPresentation = {
       eyebrow: "PUBLIC CATALOG APPENDIX - CURRENT AND PLANNED",
       title:
         "Every route ships in the guide today. Public test cases: one so far.",
-      body: "The released guide already routes all five starting states - creating or repairing missing pieces with one user approval. What each row still lacks is a public, context-isolated test scenario in this repository: case 46 covers the ready route; the other four are planned test coverage, not missing capability. An executing-evaluator path stops by design before anything runs, routed to a separate human-reviewed containment step; that shipped stop's public test is likewise planned.",
+      body: "The released guide already routes all five starting states - creating or repairing missing pieces with the user's approval. What each row still lacks is a public, context-isolated test scenario in this repository: case 46 covers the ready route; the other four are planned test coverage, not missing capability. An executing-evaluator path is a designed stop: the guide's contract ends the run before anything executes and routes it to separate human-reviewed containment; that stop's public test is likewise planned.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -925,7 +930,7 @@ const rawPresentation = {
         {
           family: "Evidence strength",
           setup:
-            "Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer keys; small comparison sets, or outcomes graded only on a coarse scale (for example pass/fail)",
+            "Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer keys; small comparison sets, or coarse pass/fail-style outcomes",
           expectedRoute:
             "Label a bounded demonstration honestly, ask for human review where required, and limit the claim",
           coverage: "coverage-target",
@@ -945,9 +950,9 @@ const rawPresentation = {
       ],
       notes: [
         "Do not call the planned rows tests that passed. They describe the next public scenario families to implement and verify.",
-        "Invalid means the evaluator fails known-good/known-bad calibration or cannot make a trustworthy comparison. Unsafe means its resolved path executes candidate code or SQL, shells out with it, or submits it to an execution engine; the current guide stops and routes to manual containment.",
+        "Invalid means the evaluator fails known-good/known-bad calibration or cannot make a trustworthy comparison. Unsafe means its resolved path executes candidate code or SQL, shells out with it, or submits it to an execution engine; the current guide stops and routes to human-reviewed containment.",
         "The current public guide supports non-executing comparison evaluators such as classification, extraction, and short-answer QA.",
-        "Middle evidence tier: the guide repo's offline behavioral-contract suite already exercises the missing, weak, invalid, and zero-anchor routes in CI - deterministic contract tests, not Phase A coding-agent runs. Never call a planned row passed.",
+        "Middle evidence tier: the guide repo's offline behavioral-contract suite already exercises the missing, weak, invalid, and zero-anchor routes in CI - deterministic contract tests, not Phase A coding-agent runs. The execution-safety stop is a documented scope stop with no executable test at any tier. Never call a planned row passed.",
       ],
     },
     {

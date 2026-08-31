@@ -34,8 +34,8 @@ scenario contract**, not **Verified run evidence**.
 The released guide already routes every supported component-readiness state
 toward optimization: ready projects advance to the baseline approval;
 incomplete projects create, repair, or review what is missing, with the user's
-approval; invalid measurement stops before paid work; and unsafe code/SQL
-execution stops for human-reviewed containment. What this repository adds is
+approval; invalid measurement stops before paid work; and for unsafe code/SQL
+execution the contract is a stop for human-reviewed containment. What this repository adds is
 the public, context-isolated test for each route - one route is published
 today. It is a governed path, not a promise that every project can optimize
 immediately or earn an Excellent opening; the full claims model is in
@@ -47,15 +47,15 @@ The catalog currently contains one released scenario. Other starting
 conditions may be described as coverage targets, but they are not published
 scenarios until their complete directory and validated manifest exist here.
 
-| Scenario | Starting condition | Components | Expected route | Evidence scope |
-| --- | --- | --- | --- | --- |
+| Scenario                        | Starting condition            | Components                                                     | Expected route                                     | Evidence scope                                                                 |
+| ------------------------------- | ----------------------------- | -------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `incident-severity-triage` (46) | All required components ready | Agent, dataset, and evaluator are present; four agent controls | Proceed, because the required components are ready | Expected Phase A opening contract; no captured worker run or live optimization |
 
 Its primary dataset is declared and checked as data rather than presentation
 copy:
 
-| Dataset | Task | Shape | Splits | Difficulty | Important limits |
-| --- | --- | --- | --- | --- | --- |
+| Dataset            | Task                        | Shape                                                                                 | Splits                  | Difficulty                             | Important limits                                                                 |
+| ------------------ | --------------------------- | ------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------- | -------------------------------------------------------------------------------- |
 | `incident-reports` | Closed-label classification | 120 unique inputs; 12 observed surface labels mapped to 4 normalized severity classes | 100 tuning / 20 holdout | 30 each: easy, medium, hard, very hard | Traigent-authored synthetic data; no customer data or observed model performance |
 
 These facts come from the scenario's strict `scenario.json` catalog. `check`
@@ -76,14 +76,14 @@ The guide's routing for every family below ships today in
 what this repository tracks is the public, context-isolated test case for each
 route. One is published; five are planned coverage, not test results.
 
-| Family | Starting state the customer brings | What the Guided First Run does | Public case today |
-| --- | --- | --- | --- |
-| Ready control | Agent, labeled data, evaluator, and four varying controls all present | Explain the ready state and stop at the human's baseline approval | `incident-severity-triage` (case 46) - expected Phase A contract only; no captured run |
-| Missing material | Agent, dataset, expected outputs, or evaluator absent while other material remains usable | Preserve what exists; ask once; create or repair only a dependency the selected task requires; otherwise disclose the limitation; re-check before paid work | Planned |
-| Dataset integrity | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage | Repair invalid comparison material; do not optimize against evidence that cannot support the claim | Planned |
-| Evidence strength | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution | Label a bounded demonstration honestly, request human review where required, and limit the claim | Planned |
-| Ruler quality | Missing, slow, opaque, inconsistent, or invalid evaluator | Validate or repair the evaluator before relying on its measurements | Planned |
-| Execution safety and search space | Evaluator path executes candidate code/SQL, or the agent has no meaningful varying controls or has unwired settings | Stop for human-reviewed containment when execution is unsafe; otherwise establish real variation before paid search | Planned |
+| Family                            | Starting state the customer brings                                                                                                     | What the Guided First Run does                                                                                                                              | Public case today                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Ready control                     | Agent, labeled data, evaluator, and four varying controls all present                                                                  | Explain the ready state and stop at the human's baseline approval                                                                                           | `incident-severity-triage` (case 46) - expected Phase A contract only; no captured run |
+| Missing material                  | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                              | Preserve what exists; ask once; create or repair only a dependency the selected task requires; otherwise disclose the limitation; re-check before paid work | Planned                                                                                |
+| Dataset integrity                 | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                    | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                          | Planned                                                                                |
+| Evidence strength                 | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                            | Planned                                                                                |
+| Ruler quality                     | Missing, slow, opaque, inconsistent, or invalid evaluator                                                                              | Validate or repair the evaluator before relying on its measurements                                                                                         | Planned                                                                                |
+| Execution safety and search space | Evaluator path executes candidate code/SQL, or the agent has no meaningful varying controls or has unwired settings                    | Stop for human-reviewed containment when execution is unsafe; otherwise establish real variation before paid search                                         | Planned                                                                                |
 
 ## What you can do here
 
@@ -156,11 +156,11 @@ flowchart TD
 
 ## Three distinct proof layers
 
-| Layer | What happens | What a pass means |
-| --- | --- | --- |
-| Catalog check | `list`, `show`, and `check` inspect public files | The package and expected opening contract are structurally valid and fully materialized |
-| Phase A opening | A fresh worker receives only the prepared project and exact handoff | The captured opening fields match the declared scenario contract |
-| Phase B live optimization | A human separately approves credentials, services, data movement, cost, and mutations | Only the explicitly approved live path was exercised |
+| Layer                     | What happens                                                                          | What a pass means                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Catalog check             | `list`, `show`, and `check` inspect public files                                      | The package and expected opening contract are structurally valid and fully materialized |
+| Phase A opening           | A fresh worker receives only the prepared project and exact handoff                   | The captured opening fields match the declared scenario contract                        |
+| Phase B live optimization | A human separately approves credentials, services, data movement, cost, and mutations | Only the explicitly approved live path was exercised                                    |
 
 A catalog check is not an agent run. A Phase A match is not a live optimization
 or end-to-end result. Phase B is never an automatic continuation of Phase A.

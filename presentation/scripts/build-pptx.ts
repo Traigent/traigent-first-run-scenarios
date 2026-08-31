@@ -8,6 +8,7 @@ import PptxGenJS from "pptxgenjs";
 import { brandBlue, brandName } from "../src/brand";
 import { presentation } from "../src/content";
 import {
+  coverageLabel,
   evidenceLabel,
   type CatalogEntry,
   type PresentationSpec,
@@ -495,9 +496,7 @@ function addStartingPointMatrix(
     const values = [
       row.startingPoint,
       row.safestNextStep,
-      row.coverage === "published"
-        ? "Available here: case 46"
-        : "Shipped in the guide; public test case planned",
+      coverageLabel(row.coverage),
     ];
     let cellX = CONTENT_X;
     values.forEach((value, columnIndex) => {
@@ -588,14 +587,12 @@ function addScenarioCoverageMatrix(
     x += widths[index]!;
   });
   slideSpec.scenarioMatrix.forEach((row, rowIndex) => {
-    const y = DETAIL_TOP + 0.43 + rowIndex * 0.55;
+    const y = DETAIL_TOP + 0.43 + rowIndex * 0.62;
     const values = [
       row.family,
       row.setup,
       row.expectedRoute,
-      row.coverage === "published"
-        ? "Available here: case 46"
-        : "Shipped in the guide; public test case planned",
+      coverageLabel(row.coverage),
     ];
     let cellX = CONTENT_X;
     values.forEach((value, columnIndex) => {

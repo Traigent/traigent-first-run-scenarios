@@ -879,6 +879,10 @@ h1 {
     padding-inline: 0.65rem;
   }
 
+  .slide-brand {
+    display: none;
+  }
+
   .topbar {
     padding-inline: 0.35rem;
   }

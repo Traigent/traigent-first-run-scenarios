@@ -40,9 +40,11 @@ Each of the 120 lines is one JSON object with three keys - `input`, `output`,
 and `metadata`:
 
 ```json
-{"input": "Every checkout attempt has returned a 502 for the last eleven minutes.",
- "output": "SEV1",
- "metadata": {"difficulty": "easy", "split": "tuning", "provenance": "real"}}
+{
+  "input": "Every checkout attempt has returned a 502 for the last eleven minutes.",
+  "output": "SEV1",
+  "metadata": { "difficulty": "easy", "split": "tuning", "provenance": "real" }
+}
 ```
 
 - `input` - the incident-report text the agent classifies.
@@ -50,8 +52,8 @@ and `metadata`:
   (`SEV1`-`SEV4`, `P1`-`P4`, `Critical`, `High`, `Medium`, `Low`). Different
   fictional ticketing systems use different vocabularies; the evaluator
   normalizes them, so `SEV1`, `P1`, and `Critical` all count as the same class,
-  `severity-1`. The full 12-to-4 map is `label_shape.normalization_map` in
-  `scenario.json`.
+  `severity-1`. The full 12-to-4 map is the dataset entry's `label_shape.normalization_map`
+  under `catalog.datasets` in `scenario.json`.
 - `metadata.split` - `tuning` (100 rows) or `holdout` (20 rows). Holdout rows
   are reserved for checking a winner outside the tuning data.
 - `metadata.difficulty` - `easy`, `medium`, `hard`, or `very-hard`, 30 rows

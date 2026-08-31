@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { brandName, traigentLogoPngDataUri } from "./brand";
 import { presentation } from "./content";
-import { evidenceLabel, type CatalogEntry, type SlideSpec } from "./model";
+import {
+  coverageLabel,
+  evidenceLabel,
+  type CatalogEntry,
+  type SlideSpec,
+} from "./model";
 
 function initialSlideIndex(): number {
   const slideId = window.location.hash.replace(/^#\/?/, "");
@@ -125,9 +130,7 @@ function ScenarioCoverageMatrix({ slide }: { slide: SlideSpec }) {
               <td>{row.expectedRoute}</td>
               <td>
                 <span className={`coverage coverage-${row.coverage}`}>
-                  {row.coverage === "published"
-                    ? "Available here: case 46"
-                    : "Shipped in the guide; public test case planned"}
+                  {coverageLabel(row.coverage)}
                 </span>
               </td>
             </tr>
@@ -165,9 +168,7 @@ function StartingPointMatrix({ slide }: { slide: SlideSpec }) {
               <td>{row.safestNextStep}</td>
               <td>
                 <span className={`coverage coverage-${row.coverage}`}>
-                  {row.coverage === "published"
-                    ? "Available here: case 46"
-                    : "Shipped in the guide; public test case planned"}
+                  {coverageLabel(row.coverage)}
                 </span>
               </td>
             </tr>

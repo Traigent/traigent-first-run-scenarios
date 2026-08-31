@@ -207,6 +207,14 @@ export function parsePresentation(value: unknown): PresentationSpec {
   return presentationSchema.parse(value);
 }
 
+export function coverageLabel(
+  coverage: "published" | "coverage-target",
+): string {
+  return coverage === "published"
+    ? "Available here: case 46"
+    : "Shipped in the guide; public test case planned";
+}
+
 export function evidenceLabel(state: EvidenceState): string {
   switch (state) {
     case "scenario-contract":

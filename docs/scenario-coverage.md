@@ -4,8 +4,8 @@
 
 This repository currently publishes one scenario:
 
-| Public scenario | Starting state | Dataset | Evaluator | Expected Phase A route |
-| --- | --- | --- | --- | --- |
+| Public scenario                             | Starting state                                                        | Dataset                                                                                                                                                       | Evaluator                                                                                | Expected Phase A route                                            |
+| ------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `incident-severity-triage` (legacy case 46) | Agent, labeled data, evaluator, and four varying controls are present | 120 Traigent-authored synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 surface labels mapped to four severity classes | Deterministic, non-executing normalized exact match with two supplied calibration probes | Explain the ready state and stop at the human's baseline approval |
 
 Case 46 is a complete control for the ready-components route. Its expected
@@ -41,13 +41,13 @@ becomes published only after a complete scenario directory, redistribution
 review, strict manifest, materialized dataset checks, and case-specific
 verifier contract are present in this repository.
 
-| Planned family | Material and dataset archetype | Behavior to exercise | Status |
-| --- | --- | --- | --- |
-| Missing material | Agent, dataset, expected outputs, or evaluator absent while other material remains usable | Preserve what exists; ask once; create or repair only a dependency the selected task requires; otherwise disclose the limitation; re-check before paid work | Planned; not released or passed |
-| Dataset integrity | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage | Repair invalid comparison material; do not optimize against evidence that cannot support the claim | Planned; not released or passed |
-| Evidence strength | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution | Label a bounded demonstration honestly, request human review where required, and limit the claim | Planned; not released or passed |
-| Ruler quality | Missing, slow, opaque, inconsistent, or invalid evaluator | Validate or repair the ruler before relying on its measurements | Planned; not released or passed |
-| Execution safety and search space | Evaluator path executes candidate code/SQL, or the agent has no meaningful varying controls or has unwired settings | Stop for manual containment when execution is unsafe; otherwise establish real variation before paid search | Planned; not released or passed |
+| Planned family                    | Material and dataset archetype                                                                                                         | Behavior to exercise                                                                                                                                        | Status                          |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Missing material                  | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                              | Preserve what exists; ask once; create or repair only a dependency the selected task requires; otherwise disclose the limitation; re-check before paid work | Planned; not released or passed |
+| Dataset integrity                 | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                    | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                          | Planned; not released or passed |
+| Evidence strength                 | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                            | Planned; not released or passed |
+| Ruler quality                     | Missing, slow, opaque, inconsistent, or invalid evaluator                                                                              | Validate or repair the ruler before relying on its measurements                                                                                             | Planned; not released or passed |
+| Execution safety and search space | Evaluator path executes candidate code/SQL, or the agent has no meaningful varying controls or has unwired settings                    | Stop for human-reviewed containment when execution is unsafe; otherwise establish real variation before paid search                                         | Planned; not released or passed |
 
 "Planned" describes the public, context-isolated test scenario for a family,
 not the guide behavior itself: the routing in the "Behavior to exercise"
@@ -93,11 +93,11 @@ dataset.
 
 Coverage and evidence are separate:
 
-| Layer | A pass supports | It does not prove |
-| --- | --- | --- |
-| Catalog check | Published files and the semantic contract are structurally valid and match declared materialized facts | Worker behavior or live value |
-| Phase A opening | The captured opening fields matched the public contract in that recorded, context-isolated run | Paid baseline or managed optimization |
-| Phase B live path | Evidence for the explicitly approved baseline, search, and result that actually ran | A universal outcome, another environment, or production safety |
+| Layer             | A pass supports                                                                                        | It does not prove                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| Catalog check     | Published files and the semantic contract are structurally valid and match declared materialized facts | Worker behavior or live value                                  |
+| Phase A opening   | The captured opening fields matched the public contract in that recorded, context-isolated run         | Paid baseline or managed optimization                          |
+| Phase B live path | Evidence for the explicitly approved baseline, search, and result that actually ran                    | A universal outcome, another environment, or production safety |
 
 The onboarding goal is to route every supported starting state as far toward
 optimization as its evidence and human approvals permit. Missing foundations
