@@ -950,7 +950,7 @@ const rawPresentation = {
       ],
       notes: [
         "Do not call the planned rows tests that passed. They describe the next public scenario families to implement and verify.",
-        "Invalid means the evaluator fails known-good/known-bad calibration or cannot make a trustworthy comparison. Unsafe means its resolved path executes candidate code or SQL, shells out with it, or submits it to an execution engine; the current guide stops and routes to human-reviewed containment.",
+        "Invalid means the evaluator fails known-good/known-bad calibration or cannot make a trustworthy comparison. Unsafe means its resolved path executes candidate code or SQL, shells out with it, or submits it to an execution engine; the current guide's contract is to stop and route to human-reviewed containment.",
         "The current public guide supports non-executing comparison evaluators such as classification, extraction, and short-answer QA.",
         "Middle evidence tier: the guide repo's offline behavioral-contract suite already exercises the missing, weak, invalid, and zero-anchor routes in CI - deterministic contract tests, not Phase A coding-agent runs. The execution-safety stop is a documented scope stop with no executable test at any tier. Never call a planned row passed.",
       ],

@@ -34,8 +34,8 @@ scenario contract**, not **Verified run evidence**.
 The released guide already routes every supported component-readiness state
 toward optimization: ready projects advance to the baseline approval;
 incomplete projects create, repair, or review what is missing, with the user's
-approval; invalid measurement stops before paid work; and for unsafe code/SQL
-execution the contract is a stop for human-reviewed containment. What this repository adds is
+approval; invalid measurement stops before paid work; and on unsafe code/SQL
+execution the contract is a stop routed to human-reviewed containment. What this repository adds is
 the public, context-isolated test for each route - one route is published
 today. It is a governed path, not a promise that every project can optimize
 immediately or earn an Excellent opening; the full claims model is in
