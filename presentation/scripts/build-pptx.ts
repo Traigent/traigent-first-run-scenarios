@@ -5,6 +5,7 @@ import path from "node:path";
 import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 
+import { brandBlue, brandName } from "../src/brand";
 import { presentation } from "../src/content";
 import {
   evidenceLabel,
@@ -71,6 +72,68 @@ function addBackground(pptx: PptxGenJS, slide: PptxGenJS.Slide): void {
   });
 }
 
+// The traigent.ai mark, re-drawn from native vector shapes because this build
+// intentionally ships no raster media (its image parser is disabled as a
+// supply-chain mitigation). Geometry is measured from the 155x125 header icon
+// and expressed in icon pixels, scaled uniformly to the placed height.
+const BRAND_MARK = {
+  sourceWidth: 155,
+  sourceHeight: 125,
+  bars: [
+    { x: 20, y: 14, w: 90, h: 24 },
+    { x: 12, y: 54, w: 95, h: 24 },
+    { x: 28, y: 94, w: 88, h: 24 },
+  ],
+  chevronArms: [
+    { cx: 116, cy: 37, length: 75, thickness: 24, rotate: 42 },
+    { cx: 116, cy: 88, length: 75, thickness: 24, rotate: -42 },
+  ],
+} as const;
+
+function addBrand(pptx: PptxGenJS, slide: PptxGenJS.Slide): void {
+  const markHeight = 0.26;
+  const markTop = 0.09;
+  const scale = markHeight / BRAND_MARK.sourceHeight;
+
+  for (const bar of BRAND_MARK.bars) {
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: CONTENT_X + bar.x * scale,
+      y: markTop + bar.y * scale,
+      w: bar.w * scale,
+      h: bar.h * scale,
+      rectRadius: (bar.h * scale) / 2,
+      line: { color: brandBlue, transparency: 100 },
+      fill: { color: brandBlue },
+    });
+  }
+  for (const arm of BRAND_MARK.chevronArms) {
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: CONTENT_X + (arm.cx - arm.length / 2) * scale,
+      y: markTop + (arm.cy - arm.thickness / 2) * scale,
+      w: arm.length * scale,
+      h: arm.thickness * scale,
+      rectRadius: (arm.thickness * scale) / 2,
+      rotate: arm.rotate,
+      line: { color: brandBlue, transparency: 100 },
+      fill: { color: brandBlue },
+    });
+  }
+  slide.addText(brandName, {
+    x: CONTENT_X + BRAND_MARK.sourceWidth * scale + 0.12,
+    y: markTop - 0.02,
+    w: 2.2,
+    h: markHeight + 0.04,
+    margin: 0,
+    color: theme.colors.text,
+    fontFace: theme.fonts.sans,
+    fontSize: 11,
+    bold: true,
+    charSpacing: 0.2,
+    valign: "middle",
+    breakLine: false,
+  });
+}
+
 function addHeading(slide: PptxGenJS.Slide, slideSpec: SlideSpec): void {
   const titleFontSize = slideSpec.kind === "hero" ? 34 : 28;
 
@@ -82,7 +145,7 @@ function addHeading(slide: PptxGenJS.Slide, slideSpec: SlideSpec): void {
     margin: 0,
     color: theme.colors.blueBright,
     fontFace: theme.fonts.sans,
-    fontSize: 9,
+    fontSize: 10,
     bold: true,
     charSpacing: 2.1,
     breakLine: false,
@@ -98,6 +161,7 @@ function addHeading(slide: PptxGenJS.Slide, slideSpec: SlideSpec): void {
     fontFace: theme.fonts.sans,
     fontSize: titleFontSize,
     bold: true,
+    align: "left",
     breakLine: false,
     valign: "middle",
   });
@@ -698,38 +762,40 @@ function addFooter(
     fill: { color: badgeColor, transparency: 86 },
   });
   slide.addText(evidenceLabel(slideSpec.evidenceState), {
-    x: CONTENT_X + 0.12,
-    y: FOOTER_TOP + 0.05,
-    w: 1.94,
-    h: 0.16,
+    x: CONTENT_X + 0.08,
+    y: FOOTER_TOP + 0.03,
+    w: 2.02,
+    h: 0.24,
     margin: 0,
     color: badgeColor,
     fontFace: theme.fonts.sans,
-    fontSize: 6.5,
+    fontSize: 7.5,
     bold: true,
     align: "center",
+    valign: "middle",
   });
   slide.addText(slideSpec.evidence.join(" | "), {
     x: CONTENT_X + 2.38,
-    y: FOOTER_TOP + 0.02,
-    w: 8.7,
-    h: 0.22,
+    y: FOOTER_TOP,
+    w: 8.35,
+    h: 0.3,
     margin: 0,
     color: theme.colors.muted,
     fontFace: theme.fonts.sans,
-    fontSize: 6.5,
+    fontSize: 7.5,
     valign: "middle",
   });
   slide.addText(`${slideNumber} / ${slideCount}`, {
-    x: 11.8,
-    y: FOOTER_TOP + 0.02,
-    w: 0.7,
-    h: 0.22,
+    x: 11.75,
+    y: FOOTER_TOP,
+    w: 0.75,
+    h: 0.3,
     margin: 0,
     color: theme.colors.muted,
     fontFace: theme.fonts.mono,
-    fontSize: 6.5,
+    fontSize: 7.5,
     align: "right",
+    valign: "middle",
   });
 }
 
@@ -822,6 +888,7 @@ export function createPptx(value: PresentationSpec = presentation): PptxGenJS {
   validated.slides.forEach((slideSpec, index) => {
     const slide = pptx.addSlide({ masterName: MASTER_NAME });
     addBackground(pptx, slide);
+    addBrand(pptx, slide);
     addHeading(slide, slideSpec);
     addSlideContent(pptx, slide, slideSpec, validated.catalog);
     addFooter(pptx, slide, slideSpec, index + 1, validated.slides.length);

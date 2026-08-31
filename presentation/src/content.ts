@@ -232,12 +232,12 @@ const rawPresentation = {
         `Agent (${scenario.catalog.components.agent.state}): ${scenario.catalog.components.agent.controls.length} controls - ${scenario.catalog.components.agent.controls.map(humanize).join(", ")}`,
         `Dataset (${scenario.catalog.components.data.state}): ${dataset.rows} rows / ${dataset.unique_inputs} unique inputs`,
         `Evaluator (${scenario.catalog.components.evaluator.state}): ${humanize(scenario.catalog.components.evaluator.method ?? "not declared")}`,
-        `Calibration material: ${calibrationCount} deterministic case(s) supplied`,
+        `Calibration material: ${calibrationCount} deterministic ${calibrationCount === 1 ? "case" : "cases"} supplied`,
       ],
       dataset: `${contentOriginLabel} content under ${scenario.content.license}; ${dataset.rows} rows (${dataset.unique_inputs} unique); ${splitSummary}; difficulty: ${difficultySummary}; ${labelSummary}. Limitations: ${dataset.limitations.map(humanize).join(", ")}. Row provenance values are simulated scorer metadata, not source-origin claims.`,
-      evaluator: `${sentenceCase(dataset.task ?? "task not declared")} with ${humanize(scenario.catalog.components.evaluator.method ?? "no evaluator method declared")}; ${calibrationCount} deterministic calibration probe(s) are supplied, but no calibration execution or model accuracy is claimed.`,
+      evaluator: `${sentenceCase(dataset.task ?? "task not declared")} with ${humanize(scenario.catalog.components.evaluator.method ?? "no evaluator method declared")}; ${calibrationCount} deterministic calibration ${calibrationCount === 1 ? "case is" : "cases are"} supplied, but no calibration execution or model accuracy is claimed.`,
       expectedRouting: `Case-specific opening contract: ${expectedRouteSummary}. Rationale: ${humanize(scenario.catalog.expected_route.rationale)}.`,
-      testedLayer: `${scenario.catalog.evidence.demonstrates.map(sentenceCase).join("; ")}. No recorded worker run is supplied in this release.`,
+      testedLayer: `${scenario.catalog.evidence.demonstrates.map(sentenceCase).join("; ")}. No recorded coding-agent run is supplied in this release.`,
       notProven:
         scenario.catalog.evidence.does_not_demonstrate.map(sentenceCase),
     },
@@ -255,89 +255,11 @@ const rawPresentation = {
       metrics: [],
       steps: [],
       evidenceState: "not-demonstrated",
-      evidence: ["Method preview; no fresh worker run supplied"],
+      evidence: ["Method preview; no fresh coding-agent run supplied"],
       notes: [
         "Lead with routing. Never promise a band - the customer's own material decides the ceiling before we run anything.",
         "The coding agent inspects and prepares. The human owns domain choices and approvals. The Traigent service is used only later for an explicitly approved managed search.",
-        'Talk track: the deliverable of the first run is a truthful position and a next step, not a score. A project told "your evaluator is broken, fix it first" received a useful answer without a paid optimization.',
-      ],
-    },
-    {
-      id: "different-starting-points",
-      kind: "matrix",
-      eyebrow: "PUBLIC COVERAGE - CURRENT AND PLANNED",
-      title:
-        "Available now: one complete scenario. The wider bank is a roadmap.",
-      body: "Case 46 is the only complete scenario directory included in this repository today. The other rows are design targets: they have no complete public case and no pass result here. An executing-evaluator path would run candidate code or SQL, or shell out with it; that stop-route is planned coverage, not a current scenario test.",
-      bullets: [],
-      metrics: [],
-      steps: [],
-      scenarioMatrix: [
-        {
-          family: "Ready control",
-          setup: `${dataset.rows} labeled synthetic incident reports (${splitSummary}); usable agent controls; deterministic non-executing evaluator`,
-          expectedRoute:
-            "Recognize that the components are ready, explain the opening, and stop at baseline approval",
-          coverage: "published",
-        },
-        {
-          family: "Missing material",
-          setup:
-            "Agent, dataset, expected outputs, or evaluator absent while other customer material may still be usable",
-          expectedRoute:
-            "Preserve what exists; ask once; create or repair only a dependency the selected task requires; otherwise disclose the limit; re-check before paid work",
-          coverage: "coverage-target",
-        },
-        {
-          family: "Dataset integrity",
-          setup:
-            "Malformed or unknown row shapes; missing labels; empty or overlapping splits; duplicates or leakage",
-          expectedRoute:
-            "Repair invalid comparison material; do not optimize against a split or answer key that cannot support the claim",
-          coverage: "coverage-target",
-        },
-        {
-          family: "Evidence strength",
-          setup:
-            "Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer keys; small comparison sets or coarse outcome resolution",
-          expectedRoute:
-            "Label a bounded demonstration honestly, ask for human review where required, and limit the claim",
-          coverage: "coverage-target",
-        },
-        {
-          family: "Ruler and execution boundary",
-          setup:
-            "Missing, uncalibrated, inconsistent, or candidate-executing evaluator; no meaningful varying agent controls; unwired settings",
-          expectedRoute:
-            "Validate or repair the ruler, establish real variation, or stop for manual containment before paid search",
-          coverage: "coverage-target",
-        },
-      ],
-      evidenceState: "not-demonstrated",
-      evidence: [
-        "Case 46 is available and catalog-checkable; all other scenario families are planned only",
-      ],
-      notes: [
-        "Do not call the planned rows tests that passed. They describe the next public scenario families to implement and verify.",
-        "Invalid means the evaluator fails known-good/known-bad calibration or cannot make a trustworthy comparison. Unsafe means its resolved path executes candidate code or SQL, shells out with it, or submits it to an execution engine; the current guide stops and routes to manual containment.",
-        "The current public guide supports non-executing comparison evaluators such as classification, extraction, and short-answer QA.",
-      ],
-    },
-    {
-      id: "one-customer-prompt",
-      kind: "handoff",
-      eyebrow: "FOR THE CUSTOMER'S REAL PROJECT",
-      title:
-        "Start with one prompt to the coding agent already on the project.",
-      body: "The guide carries the workflow. The human keeps control of domain decisions, credentials, cost, data movement, and production-affecting actions.",
-      quote: customerPrompt,
-      bullets: [],
-      metrics: [],
-      steps: [],
-      evidenceState: "not-demonstrated",
-      evidence: ["Real-project guide handoff; outcome not demonstrated here"],
-      notes: [
-        "This clone prompt is for the customer's own project, not the context-isolated scenario audit.",
+        'Talk track: the deliverable of the first run is a truthful position and a next step, not a score. A project told "your evaluator is broken, fix it first" would still have received a useful answer without a paid optimization.',
       ],
     },
     {
@@ -358,7 +280,7 @@ const rawPresentation = {
         {
           label: "2 Readiness",
           detail:
-            "Score evidence across agent, dataset, and evaluation; apply caps; explain the route. Stop before paid work when the ruler is invalid or unsafe.",
+            "Score evidence across agent, dataset, and evaluation; apply caps; explain the route. Stop before paid work when the evaluator is invalid or unsafe.",
           executor: "Coding agent",
           humanGate: "Human decides",
         },
@@ -394,6 +316,23 @@ const rawPresentation = {
       ],
     },
     {
+      id: "one-customer-prompt",
+      kind: "handoff",
+      eyebrow: "FOR THE CUSTOMER'S REAL PROJECT",
+      title:
+        "Start with one prompt to the coding agent already on the project.",
+      body: "The guide carries the workflow. The human keeps control of domain decisions, credentials, cost, data movement, and production-affecting actions.",
+      quote: customerPrompt,
+      bullets: [],
+      metrics: [],
+      steps: [],
+      evidenceState: "not-demonstrated",
+      evidence: ["Real-project guide handoff; outcome not demonstrated here"],
+      notes: [
+        "This clone prompt is for the customer's own project, not the context-isolated scenario audit.",
+      ],
+    },
+    {
       id: "stage-inspect",
       kind: "statement",
       eyebrow: "STAGE 1 OF 5 - INSPECT",
@@ -420,12 +359,12 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "STAGE 2 OF 5 - READINESS",
       title: "Turn the starting state into a route, not a sales score.",
-      body: "The coding agent evaluates the agent, dataset, and ruler; runs only an evaluator path proven local, side-effect-free, and non-executing; applies evidence ceilings; and names the shortest justified next action.",
+      body: "The coding agent evaluates the agent, dataset, and evaluator; runs the evaluator only on a path proven local, side-effect-free, and non-executing; applies evidence ceilings; and names the shortest justified next action.",
       bullets: [
         "Ready: explain the opening and stop at the human's baseline approval",
         "Missing: ask once, then create or repair one coherent component set if the human agrees",
         "Limited evidence: allow only a clearly bounded demonstration or request stronger material",
-        "Invalid ruler: repair and revalidate before any paid comparison",
+        "Invalid evaluator: repair and revalidate before any paid comparison",
         "Candidate code/SQL execution: stop and route to manual containment outside this guide",
         "After a repair: re-check the gate and continue; never rewrite the original opening as though the gap never existed",
       ],
@@ -466,7 +405,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - WHAT CAPS THE SCORE",
       title: "A cap is a maximum, not a deduction.",
-      body: "A cap is the highest overall score a specific evidence condition permits. The customer's material therefore sets a ceiling before paid work begins. Only the ready-control row has a complete public scenario here; the other rows are scorer rules and planned scenario coverage.",
+      body: "A cap is the highest overall score a specific evidence condition permits. The customer's material therefore sets a ceiling before paid work begins. Only the ready-control row has a complete public scenario here; the other rows are readiness-scorer rules and planned scenario coverage.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -479,16 +418,16 @@ const rawPresentation = {
         },
         {
           startingPoint:
-            "The scorer rates a known-bad answer as highly as a known-good answer",
+            "The evaluator rates a known-bad answer as highly as a known-good answer",
           safestNextStep:
-            "Ceiling 25 and BLOCKED; repair and revalidate the scorer first",
+            "Ceiling 25 and BLOCKED; repair and revalidate the evaluator first",
           coverage: "coverage-target",
         },
         {
           startingPoint:
-            "The scorer is unvalidated, or nothing in the agent varies",
+            "The evaluator is unvalidated, or nothing in the agent varies",
           safestNextStep:
-            "Ceiling 45; validate the scorer or wire a setting worth searching",
+            "Ceiling 45; validate the evaluator or wire a setting worth searching",
           coverage: "coverage-target",
         },
         {
@@ -683,10 +622,10 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "PUBLIC AND REPRODUCIBLE",
       title: "The scenario is public. The individual run is context-isolated.",
-      body: "A fresh worker receives the materialized customer project, including its own evaluator, plus the guide and handoff. The scenario verifier, expected result, and previous outputs stay outside its assigned context.",
+      body: "A fresh coding-agent session receives a clean copy of the customer-shaped project, including its evaluator, plus the guide and handoff. The scenario verifier, expected result, and previous outputs stay outside that session's assigned context.",
       bullets: [
         "Anyone can inspect and reproduce the scenario",
-        "The worker is blinded to the expected result and captain-side verifier",
+        "The coding-agent session is not given the expected result or the verifier kept by the test operator",
         "Public availability is not adversarial benchmark secrecy",
       ],
       metrics: [],
@@ -694,7 +633,7 @@ const rawPresentation = {
       evidenceState: "scenario-contract",
       evidence: ["Public scenario isolation methodology"],
       notes: [
-        "Customer language: public means inspectable; context-isolated means the worker does not receive the expected answer.",
+        "Customer language: public means inspectable; context-isolated means the coding-agent session does not receive the expected answer.",
       ],
     },
     {
@@ -709,7 +648,7 @@ const rawPresentation = {
         `Even difficulty coverage: ${difficultySummary}, so the public pool does not win its score by concentrating only on easy cases`,
         `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison`,
         "A row value such as provenance: real is fictional user-declared scorer input, not a statement about where the repository file came from",
-        "The scenario and expected result are public for inspection; the fresh worker receives neither the expected result nor captain-side verifier",
+        "The scenario and expected result are public for inspection; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
         "The 100/20 split demonstrates separate tuning and holdout pools; a paid run must still record the exact bounded rows it actually uses",
       ],
       metrics: [],
@@ -721,7 +660,7 @@ const rawPresentation = {
       ],
       notes: [
         "Repository origin and in-world row provenance are two different contracts. Never describe these rows as collected customer incidents.",
-        "Public inspectability makes the test explainable. Context isolation keeps the expected result out of the assigned worker context; it does not claim secrecy against deliberate lookup.",
+        "Public inspectability makes the test explainable. Context isolation keeps the expected result out of the assigned coding-agent context; it does not claim secrecy against deliberate lookup.",
       ],
     },
     {
@@ -755,7 +694,7 @@ const rawPresentation = {
           tone: "blue",
         },
         {
-          label: "Calibration probes",
+          label: "Calibration cases",
           value: String(calibrationCount),
           detail: "Supplied; no execution claimed",
           tone: "violet",
@@ -779,11 +718,11 @@ const rawPresentation = {
       eyebrow: "REPOSITORY ORGANIZATION",
       title:
         "Each public scenario is complete, inspectable, and independently resettable.",
-      body: "The repository keeps customer-shaped project files, captain-side expectations, methodology, and presentation tooling in explicit locations. Scenarios are not assembled from hidden fragments, and another repository's Git history is not carried into this one.",
+      body: "The repository keeps customer-shaped project files, operator-side expectations, methodology, and presentation tooling in explicit locations. Scenarios are not assembled from hidden fragments, and another repository's Git history is not carried into this one.",
       bullets: [
-        "scenarios/<slug>/project: files the fresh worker receives",
+        "scenarios/<slug>/project: files copied into the fresh coding-agent session",
         "scenarios/<slug>/scenario.json: identity, component state, dataset facts, expected route, and evidence limits",
-        "scenarios/<slug>/verifier: captain-side semantic contract; never copied into the worker project",
+        "scenarios/<slug>/verifier: the test operator's semantic contract; never copied into the session's project",
         "scenario.py: list, show, check, prepare, and verify without importing scenario code",
         "docs and GUIDE.md: evidence model plus customer-PC operating procedure",
         "presentation: one validated content source rendered as browser HTML and editable PowerPoint",
@@ -799,7 +738,7 @@ const rawPresentation = {
     {
       id: "expected-opening",
       kind: "statement",
-      eyebrow: "CASE-SPECIFIC ORACLE",
+      eyebrow: "CASE-SPECIFIC EXPECTED RESULT",
       title:
         "This case expects 92/100, sufficient confidence, and no caps. Other states can route differently.",
       body: "An opening is the readiness answer before any paid work. The band summarizes where the project stands, the action says what to do next, and the caps are the honest limits - each one a maximum that no amount of quality elsewhere can lift. The aim is not to move every project to the top band. It is to say truthfully where the project is, what is holding the ceiling down, and what the shortest safe step is.",
@@ -818,7 +757,7 @@ const rawPresentation = {
       notes: [
         'If a prospect asks "will we get Excellent?", the honest answer is: show me your data, your evaluator, and whether anything in your agent varies - those three set your ceiling before we run anything.',
         "Do not sell the band. Sell the routing: the value is being told where you are and what to fix before model-provider or Traigent-service calls and spend.",
-        "The oracle is the answer this public scenario is designed to expect, not a benchmark other projects are measured against.",
+        "The expected result is specific to this public scenario, not a benchmark other projects are measured against.",
       ],
     },
     {
@@ -838,7 +777,7 @@ const rawPresentation = {
         },
         {
           layer: "Phase A",
-          action: "Fresh worker performs Inspect and Readiness",
+          action: "Fresh coding-agent session performs Inspect and Readiness",
           passSupports:
             "Captured readiness matched the public contract in that recorded run",
           doesNotProve: "Paid baseline or optimization",
@@ -854,7 +793,7 @@ const rawPresentation = {
       evidenceState: "scenario-contract",
       evidence: ["Published verification and phase boundaries"],
       notes: [
-        "Catalog check validates the package; it does not run a worker.",
+        "Catalog check validates the package; it does not run a coding agent.",
         "Phase A covers Inspect and Readiness. Phase B covers approved Baseline, Optimize, and Results.",
       ],
     },
@@ -863,7 +802,7 @@ const rawPresentation = {
       kind: "journey",
       eyebrow: "REPRODUCE ON A CUSTOMER PC",
       title: "One safe preparation flow, one independent result check.",
-      body: "The public CLI creates a disposable worker directory without verifier material. After the opening, the test operator checks saved readiness JSON against the contract and scenario revision recorded in run.json.",
+      body: "Start at https://github.com/Traigent/traigent-first-run-scenarios and follow docs/customer-pc-runbook.md. The CLI creates a disposable project copy without verifier material; the test operator then checks saved readiness JSON against the contract and scenario revision in run.json.",
       bullets: [],
       metrics: [],
       steps: [
@@ -874,7 +813,7 @@ const rawPresentation = {
         },
         {
           label: "Prepare",
-          detail: "Materialize project plus a pinned local guide checkout.",
+          detail: "Copy the project with a pinned local guide checkout.",
           executor: "Human operator",
         },
         {
@@ -893,7 +832,7 @@ const rawPresentation = {
       evidenceState: "scenario-contract",
       evidence: ["Public scenario CLI and customer-PC runbook"],
       notes: [
-        "The public verifier remains with the test operator, outside the worker directory.",
+        "The public verifier remains with the test operator, outside the coding agent's project copy.",
       ],
     },
     {
@@ -908,6 +847,7 @@ const rawPresentation = {
         "Access codes and API keys belong to separately approved Phase B",
         "No claim of quality, cost, or latency improvement",
         "No production mutation or private-data egress",
+        "The coding-agent service itself may be remote and billed; the human approves that service and the context it receives",
       ],
       metrics: [],
       steps: [],
@@ -924,12 +864,12 @@ const rawPresentation = {
       title:
         "Choose a path: reproduce the public case or inspect a real project.",
       accent: "Choose a path",
-      body: "These are independent actions with different handoffs and evidence. Auditing case 46 is not a prerequisite for using the guide on a real project, and neither action pre-authorizes paid or connected work.",
+      body: "The two paths are independent, with different handoffs and evidence. Auditing case 46 is not a prerequisite for using the guide on a real project, and neither path pre-authorizes paid or connected work.",
       bullets: [
-        "Audit: run list, check, and prepare; give a fresh worker only the handoff printed by prepare",
-        "Reproduce: save the Phase A readiness JSON and verify it against the case contract recorded in run.json",
-        "Try your project: use the public clone prompt shown earlier in the repository you want inspected",
-        "Authorize Phase B only after reviewing credentials, provider cost, and data boundaries",
+        "Path A - Audit the public case: run list, check, and prepare; give a fresh coding agent only the handoff printed by prepare",
+        "Path A - Verify what came back: save the Phase A readiness JSON and check it against the case contract recorded in run.json",
+        "Path B - Your real project: paste the public clone prompt shown earlier into the coding agent in the repository you want inspected",
+        "Neither path authorizes paid work: Phase B starts only after the human reviews credentials, provider cost, and data boundaries",
       ],
       metrics: [],
       steps: [],
@@ -938,6 +878,67 @@ const rawPresentation = {
       notes: [
         "The two available paths are alternatives: audit the public scenario, or try the guide on the customer's own project.",
         "The context-isolated audit uses the separate handoff printed by prepare, while the real project uses the clone prompt.",
+      ],
+    },
+    {
+      id: "different-starting-points",
+      kind: "matrix",
+      eyebrow: "PUBLIC CATALOG APPENDIX - CURRENT AND PLANNED",
+      title:
+        "Available now: one complete scenario. The wider bank is a roadmap.",
+      body: "Case 46 is the only complete scenario directory included in this repository today. The other rows are design targets: they have no complete public case and no pass result here. An executing-evaluator path would run candidate code or SQL, or shell out with it; that stop-route is planned coverage, not a current scenario test.",
+      bullets: [],
+      metrics: [],
+      steps: [],
+      scenarioMatrix: [
+        {
+          family: "Ready control",
+          setup: `${dataset.rows} labeled synthetic incident reports (${splitSummary}); usable agent controls; deterministic non-executing evaluator`,
+          expectedRoute:
+            "Recognize that the components are ready, explain the opening, and stop at baseline approval",
+          coverage: "published",
+        },
+        {
+          family: "Missing material",
+          setup:
+            "Agent, dataset, expected outputs, or evaluator absent while other customer material may still be usable",
+          expectedRoute:
+            "Preserve what exists; ask once; create or repair only a dependency the selected task requires; otherwise disclose the limit; re-check before paid work",
+          coverage: "coverage-target",
+        },
+        {
+          family: "Dataset integrity",
+          setup:
+            "Malformed or unknown row shapes; missing labels; empty or overlapping splits; duplicates or leakage",
+          expectedRoute:
+            "Repair invalid comparison material; do not optimize against a split or answer key that cannot support the claim",
+          coverage: "coverage-target",
+        },
+        {
+          family: "Evidence strength",
+          setup:
+            "Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer keys; small comparison sets or coarse outcome resolution",
+          expectedRoute:
+            "Label a bounded demonstration honestly, ask for human review where required, and limit the claim",
+          coverage: "coverage-target",
+        },
+        {
+          family: "Evaluator and execution boundary",
+          setup:
+            "Missing, uncalibrated, inconsistent, or candidate-executing evaluator; no meaningful varying agent controls; unwired settings",
+          expectedRoute:
+            "Validate or repair the evaluator, establish real variation, or stop for manual containment before paid search",
+          coverage: "coverage-target",
+        },
+      ],
+      evidenceState: "not-demonstrated",
+      evidence: [
+        "Case 46 is available and catalog-checkable; all other scenario families are planned only",
+      ],
+      notes: [
+        "Do not call the planned rows tests that passed. They describe the next public scenario families to implement and verify.",
+        "Invalid means the evaluator fails known-good/known-bad calibration or cannot make a trustworthy comparison. Unsafe means its resolved path executes candidate code or SQL, shells out with it, or submits it to an execution engine; the current guide stops and routes to manual containment.",
+        "The current public guide supports non-executing comparison evaluators such as classification, extraction, and short-answer QA.",
       ],
     },
     {

@@ -109,9 +109,21 @@ main:focus-visible {
 }
 
 .brand {
+  gap: 0.55rem;
   color: var(--text);
   font-weight: 800;
   letter-spacing: 0.18em;
+}
+
+.brand img {
+  width: auto;
+  height: 1.35rem;
+}
+
+.brand span {
+  font-size: 0.98rem;
+  letter-spacing: 0.015em;
+  text-transform: none;
 }
 
 .context-divider {

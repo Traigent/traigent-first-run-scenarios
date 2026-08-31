@@ -43,7 +43,7 @@ customer-visible handoff. Do not include this README, `scenario.json`, the
 worker's context.
 
 This protocol provides context isolation on an honour-system basis. Because the
-scenario is public, it is reproducible rather than secret: deliberate external
+scenario is public, it is reproducible rather than hidden: deliberate external
 lookup or prior knowledge invalidates a run but is not prevented by this
 repository.
 

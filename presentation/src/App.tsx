@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { brandName, traigentLogoPngDataUri } from "./brand";
 import { presentation } from "./content";
 import { evidenceLabel, type CatalogEntry, type SlideSpec } from "./model";
 
@@ -391,7 +392,8 @@ export function App() {
       </a>
       <header className="topbar">
         <div className="brand" aria-label="Traigent">
-          <span>TRAIGENT</span>
+          <img src={traigentLogoPngDataUri} alt="" aria-hidden="true" />
+          <span>{brandName}</span>
         </div>
         <div className="deck-context">
           <span>First Run Scenarios</span>
