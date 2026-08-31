@@ -8,7 +8,6 @@ executes files from a scenario's project or verifier directories.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import hashlib
 import json
 import math
@@ -18,6 +17,7 @@ import shutil
 import stat
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Sequence, TextIO
