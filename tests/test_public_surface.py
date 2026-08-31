@@ -68,6 +68,68 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("passed for 2 file(s)", result.stdout)
 
+    def test_a_secret_in_a_utf16_file_is_still_found(self) -> None:
+        """Decoding with errors="replace" turned this into a clean report.
+
+        A UTF-16 file became NUL-interleaved text that no pattern could match,
+        so the same path that is caught in UTF-8 passed here and nothing said
+        the file had not really been read. Both directions matter: the encoding
+        must not hide a leak, and an ordinary UTF-16 file must not be reported.
+        """
+        secret = "/" + "home" + "/example-user/project"
+        (self.repo / "leak.txt").write_bytes(secret.encode("utf-16"))
+        self._git("add", "leak.txt")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("leak.txt", result.stderr)
+
+    def test_an_ordinary_utf16_file_is_not_reported(self) -> None:
+        (self.repo / "clean.txt").write_bytes(
+            "An ordinary sentence about triage.\n".encode("utf-16")
+        )
+        self._git("add", "clean.txt")
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_a_file_that_cannot_be_decoded_is_reported_not_passed(self) -> None:
+        """Unreadable is not clean. A file nobody could scan has to be named."""
+        (self.repo / "opaque.bin").write_bytes(bytes([0xFF, 0xFE, 0x00, 0x9C, 0xFF]))
+        self._git("add", "opaque.bin")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("opaque.bin", result.stderr)
+
+    def test_a_work_item_reference_into_a_non_public_repo_is_rejected(self) -> None:
+        """Split literals, so this test file does not trip the guard it tests."""
+        reference = "".join(("agents", "-skil", "ls")) + "#314"
+        (self.repo / "notes.md").write_text(
+            f"See {reference} for the rationale.\n", encoding="utf-8"
+        )
+        self._git("add", "notes.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("notes.md", result.stderr)
+
+    def test_public_repo_and_own_pull_request_references_pass(self) -> None:
+        """The false-red half. A bare `#N` rule would fail every line here."""
+        public = "".join(("traigent", "-first", "-run")) + "#79"
+        (self.repo / "ok.md").write_text(
+            f"See {public}, and PR #1 of this repository.\n", encoding="utf-8"
+        )
+        self._git("add", "ok.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_planted_leaks_are_rejected_with_locations(self) -> None:
         planted_values = {
             "private-work-item": "".join(("internal", " ", "issue")),

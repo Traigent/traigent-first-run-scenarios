@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Reject private-only references from files that could be published."""
+r"""Reject private-only references from files that could be published.
+
+A BACKSTOP, not a completeness claim. This is a hand-maintained denylist of
+patterns, so what it accepts is not thereby publishable -- it refuses what it
+recognises and nothing more. Review is still the thing that decides.
+
+Two properties it does hold, because both were once false and each cost a real
+leak class:
+
+- every tracked byte is actually SCANNED, or the file is reported. Decoding with
+  `errors="replace"` meant a UTF-16 file scanned as NUL-interleaved mush that no
+  pattern could match, and nothing said so -- a clean report over a file nobody
+  had read. `scenario.py` answered the same question fail-closed all along
+  (`_decode_git_path`, strict); this now matches it.
+- a cross-repo work-item reference names the repository it belongs to, so a
+  reference into a non-public repo is caught while this repository's own
+  `PR #1` is not. A bare `#<number>` rule cannot tell those apart, which is why
+  the repositories are named in the rule rather than the shape guessed at.
+
+Note the `_fragments()` calls below: every rule splits its own literals so this
+file does not match its own patterns. `test_guard_source_does_not_trigger_itself`
+enforces that, and it caught this docstring naming a repository outright.
+"""
 
 from __future__ import annotations
 
@@ -57,6 +79,22 @@ _RULES = (
                 r"\b(?:inter",
                 "nal|pri",
                 r"vate)\s+(?:issue|ticket|pr|pull[ -]?request)\b",
+            ),
+            re.IGNORECASE,
+        ),
+    ),
+    Rule(
+        "work-item reference into a non-public repository",
+        re.compile(
+            _fragments(
+                r"\b(?:",
+                "agents-skil",
+                "ls|agent-skills-te",
+                "mp|traigent-validation-spi",
+                "ne|Traigent(?:Backend|Frontend)",
+                "|traigent-i",
+                "ac",
+                r")#\d+\b",
             ),
             re.IGNORECASE,
         ),
@@ -258,12 +296,57 @@ def _display(path: str) -> str:
     return path.encode("unicode_escape", errors="backslashreplace").decode("ascii")
 
 
+def _decodings(content: bytes) -> list[str] | None:
+    """Every plausible text reading of these bytes, or None if there is none.
+
+    `errors="replace"` hid the whole problem: a UTF-16 file decoded to
+    NUL-interleaved text that no pattern could match, so a secret in it produced
+    a clean report and no complaint. Strict UTF-8 first; if that fails, or if
+    the bytes carry NULs (which valid UTF-8 text does not), try the UTF-16
+    encodings as well and scan whichever succeed.
+    """
+    readings: list[str] = []
+    try:
+        readings.append(content.decode("utf-8", errors="strict"))
+    except UnicodeDecodeError:
+        pass
+    if not readings or b"\x00" in content:
+        for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+            try:
+                readings.append(content.decode(encoding, errors="strict"))
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+    return readings or None
+
+
 def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
     findings: list[Finding] = []
-    text = content.decode("utf-8", errors="replace")
+    readings = _decodings(content)
+    if readings is None:
+        # Unreadable is not clean. Reporting it is the whole point: a file this
+        # cannot decode is a file nobody has checked.
+        return [
+            Finding(
+                surface=surface,
+                path=relative_path,
+                line=0,
+                rule="file could not be decoded as text and was not scanned",
+            )
+        ]
+    seen: set[tuple[int, str]] = set()
+    for text in readings:
+        findings.extend(_scan_one(surface, relative_path, text, seen))
+    return findings
+
+
+def _scan_one(
+    surface: str, relative_path: str, text: str, seen: set[tuple[int, str]]
+) -> list[Finding]:
+    findings: list[Finding] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         for rule in _RULES:
-            if rule.pattern.search(line):
+            if rule.pattern.search(line) and (line_number, rule.name) not in seen:
+                seen.add((line_number, rule.name))
                 findings.append(
                     Finding(
                         surface=surface,
