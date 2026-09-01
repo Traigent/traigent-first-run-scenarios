@@ -249,6 +249,10 @@ class _TooManyColumns(Exception):
     """Internal signal that a record carries more columns than can be named."""
 
 
+class _NotDelimited(Exception):
+    """Internal signal that a file's bytes establish it is not a delimited table."""
+
+
 @dataclass(frozen=True)
 class Scenario:
     """A validated scenario manifest and its materialized directories."""
@@ -2305,47 +2309,64 @@ def _iter_record_rows(scenario: Scenario, path: Path, field: str) -> Iterator[An
         raise _NotRowShaped
 
 
+def _delimited_header(line: str) -> tuple[str, list[str]] | None:
+    """Choose the separator this line reads as a table header under, if any."""
+
+    for delimiter in _DELIMITER_CANDIDATES:
+        header = next(csv.reader([line], delimiter=delimiter), [])
+        if len(header) < 2 or any(not name.strip() for name in header):
+            continue
+        if len(set(header)) != len(header):
+            continue
+        return delimiter, header
+    return None
+
+
 def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator[Any]:
     """Yield a delimited table's data lines as rows keyed by its header.
 
     A labelled CSV is a labelled dataset, and it reaches a worker as readably as
     a labelled JSONL file does. This is tried only once the bytes have failed to
     be a JSON row stream, and it is deliberately narrow: one header line, a
-    single separator, and the same number of fields on every line. A file whose
-    lines disagree about how many fields they have is not a table, and no row is
-    reported for it.
+    single separator, and the same number of fields on every line.
+
+    The separator is chosen from the header alone and the rest is streamed a
+    line at a time, so reading a record still costs the longest line the bank
+    accepts rather than the size of the file. A line disagreeing with the header
+    about how many fields it has means these bytes are not a table, which
+    ``_NotDelimited`` says before any row of it has been counted.
     """
 
-    try:
-        lines = [
-            raw_line.decode("utf-8")
-            for raw_line in _iter_file_lines(path)
-            if raw_line.strip()
-        ]
-    except UnicodeDecodeError:
+    def lines() -> Iterator[str]:
+        try:
+            for raw_line in _iter_file_lines(path):
+                if not raw_line.strip():
+                    continue
+                try:
+                    yield raw_line.decode("utf-8")
+                except UnicodeDecodeError:
+                    raise _NotDelimited from None
+        except _OversizedLine as exc:
+            raise _oversized_line_error(scenario, path, field) from exc
+        except OSError as exc:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"cannot read {path.relative_to(scenario.root).as_posix()}: {exc}",
+            ) from exc
+
+    stream = lines()
+    first = next(stream, None)
+    if first is None:
         return
-    except _OversizedLine as exc:
-        raise _oversized_line_error(scenario, path, field) from exc
-    except OSError as exc:
-        raise _catalog_materialized_error(
-            scenario,
-            field,
-            f"cannot read {path.relative_to(scenario.root).as_posix()}: {exc}",
-        ) from exc
-    if len(lines) <= CLOSED_SURFACE_MINIMUM_ROWS:
+    chosen = _delimited_header(first)
+    if chosen is None:
         return
-    for delimiter in _DELIMITER_CANDIDATES:
-        records = list(csv.reader(lines, delimiter=delimiter))
-        header = records[0]
-        if len(header) < 2 or any(not name.strip() for name in header):
-            continue
-        if len(set(header)) != len(header):
-            continue
-        if any(len(record) != len(header) for record in records[1:]):
-            continue
-        for record in records[1:]:
-            yield dict(zip(header, record))
-        return
+    delimiter, header = chosen
+    for record in csv.reader(stream, delimiter=delimiter):
+        if len(record) != len(header):
+            raise _NotDelimited
+        yield dict(zip(header, record))
 
 
 def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[str]:
@@ -2363,7 +2384,12 @@ def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[st
         try:
             return _closed_label_columns(_iter_record_rows(scenario, path, field))
         except _NotRowShaped:
-            return _closed_label_columns(_iter_delimited_rows(scenario, path, field))
+            try:
+                return _closed_label_columns(
+                    _iter_delimited_rows(scenario, path, field)
+                )
+            except _NotDelimited:
+                return []
     except _TooManyColumns as exc:
         raise _catalog_materialized_error(
             scenario,

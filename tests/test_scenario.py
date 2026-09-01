@@ -2374,6 +2374,76 @@ class ScenarioBankTests(unittest.TestCase):
         )
         self.assertIn("OK: structured-input", output)
 
+    def test_reading_a_delimited_record_does_not_read_it_whole(self) -> None:
+        """Falling back to a table must not give up the streaming read.
+
+        The JSON row stream is read a line at a time. The delimited reading
+        behind it has to be too, or a record that is not JSON costs its whole
+        length: the separator is chosen from the header alone and the rest is
+        streamed.
+        """
+
+        root = self.create_scenario("large-table", 310)
+        record = root / "project" / "traigent-runs" / "events.csv"
+        record.parent.mkdir()
+        size = 16 * scenario.MAX_DATASET_ROW_BYTES
+        # Long lines rather than many short ones: the property under test is
+        # that the file is never held whole, and tracemalloc makes counting a
+        # million tiny rows cost more than the read it is measuring.
+        line = "step," + "x" * 900 + "\n"
+        record.write_text("event,note\n" + line * (size // len(line)), encoding="utf-8")
+        manifest = valid_manifest("large-table", 310)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a large table")
+
+        tracemalloc.start()
+        try:
+            status, output, error = self.run_cli("check", "large-table")
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: large-table", output)
+        self.assertLess(
+            peak,
+            4 * scenario.MAX_DATASET_ROW_BYTES,
+            "reading a delimited record must cost the longest line the bank can "
+            f"accept, not the size of the file; this one is {size} bytes",
+        )
+
+    def test_a_table_whose_lines_disagree_is_not_a_table(self) -> None:
+        """A file that is neither rows nor a consistent table reports nothing."""
+
+        root = self.create_scenario("ragged-table", 311)
+        record = root / "project" / "traigent-runs" / "events.csv"
+        record.parent.mkdir()
+        record.write_text(
+            "report,severity\n"
+            + "".join(f"incident {index},SEV1\n" for index in range(8))
+            + "a trailing note with, two, extra, commas\n",
+            encoding="utf-8",
+        )
+        manifest = valid_manifest("ragged-table", 311)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a ragged table")
+
+        status, output, error = self.run_cli("check", "ragged-table")
+
+        self.assertEqual(
+            0,
+            status,
+            "lines that disagree with the header are not a table, and a partial "
+            f"count of the ones that agreed is not an answer either: {error}",
+        )
+        self.assertIn("OK: ragged-table", output)
+
     def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
         root = self.create_scenario("unparsable-code", 122)
         manifest = valid_manifest("unparsable-code", 122)
