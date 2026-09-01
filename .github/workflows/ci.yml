@@ -56,13 +56,34 @@ jobs:
       # nothing must not report success, so the scope has a floor. It is the
       # same floor the public-surface guard uses and sits far below the tracked
       # inventory; an empty checkout or a pathspec that matches nothing falls
-      # under it. `set -euo pipefail` is load-bearing here rather than habit:
+      # under it. The number is read out of the guard rather than written again
+      # here: one floor written down twice is a floor that drifts, and the copy
+      # nobody remembers to edit is the one that quietly stops meaning
+      # anything. A guard this step cannot read, or a floor that is not a whole
+      # number of at least one file, fails the step: falling back to no floor
+      # would disable the very check the floor exists to keep honest.
+      # `set -euo pipefail` is load-bearing here rather than habit:
       # GitHub's default shell is `bash -e` with no `pipefail`, so without it a
       # failing `git ls-files` at the head of a pipeline leaves the step green.
       - name: Check spelling
         run: |
           set -euo pipefail
-          minimum_files=12
+          floor_source="scripts/check_public_surface.py"
+          if [ ! -f "${floor_source}" ]; then
+            echo "spelling floor source is missing: ${floor_source}" >&2
+            exit 1
+          fi
+          minimum_files="$(python -c 'import importlib.util, sys; specification = importlib.util.spec_from_file_location("public_surface_guard", sys.argv[1]); module = importlib.util.module_from_spec(specification); sys.modules[specification.name] = module; specification.loader.exec_module(module); print(module._DEFAULT_MINIMUM_FILES)' "${floor_source}")"
+          case "${minimum_files}" in
+            "" | *[!0-9]*)
+              echo "spelling floor read from ${floor_source} is not a whole number: ${minimum_files}" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${minimum_files}" -lt 1 ]; then
+            echo "spelling floor read from ${floor_source} covers no files: ${minimum_files}" >&2
+            exit 1
+          fi
           skipped_paths=(
             "presentation/package-lock.json"
           )

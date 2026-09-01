@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +14,13 @@ from unittest import mock
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 GUARD_PATH = REPOSITORY_ROOT / "scripts" / "check_public_surface.py"
+
+# The floor these tests exercise, stated here rather than read back out of the
+# guard. A fixture sized from the guard's own default agrees with the guard
+# whatever it says, and the floor could be dropped to a single file with every
+# test below still green. One test compares this number against the guard's,
+# and that is the test that goes red when the shipped floor moves.
+EXPECTED_GUARD_FLOOR = 12
 
 
 def _load_guard_module():
@@ -67,8 +76,8 @@ class PublicSurfaceGuardTests(unittest.TestCase):
 
     def _pad_to_floor(self) -> int:
         """Carry a fixture over the shipped floor, so it runs the gate CI runs."""
-        self._write_safe_files(GUARD._DEFAULT_MINIMUM_FILES)
-        return GUARD._DEFAULT_MINIMUM_FILES
+        self._write_safe_files(EXPECTED_GUARD_FLOOR)
+        return EXPECTED_GUARD_FLOOR
 
     def test_safe_tracked_and_untracked_content_passes(self) -> None:
         padding = self._pad_to_floor()
@@ -241,24 +250,36 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertIn("covered 0 file(s)", result.stderr)
         self.assertNotIn("passed for", result.stdout)
 
-    def test_inventory_one_file_below_the_default_floor_is_rejected(self) -> None:
-        self._write_safe_files(GUARD._DEFAULT_MINIMUM_FILES - 1)
+    def test_inventory_one_file_below_the_expected_floor_is_rejected(self) -> None:
+        self._write_safe_files(EXPECTED_GUARD_FLOOR - 1)
 
         result = self._run_guard(minimum_files=None)
 
-        self.assertEqual(2, result.returncode, result.stdout)
-        self.assertIn(
-            f"covered {GUARD._DEFAULT_MINIMUM_FILES - 1} file(s)", result.stderr
+        self.assertEqual(
+            2,
+            result.returncode,
+            "an inventory one file below the floor this guard is expected to "
+            "ship with must be refused; if it passed, the floor moved",
         )
+        self.assertIn(f"covered {EXPECTED_GUARD_FLOOR - 1} file(s)", result.stderr)
 
-    def test_inventory_at_the_default_floor_passes(self) -> None:
-        self._write_safe_files(GUARD._DEFAULT_MINIMUM_FILES)
+    def test_inventory_at_the_expected_floor_passes(self) -> None:
+        self._write_safe_files(EXPECTED_GUARD_FLOOR)
 
         result = self._run_guard(minimum_files=None)
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(
-            f"passed for {GUARD._DEFAULT_MINIMUM_FILES} file(s)", result.stdout
+        self.assertIn(f"passed for {EXPECTED_GUARD_FLOOR} file(s)", result.stdout)
+
+    def test_the_shipped_floor_is_the_floor_these_tests_exercise(self) -> None:
+        """The guard's own number, compared against a number stated here."""
+
+        self.assertEqual(
+            EXPECTED_GUARD_FLOOR,
+            GUARD._DEFAULT_MINIMUM_FILES,
+            "the shipped floor and the floor these tests exercise have drifted "
+            "apart; the CI spelling gate reads the shipped one too, so moving "
+            "it moves two gates at once",
         )
 
     def test_floor_below_one_file_is_refused(self) -> None:
@@ -324,9 +345,61 @@ class PublicSurfaceGuardTests(unittest.TestCase):
             "the first understates what a public checkout would publish",
         )
 
+    def _export_published_repository(self) -> Path:
+        """A work tree holding exactly what this repository publishes at HEAD.
+
+        The guard reports untracked files too, which is what makes it worth
+        running over a checkout that is about to be published. It also means
+        that pointing this test at the live work tree hands it every scratch
+        file a developer happens to have lying around: one note holding a home
+        path, in a file no one would ever publish, and the unit suite goes red.
+        The export carries the published content and nothing else. CI still
+        runs the guard over the checkout itself, which is where an untracked
+        leak has to be caught, and this test keeps its own subject.
+        """
+        export = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, export, True)
+
+        archive = subprocess.run(
+            ("git", "-C", str(REPOSITORY_ROOT), "archive", "HEAD"),
+            check=True,
+            capture_output=True,
+        )
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as bundle:
+            bundle.extractall(export, filter="data")
+
+        # The guard under test is the one in this work tree, not the copy the
+        # export carries: a rule added and not yet committed still has to hold
+        # for everything the repository publishes.
+        shutil.copyfile(GUARD_PATH, export / "scripts" / GUARD_PATH.name)
+
+        for arguments in (
+            ("init", "--quiet"),
+            ("add", "--all"),
+            (
+                "-c",
+                "user.name=Scenario Tests",
+                "-c",
+                "user.email=scenario-tests@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                "published content",
+            ),
+        ):
+            subprocess.run(
+                ("git", "-C", str(export), *arguments),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        return export
+
     def test_published_repository_root_passes_with_shipped_defaults(self) -> None:
+        export = self._export_published_repository()
+
         result = subprocess.run(
-            (sys.executable, str(GUARD_PATH)),
+            (sys.executable, str(export / "scripts" / GUARD_PATH.name)),
             check=False,
             capture_output=True,
             text=True,

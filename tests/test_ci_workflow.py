@@ -11,6 +11,12 @@ The workflow is read with a small block-YAML reader rather than a YAML library:
 the pinned development toolchain is deliberately minimal, and the constructs
 ``ci.yml`` uses are a narrow enough subset to read directly. The reader refuses
 anything outside that subset instead of guessing at it.
+
+The floors those gates run at are stated in this module, not read out of the
+scripts being tested. A test that takes its expectation from its own subject
+agrees with whatever the subject says: with the floors read out of ``ci.yml``,
+they could be dropped to a handful of files and every floor test here stayed
+green. Editing a floor now has to be matched here before the suite agrees.
 """
 
 from __future__ import annotations
@@ -32,6 +38,19 @@ QUALITY_TOOLS = ("black", "ruff", "mypy", "codespell")
 SPELLING_STEP = "Check spelling"
 COMPILE_STEP = "Compile Python sources"
 
+# The spelling gate shares its floor with the public-surface guard and reads it
+# out of the guard's source rather than restating the number, so the two cannot
+# drift apart. The compile gate's floor has no such shared source and stays a
+# literal in the workflow.
+FLOOR_SOURCE_RELATIVE_PATH = "scripts/check_public_surface.py"
+FLOOR_SOURCE_PATH = REPOSITORY_ROOT / "scripts" / "check_public_surface.py"
+
+# Stated here rather than parsed out of the gate being exercised: these are the
+# floors the tests below require, and the tests that compare them against the
+# workflow and the guard are what goes red when either one moves.
+EXPECTED_SPELLING_FLOOR = 12
+EXPECTED_COMPILE_FLOOR = 3
+
 # Written apart so this file does not itself carry the misspelling it plants.
 MISSPELLED_WORD = "t" + "eh"
 
@@ -40,6 +59,12 @@ MAPPING_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*:(\s|$)")
 SEQUENCE_ITEM = re.compile(r"^-(\s|$)")
 SKIPPED_PATHS = re.compile(r"skipped_paths=\((?P<body>[^)]*)\)", re.DOTALL)
 MINIMUM_FILES = re.compile(r"^\s*minimum_files=(?P<count>\d+)\s*$", re.MULTILINE)
+MINIMUM_FILES_ASSIGNMENT = re.compile(
+    r"^\s*minimum_files=(?P<value>\S.*?)\s*$", re.MULTILINE
+)
+FLOOR_SOURCE_DEFAULT = re.compile(
+    r"^_DEFAULT_MINIMUM_FILES\s*=\s*(?P<count>\d+)\s*$", re.MULTILINE
+)
 SHELL_PRELUDE = "set -euo pipefail"
 DERIVED_SCOPE_STEPS = (SPELLING_STEP, COMPILE_STEP)
 QUOTED = re.compile(r'"([^"]+)"')
@@ -261,6 +286,18 @@ def step_script(workflow: dict[str, Any], name: str) -> str:
     return script
 
 
+def floor_source_default() -> int:
+    """The floor the spelling gate reads out of the public-surface guard."""
+    source = FLOOR_SOURCE_PATH.read_text(encoding="utf-8")
+    match = FLOOR_SOURCE_DEFAULT.search(source)
+    if match is None:
+        raise AssertionError(
+            f"{FLOOR_SOURCE_RELATIVE_PATH} declares no default minimum inventory, "
+            "so the spelling gate has no floor to read"
+        )
+    return int(match.group("count"))
+
+
 def tracked_paths(root: Path, *pathspecs: str) -> list[str]:
     result = subprocess.run(
         ("git", "-C", str(root), "ls-files", "-z", "--", *pathspecs),
@@ -388,6 +425,10 @@ class StepScriptTestCase(unittest.TestCase):
 
     script = ""
     filler_suffix = ".md"
+    # Stated by each subclass from the module constants above, so a fixture is
+    # never sized by the same script the fixture is meant to hold to account.
+    expected_floor = 0
+    installs_floor_source = False
 
     def setUp(self) -> None:
         self.workspace = Path(tempfile.mkdtemp())
@@ -440,17 +481,6 @@ class StepScriptTestCase(unittest.TestCase):
             if argument != ARGUMENT_SEPARATOR
         ]
 
-    def declared_minimum_files(self) -> int:
-        """The floor the shipped step script declares for its derived scope."""
-        match = MINIMUM_FILES.search(self.script)
-        self.assertIsNotNone(
-            match,
-            "the step script declares no minimum_files floor, so a scope that "
-            "derives to nothing would be reported as a successful gate",
-        )
-        assert match is not None
-        return int(match.group("count"))
-
     def filler_files(self, count: int, *, suffix: str = ".md") -> dict[str, str]:
         """Clean files that only exist to carry a fixture over the gate's floor."""
         body = "VALUE = 1\n" if suffix == ".py" else "A published note.\n"
@@ -464,18 +494,30 @@ class StepScriptTestCase(unittest.TestCase):
             check=True,
             capture_output=True,
         )
+        if self.installs_floor_source:
+            self.install_floor_source(repository)
         if pad:
             # Padded past the floor rather than up to it: some of the fixture's
             # own files are excluded from the derived scope, so counting them
             # would leave the fixture one file short of the gate it exercises.
             files = {
-                **self.filler_files(
-                    self.declared_minimum_files(), suffix=self.filler_suffix
-                ),
+                **self.filler_files(self.expected_floor, suffix=self.filler_suffix),
                 **files,
             }
         self.write_files(repository, files)
         return repository
+
+    def install_floor_source(self, repository: Path) -> None:
+        """Give the fixture the file the step reads its floor out of.
+
+        The real guard is copied in rather than a stand-in, so the fixture runs
+        the derivation the shipped step runs. It is left out of the fixture's
+        index on purpose: the step reads it from the work tree, and a tracked
+        copy would add one file to every derived scope the counts here pin.
+        """
+        destination = repository / FLOOR_SOURCE_RELATIVE_PATH
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(FLOOR_SOURCE_PATH, destination)
 
     def write_files(self, repository: Path, files: dict[str, str]) -> None:
         for relative, content in files.items():
@@ -485,8 +527,11 @@ class StepScriptTestCase(unittest.TestCase):
         self.stage_all(repository)
 
     def stage_all(self, repository: Path) -> None:
+        pathspecs = ["."]
+        if self.installs_floor_source:
+            pathspecs.append(f":(exclude){FLOOR_SOURCE_RELATIVE_PATH}")
         subprocess.run(
-            ("git", "-C", str(repository), "add", "--all"),
+            ("git", "-C", str(repository), "add", "--all", "--", *pathspecs),
             check=True,
             capture_output=True,
         )
@@ -495,10 +540,29 @@ class StepScriptTestCase(unittest.TestCase):
 class SpellingScopeTests(StepScriptTestCase):
     """The spelling gate must not shrink because a path moved or was added."""
 
+    expected_floor = EXPECTED_SPELLING_FLOOR
+    installs_floor_source = True
+
     def setUp(self) -> None:
         super().setUp()
         self.workflow = read_workflow()
         self.script = step_script(self.workflow, SPELLING_STEP)
+
+    def run_step(
+        self,
+        script: str,
+        working_directory: Path,
+        *,
+        shims: dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        # The step reads its floor through `python`, so every run needs an
+        # interpreter. Forwarding to the one running these tests keeps the
+        # fixture from depending on what `python` happens to resolve to.
+        return super().run_step(
+            script,
+            working_directory,
+            shims={"python": FORWARDING_SHIM, **shims},
+        )
 
     def declared_skips(self) -> list[str]:
         match = SKIPPED_PATHS.search(self.script)
@@ -650,12 +714,31 @@ class SpellingScopeTests(StepScriptTestCase):
         self.assertIn("fewer than the required minimum", result.stderr)
         self.assertEqual([], self.recorded_arguments())
 
-    def test_gate_fails_one_file_below_the_declared_floor(self) -> None:
-        floor = self.declared_minimum_files()
+    def test_gate_fails_loudly_when_the_floor_source_is_missing(self) -> None:
+        skips = self.declared_skips()
+        repository = self.build_repository(
+            {skip: "generated content\n" for skip in skips}
+        )
+        (repository / FLOOR_SOURCE_RELATIVE_PATH).unlink()
+
+        result = self.run_step(
+            self.script, repository, shims={"codespell": RECORDING_SHIM}
+        )
+
+        self.assertNotEqual(
+            0,
+            result.returncode,
+            "a floor the gate cannot read must fail the gate; carrying on "
+            "without a floor would retire the floor by deleting one file",
+        )
+        self.assertIn("floor source is missing", result.stderr)
+        self.assertEqual([], self.recorded_arguments())
+
+    def test_gate_fails_one_file_below_the_expected_floor(self) -> None:
         skips = self.declared_skips()
         repository = self.build_repository(
             {
-                **self.filler_files(floor - 1),
+                **self.filler_files(EXPECTED_SPELLING_FLOOR - 1),
                 **{skip: "generated content\n" for skip in skips},
             },
             pad=False,
@@ -665,16 +748,20 @@ class SpellingScopeTests(StepScriptTestCase):
             self.script, repository, shims={"codespell": RECORDING_SHIM}
         )
 
-        self.assertNotEqual(0, result.returncode, result.stdout)
-        self.assertIn(f"covered {floor - 1} file(s)", result.stderr)
+        self.assertNotEqual(
+            0,
+            result.returncode,
+            "a scope one file below the floor this gate is expected to run at "
+            "must fail; if it passed, the floor has been lowered underneath it",
+        )
+        self.assertIn(f"covered {EXPECTED_SPELLING_FLOOR - 1} file(s)", result.stderr)
         self.assertEqual([], self.recorded_arguments())
 
-    def test_gate_passes_at_the_declared_floor(self) -> None:
-        floor = self.declared_minimum_files()
+    def test_gate_passes_at_the_expected_floor(self) -> None:
         skips = self.declared_skips()
         repository = self.build_repository(
             {
-                **self.filler_files(floor),
+                **self.filler_files(EXPECTED_SPELLING_FLOOR),
                 **{skip: "generated content\n" for skip in skips},
             },
             pad=False,
@@ -685,13 +772,14 @@ class SpellingScopeTests(StepScriptTestCase):
         )
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(floor, len(self.recorded_paths()))
+        self.assertEqual(EXPECTED_SPELLING_FLOOR, len(self.recorded_paths()))
 
 
 class CompileScopeTests(StepScriptTestCase):
     """Every published Python source must parse, including customer-shaped ones."""
 
     filler_suffix = ".py"
+    expected_floor = EXPECTED_COMPILE_FLOOR
 
     def setUp(self) -> None:
         super().setUp()
@@ -786,24 +874,29 @@ class CompileScopeTests(StepScriptTestCase):
         self.assertIn("fewer than the required minimum", result.stderr)
         self.assertEqual([], self.recorded_arguments())
 
-    def test_gate_fails_one_file_below_the_declared_floor(self) -> None:
-        floor = self.declared_minimum_files()
+    def test_gate_fails_one_file_below_the_expected_floor(self) -> None:
         repository = self.build_repository(
-            self.filler_files(floor - 1, suffix=".py"), pad=False
+            self.filler_files(EXPECTED_COMPILE_FLOOR - 1, suffix=".py"), pad=False
         )
 
         result = self.run_step(
             self.script, repository, shims={"python": RECORDING_SHIM}
         )
 
-        self.assertNotEqual(0, result.returncode, result.stdout)
-        self.assertIn(f"covered {floor - 1} Python file(s)", result.stderr)
+        self.assertNotEqual(
+            0,
+            result.returncode,
+            "a scope one file below the floor this gate is expected to run at "
+            "must fail; if it passed, the floor has been lowered underneath it",
+        )
+        self.assertIn(
+            f"covered {EXPECTED_COMPILE_FLOOR - 1} Python file(s)", result.stderr
+        )
         self.assertEqual([], self.recorded_arguments())
 
-    def test_gate_passes_at_the_declared_floor(self) -> None:
-        floor = self.declared_minimum_files()
+    def test_gate_passes_at_the_expected_floor(self) -> None:
         repository = self.build_repository(
-            self.filler_files(floor, suffix=".py"), pad=False
+            self.filler_files(EXPECTED_COMPILE_FLOOR, suffix=".py"), pad=False
         )
 
         result = self.run_step(
@@ -816,7 +909,7 @@ class CompileScopeTests(StepScriptTestCase):
             for argument in self.recorded_arguments()
             if argument not in COMPILEALL_FLAGS
         ]
-        self.assertEqual(floor, len(compiled))
+        self.assertEqual(EXPECTED_COMPILE_FLOOR, len(compiled))
 
 
 class DerivedScopeStepShapeTests(unittest.TestCase):
@@ -860,14 +953,48 @@ class DerivedScopeStepShapeTests(unittest.TestCase):
         for step_name in DERIVED_SCOPE_STEPS:
             with self.subTest(step=step_name):
                 script = step_script(workflow, step_name)
-                match = MINIMUM_FILES.search(script)
                 self.assertIsNotNone(
-                    match,
+                    MINIMUM_FILES_ASSIGNMENT.search(script),
                     f"step {step_name!r} derives its scope but declares no "
                     "minimum_files floor, so an empty scope reports success",
                 )
-                assert match is not None
-                self.assertGreaterEqual(int(match.group("count")), 1)
+
+    def test_the_compile_floor_is_the_floor_the_tests_exercise(self) -> None:
+        """The workflow's own number, compared against a number stated here."""
+
+        match = MINIMUM_FILES.search(step_script(read_workflow(), COMPILE_STEP))
+        self.assertIsNotNone(
+            match,
+            f"step {COMPILE_STEP!r} states no literal floor; it has no shared "
+            "source to read one from, so the literal is the floor",
+        )
+        assert match is not None
+        self.assertEqual(
+            EXPECTED_COMPILE_FLOOR,
+            int(match.group("count")),
+            "the compile gate's floor and the floor these tests exercise have "
+            "drifted apart; whichever of the two moved, both have to agree",
+        )
+
+    def test_the_spelling_floor_is_read_from_the_public_surface_guard(self) -> None:
+        """One floor, one place it is written, and a stated expectation for it."""
+
+        script = step_script(read_workflow(), SPELLING_STEP)
+
+        self.assertIsNone(
+            MINIMUM_FILES.search(script),
+            f"step {SPELLING_STEP!r} writes its floor out as a literal; it "
+            f"shares that floor with {FLOOR_SOURCE_RELATIVE_PATH}, and one "
+            "number written down twice is a number that drifts",
+        )
+        self.assertIn(FLOOR_SOURCE_RELATIVE_PATH, script)
+        self.assertIn("_DEFAULT_MINIMUM_FILES", script)
+        self.assertEqual(
+            EXPECTED_SPELLING_FLOOR,
+            floor_source_default(),
+            "the guard's floor and the floor these tests exercise have drifted "
+            "apart; the spelling gate runs at whatever the guard says",
+        )
 
 
 if __name__ == "__main__":
