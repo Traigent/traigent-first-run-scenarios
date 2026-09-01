@@ -291,6 +291,30 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         )
         self.assertIn(expected_location, result.stderr)
 
+    def test_a_bare_work_item_reference_in_a_path_is_rejected(self) -> None:
+        """The other half of the reference scan, on the path surface.
+
+        A path is published exactly like the bytes inside it. The fixture above
+        plants an owner-qualified `Traigent/<repo>` reference, which the three
+        repository patterns catch; this one plants the bare `<repo>#<number>`
+        form, which only the work-item rule catches. Both halves have to run
+        against a path, and only running one of them was how the path surface
+        lost its reference scan once already. Literals are split so this file
+        does not trip the rule it is testing.
+        """
+        self._pad_to_floor()
+        name = "".join(("Some", "Private", "Service#4821")) + ".md"
+        (self.repo / name).write_text("Customer-visible notes.\n", encoding="utf-8")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn(
+            f"path:{name}:1:1: work-item reference to a repository outside the "
+            "public allowlist",
+            result.stderr,
+        )
+
     def test_public_repository_references_are_accepted(self) -> None:
         self._pad_to_floor()
         path = self.repo / "public-refs"

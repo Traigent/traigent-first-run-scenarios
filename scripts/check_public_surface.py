@@ -465,7 +465,12 @@ def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding
 
 
 def _scan_path(relative_path: str) -> list[Finding]:
-    return [
+    # A path is published exactly like the bytes inside it, so it gets the same
+    # two scans as file content: the denylist rules, and the repository and
+    # work-item reference rules. Scanning a path for only the first half leaves
+    # a directory named after a private sibling repository -- or a file named
+    # after one of its work items -- reported as clean.
+    findings = [
         Finding(
             surface="path",
             path=relative_path,
@@ -476,6 +481,12 @@ def _scan_path(relative_path: str) -> list[Finding]:
         for rule in _RULES
         for match in rule.pattern.finditer(relative_path)
     ]
+    findings.extend(
+        _repository_reference_findings("path", relative_path, 1, relative_path)
+    )
+    # Identical findings can arise from overlapping reference patterns; report
+    # each one once.
+    return list(dict.fromkeys(findings))
 
 
 def _resolve_repository_root(repo_root: Path) -> Path:
