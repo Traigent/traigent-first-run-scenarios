@@ -66,6 +66,11 @@ EXACT_MATCH_METHOD = "exact-match"
 # way to establish what the evaluator can tell apart before it is added here.
 EVALUATOR_METHODS = {EXACT_MATCH_METHOD, NORMALIZED_EXACT_MATCH_METHOD}
 MAPPED_LABEL_SHAPE = "mapped-labels"
+# The shapes that claim a label surface, and so need the identity the shipped
+# evaluator uses. The others -- absent, free-text, numeric, structured -- make
+# no claim the table could contradict, which is also how a scenario models a
+# component gap without owing this check a lookup table.
+LABEL_BEARING_SHAPES = {MAPPED_LABEL_SHAPE, "unmapped-labels"}
 CALIBRATION_PROBES_KEY = "probes"
 CALIBRATION_EXPECTED_KEY = "expected"
 SAME_CLASS_PROBES = ("good", "equivalent_good")
@@ -2520,6 +2525,10 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
     evaluator_path = evaluator["path"]
     label_table: dict[str, Any] | None = None
     resolve: Callable[[str], str] = _verbatim_label
+    claims_labels = any(
+        dataset["label_shape"]["kind"] in LABEL_BEARING_SHAPES
+        for dataset in catalog["datasets"]
+    )
     if evaluator_path is not None:
         evaluator_file = _catalog_regular_file(
             scenario,
@@ -2527,13 +2536,14 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
             "catalog.components.evaluator.path",
             scenario.project_dir,
         )
-        label_table = _read_evaluator_label_table(scenario, evaluator_file)
-        resolve = _validate_declared_evaluator_method(
-            scenario,
-            evaluator,
-            label_table,
-            evaluator_file,
-        )
+        if claims_labels:
+            label_table = _read_evaluator_label_table(scenario, evaluator_file)
+            resolve = _validate_declared_evaluator_method(
+                scenario,
+                evaluator,
+                label_table,
+                evaluator_file,
+            )
     calibration = evaluator["calibration"]
     calibration_path = calibration["path"]
     if calibration_path is not None:

@@ -1085,6 +1085,62 @@ class ScenarioBankTests(unittest.TestCase):
                 self.assertEqual("", output)
                 self.assertIn(expected, error)
 
+    def test_a_dataset_that_claims_no_label_surface_needs_no_label_table(
+        self,
+    ) -> None:
+        """A gap scenario models a broken evaluator; it does not owe a table."""
+
+        root = self.create_scenario("free-text-task", 161)
+        (root / "project" / "evaluator.py").write_text(
+            "def score(output, expected):\n    raise NotImplementedError\n",
+            encoding="utf-8",
+        )
+        manifest = valid_manifest("free-text-task", 161)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["label_shape"] = {
+            "kind": "free-text",
+            "surface_label_count": 0,
+            "normalized_class_count": 0,
+            "normalization_map": {},
+        }
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "free-text-task")
+
+        self.assertEqual(
+            0,
+            status,
+            "no dataset here claims a label surface, so there is no count the "
+            f"evaluator's table could contradict: {error}",
+        )
+        self.assertIn("OK: free-text-task", output)
+
+    def test_a_component_state_does_not_excuse_a_missing_label_table(self) -> None:
+        """Declaring the evaluator broken must not switch the label gate off."""
+
+        root = self.create_scenario("repairable-evaluator", 162)
+        (root / "project" / "evaluator.py").write_text(
+            "def score(output, expected):\n    raise NotImplementedError\n",
+            encoding="utf-8",
+        )
+        manifest = valid_manifest("repairable-evaluator", 162)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["starting_condition"] = "gaps-present"
+        catalog["components"]["evaluator"]["state"] = "needs-repair"
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "repairable-evaluator")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "the dataset still claims one mapped class, and a scenario that "
+            "ships an evaluator file ships an evaluator file",
+        )
+        self.assertIn("carries no module-level label table", error)
+
     def test_label_resolution_drops_punctuation_as_well_as_case(self) -> None:
         """'SEV1' and 'Sev-1' are one label, which is what the evaluator does."""
 

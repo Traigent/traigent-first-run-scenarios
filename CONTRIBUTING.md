@@ -66,7 +66,8 @@ labels, and normalized classes must match the checked-in bytes exactly.
 A declaration that switches a check off is itself checked against the bytes:
 
 - What the evaluator can tell apart is read from the evaluator, not from the
-  manifest. The shipped source's single module-level label table is read with
+  manifest, whenever a dataset claims a label surface -- `mapped-labels` or
+  `unmapped-labels`. The shipped source's single module-level label table is read with
   `ast.literal_eval` -- a literal, never an import or a run -- and it settles
   three things: which `method` the catalog may declare (a table keyed entirely
   in resolved form is a `normalized-exact-match` table, otherwise it is an
@@ -74,7 +75,9 @@ A declaration that switches a check off is itself checked against the bytes:
   and that the declared classes are the table's own classes. Splitting into
   four classes what the evaluator scores as one is refused, and so is merging
   into one what it scores as two. `method` is a closed enum: `exact-match` or
-  `normalized-exact-match`.
+  `normalized-exact-match`. A dataset that claims no label surface -- the shape
+  a component gap takes -- owes no table; a component `state` does not excuse
+  one, because a scenario that ships an evaluator file ships an evaluator file.
 - Under `normalized-exact-match` two spellings that differ only in case or
   punctuation are one label, so the map may not list both and a row may use
   either.
