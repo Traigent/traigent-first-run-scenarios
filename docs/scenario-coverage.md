@@ -4,9 +4,9 @@
 
 This repository currently publishes one scenario:
 
-| Public scenario                             | Starting state                                                                | Dataset                                                                                                                                                       | Evaluator                                                                                | Expected Phase A route                                            |
-| ------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `incident-severity-triage` (legacy case 46) | Agent, labeled data, evaluator, and four varying tunable settings are present | 120 Traigent-authored synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 surface labels mapped to four severity classes | Deterministic, non-executing normalized exact match with two supplied calibration probes | Explain the ready state and stop at the human's baseline approval |
+| Public scenario | Starting state | Dataset | Evaluator | Expected Phase A route |
+| --- | --- | --- | --- | --- |
+| `incident-severity-triage` (legacy case 46) | Agent, labeled data, evaluator, and four varying controls are present | 120 Traigent-authored synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 distinct label strings with their row counts | Deterministic table lookup, declared as normalized exact match, with two supplied calibration probes; the catalog describes it and does not verify it | Explain the ready state and stop at the human's baseline approval |
 
 Case 46 is a complete reference for the ready-components route. Its expected
 `EXCELLENT / OK / proceed / no caps` opening is a case-specific contract, not a
