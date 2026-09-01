@@ -647,12 +647,12 @@ const rawPresentation = {
       eyebrow: "TEST DATA - EVERY SCENARIO",
       title:
         "Synthetic test data is useful when its origin and limits stay visible.",
-      body: "Every test scenario ships purpose-written synthetic data - authored for the test, never customer material - so runs are reproducible and safe to share. The worked example shows the pattern; future scenarios will start from broken states on purpose.",
+      body: `Every test scenario ships purpose-written synthetic data - authored for the test, never customer material - so runs are reproducible and safe to share. The example's rows are ${contentOriginLabel}, licensed under ${scenario.content.license}; no upstream dataset license travels with them, so you may run, copy and adapt the material under that license. The worked example shows the pattern; future scenarios will start from broken states on purpose.`,
       bullets: [
         `In the example: ${dataset.rows} authored incident reports, ${dataset.unique_inputs} unique inputs; the declared pool is ${splitSummary}`,
         `Even difficulty coverage: ${difficultySummary}, so the row pool does not win its score by concentrating only on easy cases`,
         `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison - evaluator behavior, not a validated catalog claim`,
-        "A row value such as provenance: real is part of the scenario's fiction - the simulated user's declaration read by the readiness scorer - not a claim about where the repository file came from",
+        "A row value such as provenance: real is part of the scenario's fiction - the simulated user's declaration read by the readiness scorer - not a claim about the repository file, whose own origin and license are pinned by scenario.py check against its constants",
         "The scenario and expected result are open for anyone to inspect; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
         "The 100/20 split demonstrates separate tuning and holdout pools; a paid run must still record the exact bounded rows it actually uses",
       ],
@@ -936,7 +936,7 @@ const rawPresentation = {
       eyebrow: "APPENDIX - TEST SCENARIO ROADMAP 2 OF 2",
       title:
         "Evaluator, execution, and search-space gates need distinct tests.",
-      body: "These roadmap themes can require multiple cases because their conditions lead to materially different actions. A repair route, a human timeout choice, and a hard safety stop must not be presented as the same tested behavior.",
+      body: "These roadmap themes can require multiple cases because their conditions lead to materially different actions. A repair route, a human timeout choice, and a hard safety stop must not be presented as the same tested behavior. As on the previous slide, these are public scenario-test themes, not additional product capability: each gate below ships in the guide today, and what is planned is the public case that lets you reproduce it.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -997,6 +997,7 @@ const rawPresentation = {
         "This appendix answers what the published scenario actually contains.",
         "Synthetic describes repository origin. The row value provenance: real is simulated scorer metadata inside the scenario.",
         "Nothing here is observed accuracy or evidence of a live optimization.",
+        `Calibration is a sample by design: ${calibrationCount} ${calibrationCount === 1 ? "case carries" : "cases carry"} four probes each - a correct answer, an equivalent answer spelled differently, a near-miss and a wrong one. That asks whether the scorer agrees with itself, which is a property of the scorer rather than of the row count, so running it over all ${dataset.rows} rows would cost more and would not change what the probes already establish. Where inputs are expensive - long documents in, prose out - a handful of probes is the only practical check, and it is sound for the same reason.`,
       ],
     },
     {
@@ -1019,6 +1020,7 @@ const rawPresentation = {
         `${dataset.unique_inputs} unique inputs; ${splitSummary}; difficulty: ${difficultySummary}.`,
         `${labelSummary} before deterministic exact/binary scoring.`,
         "Repository origin is Traigent-authored synthetic; provenance: real is simulated row metadata for the readiness scorer.",
+        `Written for this scenario, not sampled or adapted from a public benchmark, so no upstream dataset license applies. ${scenario.content.license} with NOTICE: run it, copy it, adapt it.`,
       ],
     },
   ],
