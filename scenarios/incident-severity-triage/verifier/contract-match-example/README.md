@@ -33,7 +33,9 @@ silently move the expected contract or the recorded scenario inventory. This che
 the example result to an execution of those inputs.
 
 The pinned scenario revision is
-`685bfab561c404b37a03fee6c232d3aecfa2bb23`, a durable commit in this repository's history. The
+`685bfab561c404b37a03fee6c232d3aecfa2bb23`: the newest revision whose manifest carries
+`label_counts` and whose `verifier/` directory does not yet hold this example, which is what
+keeps the recorded contract inventory to the manifest and the verifier contract. The
 run record also names guide revision `6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9`, but this
 repository's verifier does not reconstruct or validate the guide repository. The guide inventory
 is example metadata, not a guide-origin guarantee made by this check.
@@ -42,8 +44,8 @@ is example metadata, not a guide-origin guarantee made by this check.
 
 The pin is two couplings, not one, and only the first is visible in `run-record.json`:
 
-1. **A Git revision.** That is the coupling the file states, and it survives merges and later
-   edits, which is the point of pinning at all.
+1. **A Git revision.** That is the coupling the file states. It survives later edits, which is
+   the point of pinning at all, for as long as the published history keeps reaching it.
 2. **The manifest schema the validator enforces today.** `verify` re-validates the *historic*
    manifest blob with the *current* validator, so a change to what a manifest must contain makes
    a previously good run record fail with a validation error against a revision nobody touched.
@@ -65,10 +67,22 @@ cp ../scenario-run/run.json \
    scenarios/incident-severity-triage/verifier/contract-match-example/run-record.json
 ```
 
-Pick `<scenario-revision>` from before this directory existed. `prepare` records every tracked
-file under `verifier/` as part of the contract inventory, so preparing at a revision that already
-contains this example makes the run record pin a stale copy of itself. Then update the revision
-named above, and re-run the check in the previous section.
+Two things constrain `<scenario-revision>`.
+
+It has to stay readable. `verify` reads the recorded revision out of the Git object store, so a
+revision that the published history no longer reaches is a revision this example can no longer
+check. A revision that exists only on a topic branch is readable while that branch is, and a
+merge that replays the branch as one new commit leaves the pin behind it.
+
+It also decides what the contract inventory holds. `prepare` records every tracked file under
+`verifier/` there, this directory included, so a revision from before this directory existed
+keeps the inventory to the manifest and the verifier contract, which is what the section above
+describes. Where no surviving revision carries the current manifest and predates this directory,
+prepare at the newest revision instead and commit the result on top of it: the inventory then
+records the previous copy of this file, which is what that revision genuinely contained, and
+`verify` reconstructs exactly that.
+
+Then update the revision named above, and re-run the check in the previous section.
 
 ## Exact verification boundary
 
