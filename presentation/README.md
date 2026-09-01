@@ -1,6 +1,6 @@
 # Customer Presentation
 
-This directory builds one presales story from one validated semantic source:
+This directory builds one customer-facing story from one validated semantic source:
 
 - a self-contained HTML presentation for a browser; and
 - an editable PowerPoint presentation with native text, shapes, and speaker
@@ -10,6 +10,10 @@ The presentation explains the public scenario contract and the boundary between
 catalog validation, a Phase A opening, and a separately approved Phase B live
 optimization. The current content does not claim that a fresh worker run has
 been recorded or verified.
+
+The first 10 slides form the presales/CTO core story. The remaining 18 slides
+are a clearly marked technical appendix with stage detail, scoring mechanics,
+scenario organization, and the public coverage roadmap.
 
 ## Source of truth
 
@@ -52,6 +56,8 @@ not be presented as verified run evidence.
 
 - Node.js 20.19 or newer
 - npm with the committed lockfile
+- Google Chrome or Chromium on `PATH`, or `CHROME_BIN` pointing to it, for
+  the two-pass, isolated 1366x768 and 1600x900 browser-fit gate
 
 Install locked dependencies and run the complete validation and build:
 
@@ -62,7 +68,12 @@ npm run check
 ```
 
 `npm run check` runs TypeScript checks, formatting validation, tests, semantic
-content validation, and both presentation builds.
+content validation, and both presentation builds. Each gate identifies itself
+by canonical path, so a gate invoked through a symbolic link runs instead of
+exiting silently, and a gate that cannot place its own entry point fails rather
+than reporting success. The browser-fit gate reads its verdict from the
+attribute the in-page measurement wrote on the document element, so deck copy
+that quotes that attribute cannot answer for a slide.
 
 For focused work:
 
@@ -72,6 +83,7 @@ npm run validate     # validate semantic content and claims
 npm run build:web    # build the self-contained HTML
 npm run build:pptx   # build the editable PowerPoint
 npm run build:bundle # assemble the customer handoff bundle
+npm run fit:browser  # render every slide at both required browser sizes
 ```
 
 Run `npm run build` when the validated final outputs are needed together.
@@ -98,33 +110,69 @@ and shapes editable and includes the presenter notes from the semantic source.
 
 The customer bundle gives the two formats stable names and includes the
 repository's Apache-2.0 `LICENSE` and `NOTICE`, a build manifest, transfer
-checksums, and notices for third-party runtime software. The manifest and
-checksums cover both repository legal files. Bundle creation fails without
-replacing an existing bundle when either repository legal file is missing,
-empty, outside the repository, or a symbolic link. Verify the checksums after
-copying the bundle to another machine using the customer's approved tooling.
+checksums, and notices for third-party runtime software.
+
+The manifest and checksums cover both repository legal files. The manifest
+records every slide's evidence state and the exact source revision for each
+guide-contract slide; the current manifest therefore makes the absence of
+verified-run slides explicit.
+
+The manifest's `offline` block is recorded from the checks that produced it and
+carries a `verified_by` object stating what those checks establish. The scanned
+set is the files the deck can actually reach: the walk of `src/` closed over the
+imports those files declare, because the content module already imports scenario
+data from outside the presentation tree, and a module placed beside it would
+otherwise be compiled into the artifact without ever being opened. An extension
+the scanner does not know is a build failure, not a file it skips. The built HTML
+is then read as markup, so its external references, style declarations, and the
+scripts the browser will run are each inspected, and deck copy that quotes a tag
+or names a network API stays text. Neither check runs the deck:
+`browser_execution_observed` is `false`, and the block records what the artifact
+contains rather than what a browser was seen to do. In the built artifact a
+request is reported when its address is visible, because bundled third-party code
+may call `fetch` for local reasons; the first-party scan is the stricter of the
+two and reports the capability itself.
+
+Bundle creation fails without replacing an existing bundle when either
+repository legal file is missing, empty, outside the repository, or a symbolic
+link. Verify the checksums after copying the bundle to another machine using the
+customer's approved tooling.
 
 ## Evidence labels
 
 Every slide must contain at least one evidence reference, at least one speaker
 note, and exactly one evidence state:
 
-| Label                             | Use                                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Expected scenario contract**    | Published scenario facts or expected opening values without a referenced recorded run      |
-| **Verified run evidence**         | A claim directly supported by a supplied retained run artifact and successful verification |
-| **Not demonstrated in this deck** | A live path, improvement, or other outcome that was not exercised                          |
+| Label                                   | Use                                                                           |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| **Guide contract · no recorded run**    | Guide behavior pinned to an exact 40-character public guide revision          |
+| **Scenario contract · no recorded run** | Published scenario facts or expected values without a referenced recorded run |
+| **Verified run evidence**               | Complete retained Phase A report plus successful semantic verification        |
+| **Not demonstrated in this deck**       | A live path, improvement, or other outcome that was not exercised             |
 
-The current deck uses only expected-contract and not-demonstrated states. Do not
-change a slide to verified-run merely because its expected values look correct.
-A verified claim requires the referenced run evidence and the matching semantic
-verification result.
+The current deck uses guide-contract, scenario-contract, and not-demonstrated
+states. Do not change a slide to verified-run merely because its expected
+values look correct. A run record, result JSON, and `PASS` alone are
+insufficient. A verified claim requires both the matching semantic verification
+and a retained report identifying the revisions, worker and session,
+environment and isolation boundary, exact handoff and response, captured JSON,
+complete commands, output and final statuses, verifier output, and stop point.
+
+The validator currently rejects every verified-run slide until that evidence
+has a strict retained schema and validator. This is an intentional fail-closed
+boundary, not a missing checkbox that prose can satisfy.
 
 Content validation rejects unsupported live-value and improvement claims. It
 also prevents an absent result from becoming an implied green outcome. An
 Excellent expected band is the published grade for this scenario's opening
 contract; it is not a universal grade for the coding agent or proof of a live
-optimization.
+optimization. The claim scan reads every string the content model carries, so a
+claim is caught wherever it renders - slide body, footer evidence, speaker
+notes, catalog card, or deck subtitle - and a field added to the schema is
+covered without editing a list. Two things are not claims: a sentence that
+denies its own claim, and the `Not proven` and `Does not prove` fields, whose
+heading already states that the deck asserts nothing there. A denial in one
+sentence does not cover a claim in the next.
 
 ## Updating the story
 
