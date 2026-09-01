@@ -632,7 +632,6 @@ class SpellingScopeTests(StepScriptTestCase):
         corrected = self.run_step(self.script, repository, shims={})
         self.assertEqual(0, corrected.returncode, corrected.stdout + corrected.stderr)
 
-
     def test_gate_fails_when_the_derived_scope_matches_nothing(self) -> None:
         repository = self.build_repository(
             {"presentation/package-lock.json": "generated content\n"}, pad=False
@@ -769,9 +768,10 @@ class CompileScopeTests(StepScriptTestCase):
         self.assertIn("SyntaxError", result.stdout + result.stderr)
         self.assertIn(shipped, result.stdout + result.stderr)
 
-
     def test_gate_fails_when_no_tracked_python_file_matches(self) -> None:
-        repository = self.build_repository({"README.md": "No Python here.\n"}, pad=False)
+        repository = self.build_repository(
+            {"README.md": "No Python here.\n"}, pad=False
+        )
 
         result = self.run_step(
             self.script, repository, shims={"python": RECORDING_SHIM}

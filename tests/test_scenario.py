@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import tempfile
+import tracemalloc
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1018,7 +1019,9 @@ class ScenarioBankTests(unittest.TestCase):
             json.dumps({"input": f"example-{index}", "output": "A"}) + "\n"
             for index in range(2)
         )
-        (root / "project" / "rows.jsonl").write_text(rows, encoding="utf-8")
+        rows_path = root / "project" / "rows.jsonl"
+        rows_path.write_text(rows, encoding="utf-8")
+        self.commit_repository_paths(rows_path, message="Ship undeclared rows")
 
         status, output, error = self.run_cli("check", "denied-dataset")
 
@@ -1027,13 +1030,129 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertIn("ships dataset rows no dataset profile declares", error)
         self.assertIn("project/rows.jsonl", error)
 
-        (root / "project" / "rows.jsonl").unlink()
-        (root / "project" / "notes.md").write_text("# notes\n", encoding="utf-8")
+        rows_path.unlink()
+        notes = root / "project" / "notes.md"
+        notes.write_text("# notes\n", encoding="utf-8")
+        self.commit_repository_paths(root, message="Replace rows with prose")
 
         status, output, error = self.run_cli("check", "denied-dataset")
 
         self.assertEqual(0, status, error)
         self.assertIn("OK: denied-dataset", output)
+
+    def test_undeclared_rows_survive_a_blank_line_and_a_foreign_suffix(self) -> None:
+        """A blank line is what an editor adds on save, not a way out of the sweep."""
+
+        root = self.create_scenario("blank-line-dataset", 133)
+        rows = [
+            json.dumps({"input": f"example-{index}", "output": "A"})
+            for index in range(3)
+        ]
+        variants = {
+            "project/spaced.jsonl": "\n".join(rows[:1] + [""] + rows[1:]) + "\n",
+            "project/trailing.jsonl": "\n".join(rows) + "\n\n",
+            "project/leading.jsonl": "\n" + "\n".join(rows) + "\n",
+            "project/renamed.txt": "\n".join(rows) + "\n",
+        }
+
+        for relative, content in variants.items():
+            with self.subTest(path=relative):
+                shipped = root / Path(relative)
+                shipped.write_text(content, encoding="utf-8")
+                self.commit_repository_paths(shipped, message=f"Ship {relative}")
+
+                status, output, error = self.run_cli("check", "blank-line-dataset")
+
+                self.assertNotEqual(0, status, output)
+                self.assertIn("ships dataset rows no dataset profile declares", error)
+                self.assertIn(relative, error)
+
+                shipped.unlink()
+                self.commit_repository_paths(root, message=f"Withdraw {relative}")
+
+        status, output, error = self.run_cli("check", "blank-line-dataset")
+        self.assertEqual(0, status, error)
+
+    def test_undeclared_rows_nested_below_the_project_directory(self) -> None:
+        """`prepare` copies the whole project tree, not only its top level."""
+
+        root = self.create_scenario("nested-dataset", 134)
+        nested = root / "project" / "extra" / "rows.jsonl"
+        nested.parent.mkdir()
+        nested.write_text(
+            "".join(
+                json.dumps({"input": f"example-{index}", "output": "A"}) + "\n"
+                for index in range(2)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(nested, message="Ship nested rows")
+
+        status, output, error = self.run_cli("check", "nested-dataset")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("ships dataset rows no dataset profile declares", error)
+        self.assertIn("project/extra/rows.jsonl", error)
+
+    def test_untracked_scratch_rows_are_not_refused(self) -> None:
+        """`prepare` copies recorded Git blobs, so a worker never sees these."""
+
+        root = self.create_scenario("scratch-dataset", 135)
+        scratch = root / "project" / "scratch.jsonl"
+        scratch.write_text(
+            "".join(
+                json.dumps({"input": f"example-{index}", "output": "A"}) + "\n"
+                for index in range(2)
+            ),
+            encoding="utf-8",
+        )
+
+        status, output, error = self.run_cli("check", "scratch-dataset")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: scratch-dataset", output)
+
+        self.commit_repository_paths(scratch, message="Track the scratch rows")
+
+        status, output, error = self.run_cli("check", "scratch-dataset")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "tracking the same bytes puts them in the worker's checkout, so the "
+            "sweep that was right to ignore them must now refuse them",
+        )
+        self.assertIn("project/scratch.jsonl", error)
+
+    def test_classifying_a_large_file_does_not_read_it_whole(self) -> None:
+        """The sweep visits every project file, so its cost is per line, not per file."""
+
+        root = self.create_scenario("large-payload", 136)
+        payload = root / "project" / "payload.bin"
+        size = 16 * scenario.MAX_DATASET_ROW_BYTES
+        payload.write_bytes(b"\x00\xff" * (size // 2))
+        self.commit_repository_paths(payload, message="Ship a binary payload")
+
+        tracemalloc.start()
+        try:
+            classified = scenario._ships_dataset_rows(payload)
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        self.assertFalse(classified)
+        self.assertLess(
+            peak,
+            4 * scenario.MAX_DATASET_ROW_BYTES,
+            "classifying a project file must cost the longest line it can accept, "
+            "not the size of the file; the sweep reads every file under project/, "
+            f"and this one is {size} bytes",
+        )
+
+        status, output, error = self.run_cli("check", "large-payload")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: large-payload", output)
 
     def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
         root = self.create_scenario("unparsable-code", 122)
@@ -1045,6 +1164,8 @@ class ScenarioBankTests(unittest.TestCase):
             "def broken(:\n",
             encoding="utf-8",
         )
+
+        self.commit_repository_paths(agent, message="Ship unparsable Python")
 
         status, output, error = self.run_cli("check", "unparsable-code")
 
@@ -1059,6 +1180,7 @@ class ScenarioBankTests(unittest.TestCase):
             f"Path({str(sentinel)!r}).write_text('ran', encoding='utf-8')\n",
             encoding="utf-8",
         )
+        self.commit_repository_paths(agent, message="Repair the shipped Python")
 
         status, output, error = self.run_cli("check", "unparsable-code")
 

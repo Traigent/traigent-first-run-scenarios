@@ -22,7 +22,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Sequence, TextIO
+from typing import Any, Callable, Iterator, Sequence, TextIO
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent
 DEFAULT_SCENARIOS_DIR = REPOSITORY_ROOT / "scenarios"
@@ -41,6 +41,8 @@ MAX_TAG_LENGTH = 40
 MAX_CATALOG_ITEMS = 32
 MAX_CATALOG_IDENTIFIER_LENGTH = 80
 MAX_SCENARIO_PATH_LENGTH = 240
+MAX_DATASET_ROW_BYTES = 1 << 20
+_FILE_READ_BLOCK_BYTES = 1 << 16
 
 STARTING_CONDITIONS = {
     "all-components-ready",
@@ -196,6 +198,10 @@ class VerificationError(ScenarioError):
 
 class _DuplicateJsonKey(ValueError):
     """Internal signal for duplicate JSON object keys."""
+
+
+class _OversizedLine(Exception):
+    """Internal signal that a file carries a line no dataset row could be."""
 
 
 @dataclass(frozen=True)
@@ -1934,38 +1940,70 @@ def _validate_materialized_dataset(
         )
 
 
+def _iter_file_lines(path: Path) -> Iterator[bytes]:
+    """Yield a file's lines without holding more than one line in memory.
+
+    ``_ships_dataset_rows`` runs over every file under ``project/``, including
+    files that are not text at all. Reading each one whole to find that out
+    costs the size of the largest file in the directory, so the bytes are
+    streamed and a line longer than ``MAX_DATASET_ROW_BYTES`` ends the read:
+    a dataset row that long is not one this bank can describe, and the caller
+    treats the file as something other than rows.
+    """
+
+    with path.open("rb") as handle:
+        pending = b""
+        while chunk := handle.read(_FILE_READ_BLOCK_BYTES):
+            pending += chunk
+            start = 0
+            while (index := pending.find(b"\n", start)) >= 0:
+                yield pending[start:index]
+                start = index + 1
+            pending = pending[start:]
+            if len(pending) > MAX_DATASET_ROW_BYTES:
+                raise _OversizedLine
+        if pending:
+            yield pending
+
+
 def _ships_dataset_rows(path: Path) -> bool:
     """Report whether a file's bytes are rows of a dataset in a known format.
 
     Shape decides first, so renaming a dataset does not put it beyond the
-    catalog's reach. A file that is itself one JSON document is not rows, which
-    keeps ordinary JSON content out of this check; a single row still counts
-    when the file is named for a supported dataset format.
+    catalog's reach. Blank lines are separators rather than content: many
+    editors add one on save, and treating one as a disqualifier let a file of
+    otherwise undeclared rows pass by carrying a single empty line. A file that
+    is itself one JSON document is not rows, which keeps ordinary JSON content
+    out of this check; a single row still counts when the file is named for a
+    supported dataset format.
     """
 
+    rows = 0
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
+        for raw_line in _iter_file_lines(path):
+            try:
+                line = raw_line.decode("utf-8")
+            except UnicodeDecodeError:
+                return False
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except ValueError:
+                return False
+            if not isinstance(value, dict):
+                return False
+            rows += 1
+    except (OSError, _OversizedLine):
         return False
-    lines = text.splitlines()
-    if not lines:
+    if rows == 0:
         return False
-    for line in lines:
-        if not line.strip():
-            return False
-        try:
-            value = json.loads(line)
-        except ValueError:
-            return False
-        if not isinstance(value, dict):
-            return False
     if path.suffix.lstrip(".") in DATASET_FORMATS:
         return True
-    try:
-        json.loads(text)
-    except ValueError:
-        return True
-    return False
+    # One row and nothing else is a JSON document, not a stream of rows. Two or
+    # more rows never parse as a single document, so the shape decides here
+    # without reading the file a second time.
+    return rows > 1
 
 
 def _validate_dataset_inventory(
@@ -2003,6 +2041,54 @@ def _validate_dataset_inventory(
             f"declares: {', '.join(undeclared)}. A worker receives them, so the "
             "catalog must declare them or the scenario must stop shipping them",
         )
+
+
+def _tracked_scenario_files(
+    scenario: Scenario,
+    regular_files: Sequence[Path],
+) -> list[Path]:
+    """Narrow a scenario's files to the ones a worker could actually receive.
+
+    ``prepare`` copies recorded Git blobs, so an untracked scratch file under
+    ``project/`` never reaches a worker however row-shaped it is. The sweeps
+    that reason about what ships read the index rather than the directory, so
+    that they answer the question they are asking.
+
+    When the scenario is not inside a readable Git work tree -- an unpacked
+    archive, say -- trackedness cannot be established. Every regular file is
+    kept in that case, which is the conservative direction: the sweeps then
+    cover more files rather than fewer.
+    """
+
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.fsmonitor=false",
+                "-C",
+                os.fspath(scenario.repository_root),
+                "ls-files",
+                "-z",
+                "--",
+                os.fspath(scenario.root),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False,
+        )
+    except OSError:
+        return list(regular_files)
+    if completed.returncode != 0:
+        return list(regular_files)
+    tracked = {
+        scenario.repository_root / os.fsdecode(record)
+        for record in completed.stdout.split(b"\0")
+        if record
+    }
+    return [path for path in regular_files if path in tracked]
 
 
 def _validate_python_sources(
@@ -2230,8 +2316,9 @@ def validate_materialized(scenario: Scenario) -> dict[str, Any]:
             raise BankError(
                 f"scenario {scenario.slug!r} has no regular files under {label}/"
             )
-    _validate_python_sources(scenario, regular_files)
-    _validate_dataset_inventory(scenario, regular_files)
+    shipped_files = _tracked_scenario_files(scenario, regular_files)
+    _validate_python_sources(scenario, shipped_files)
+    _validate_dataset_inventory(scenario, shipped_files)
     _validate_catalog_materialized(scenario)
     return validate_expected_opening(scenario)
 
