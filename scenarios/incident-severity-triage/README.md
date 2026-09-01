@@ -53,10 +53,15 @@ for readability; the JSONL file stores it on one physical line:
 - `input` - the incident-report text the agent classifies.
 - `output` - the expected label, written as one of 12 **surface labels**
   (`SEV1`-`SEV4`, `P1`-`P4`, `Critical`, `High`, `Medium`, `Low`). Different
-  fictional ticketing systems use different vocabularies; the evaluator
-  normalizes them, so `SEV1`, `P1`, and `Critical` all count as the same class,
-  `severity-1`. The full 12-to-4 map is the dataset entry's `label_shape.normalization_map`
-  under `catalog.datasets` in `scenario.json`.
+  fictional ticketing systems use different vocabularies. The shipped
+  `evaluator.py` normalizes them before comparing, so `SEV1`, `P1`, and
+  `Critical` all count as the same class -- that is a statement about what that
+  file does when it runs, and you can read its table directly. The catalog does
+  not restate it: `check` never imports or executes a scenario file, so it
+  cannot establish what an evaluator distinguishes, and a claim it cannot check
+  is one it does not make. What the catalog does record, and verify against the
+  shipped rows, is `label_shape.label_counts` -- every distinct label string
+  with the number of rows carrying it.
 - `metadata.split` - `tuning` (100 rows) or `holdout` (20 rows). Holdout rows
   are reserved for checking a winner outside the tuning data.
 - `metadata.difficulty` - `easy`, `medium`, `hard`, or `very-hard`, 30 rows
