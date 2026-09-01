@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { presentation } from "../src/content";
 import {
   parsePresentation,
+  type CatalogEntry,
   type PresentationSpec,
   type SlideSpec,
 } from "../src/model";
@@ -15,6 +16,19 @@ const POSITIVE_RUN_CLAIMS = [
   /\b(?:quality|latency|cost) (?:fell|rose|dropped|improved|decreased|increased|reduced)\b/i,
   /\bverified (?:live )?(?:run|result|optimization|improvement)\b/i,
 ] as const;
+
+// Fields the deck renders beneath "Not proven" and "Does not prove". Naming a
+// result there is the opposite of claiming it.
+const DISCLAIMED_FIELDS = new Set(["notProven", "doesNotProve"]);
+
+// A claim phrase inside a sentence that denies it is not a claim. Speaker
+// notes and evidence lines are where the deck says what it is not asserting,
+// so refusing those sentences would push authors away from the plain wording
+// the deck exists to use.
+const CLAIM_NEGATORS =
+  /\b(?:no|not|never|without|cannot|can't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|none|nothing|neither|nor|un(?:proven|verified)|absent)\b/i;
+
+const SENTENCE_BOUNDARY = /[.!?\n]/;
 
 export class ContentValidationError extends Error {
   readonly issues: readonly string[];
@@ -44,40 +58,83 @@ function uniqueIssues(values: readonly string[], label: string): string[] {
   return issues;
 }
 
-function visibleClaimText(slide: SlideSpec): string {
-  return [
-    slide.eyebrow,
-    slide.title,
-    slide.body,
-    slide.quote ?? "",
-    ...slide.bullets,
-    ...slide.metrics.flatMap((metric) => [
-      metric.label,
-      metric.value,
-      metric.detail,
-    ]),
-    ...slide.steps.flatMap((step) => [
-      step.label,
-      step.detail,
-      step.executor,
-      step.humanGate ?? "",
-    ]),
-    ...(slide.matrix ?? []).flatMap((row) => [
-      row.startingPoint,
-      row.safestNextStep,
-    ]),
-    ...(slide.testMatrix ?? []).flatMap((row) => [
-      row.layer,
-      row.action,
-      row.passSupports,
-      row.doesNotProve,
-    ]),
-    ...(slide.scenarioMatrix ?? []).flatMap((row) => [
-      row.family,
-      row.setup,
-      row.expectedRoute,
-    ]),
-  ].join("\n");
+/**
+ * Collect every string the content model carries, at any depth.
+ *
+ * The honesty rule has to hold on every surface a reader sees, and the deck
+ * renders far more than a slide's body: the footer prints `evidence`, the
+ * speaker-note pane and the PowerPoint notes page print `notes`, catalog
+ * slides print the catalog entry, and the deck subtitle becomes the
+ * PowerPoint subject. Enumerating fields by hand left four of those surfaces
+ * unchecked, so the scan walks the parsed model instead. A field added to the
+ * schema is covered the day it is added, without editing a list here.
+ */
+function collectRenderedStrings(value: unknown, collected: string[]): void {
+  if (typeof value === "string") {
+    collected.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectRenderedStrings(item, collected);
+    }
+    return;
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const [key, item] of Object.entries(value)) {
+      // These fields render under a heading that states the deck does not
+      // claim what they contain, so a result named there is a disclaimer.
+      if (!DISCLAIMED_FIELDS.has(key)) {
+        collectRenderedStrings(item, collected);
+      }
+    }
+  }
+}
+
+function visibleClaimText(...values: readonly unknown[]): string {
+  const collected: string[] = [];
+  for (const value of values) {
+    collectRenderedStrings(value, collected);
+  }
+  return collected.join("\n");
+}
+
+/** The text preceding a match, back to the start of its own sentence. */
+function sentenceLeadIn(claimText: string, matchStart: number): string {
+  const window = claimText.slice(Math.max(0, matchStart - 160), matchStart);
+  let boundary = -1;
+  for (let index = window.length - 1; index >= 0; index -= 1) {
+    if (SENTENCE_BOUNDARY.test(window[index]!)) {
+      boundary = index;
+      break;
+    }
+  }
+  return window.slice(boundary + 1);
+}
+
+function hasPositiveRunClaim(claimText: string): boolean {
+  for (const pattern of POSITIVE_RUN_CLAIMS) {
+    const scan = new RegExp(pattern.source, `${pattern.flags}g`);
+    for (
+      let match = scan.exec(claimText);
+      match !== null;
+      match = scan.exec(claimText)
+    ) {
+      if (!CLAIM_NEGATORS.test(sentenceLeadIn(claimText, match.index))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function renderedCatalogEntry(
+  slide: SlideSpec,
+  catalog: readonly CatalogEntry[],
+): CatalogEntry | undefined {
+  return slide.catalogSlug === undefined
+    ? undefined
+    : catalog.find((entry) => entry.slug === slide.catalogSlug);
 }
 
 function validateTemplateContract(slide: SlideSpec): string[] {
@@ -134,14 +191,20 @@ function validateTemplateContract(slide: SlideSpec): string[] {
   return issues;
 }
 
-function validateEvidenceContract(slide: SlideSpec): string[] {
+function validateEvidenceContract(
+  slide: SlideSpec,
+  catalog: readonly CatalogEntry[],
+): string[] {
   const issues: string[] = [];
-  const claimText = visibleClaimText(slide);
-  const hasPositiveRunClaim = POSITIVE_RUN_CLAIMS.some((pattern) =>
-    pattern.test(claimText),
+  const claimText = visibleClaimText(
+    slide,
+    renderedCatalogEntry(slide, catalog),
   );
 
-  if (hasPositiveRunClaim && slide.evidenceState !== "verified-run") {
+  if (
+    hasPositiveRunClaim(claimText) &&
+    slide.evidenceState !== "verified-run"
+  ) {
     issues.push("positive run claims require evidenceState verified-run");
   }
   if (slide.evidenceState === "verified-run") {
@@ -162,10 +225,13 @@ function validateEvidenceContract(slide: SlideSpec): string[] {
   return issues;
 }
 
-function validateSlide(slide: SlideSpec): string[] {
+function validateSlide(
+  slide: SlideSpec,
+  catalog: readonly CatalogEntry[],
+): string[] {
   const issues = [
     ...validateTemplateContract(slide),
-    ...validateEvidenceContract(slide),
+    ...validateEvidenceContract(slide, catalog),
     ...uniqueIssues(slide.bullets, "bullets"),
     ...uniqueIssues(slide.evidence, "evidence"),
     ...uniqueIssues(slide.notes, "notes"),
@@ -190,6 +256,19 @@ function schemaIssues(error: ZodError): string[] {
   });
 }
 
+function validateDeckContract(spec: PresentationSpec): string[] {
+  // Deck-level text renders on every slide and in the PowerPoint document
+  // properties, and carries no evidence state of its own, so it can never
+  // reach the verified-run state a positive run claim would require.
+  return hasPositiveRunClaim(
+    visibleClaimText(spec.title, spec.subtitle, spec.scenario),
+  )
+    ? [
+        "deck: positive run claims require evidenceState verified-run, which deck-level text cannot carry",
+      ]
+    : [];
+}
+
 export function validatePresentationContent(value: unknown): PresentationSpec {
   let parsed: PresentationSpec;
   try {
@@ -201,7 +280,10 @@ export function validatePresentationContent(value: unknown): PresentationSpec {
     throw error;
   }
 
-  const issues = parsed.slides.flatMap((slide) => validateSlide(slide));
+  const issues = [
+    ...validateDeckContract(parsed),
+    ...parsed.slides.flatMap((slide) => validateSlide(slide, parsed.catalog)),
+  ];
   if (issues.length > 0) {
     throw new ContentValidationError(issues);
   }

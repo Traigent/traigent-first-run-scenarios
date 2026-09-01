@@ -57,6 +57,11 @@ interface ManifestShape {
   offline: {
     self_contained_html: boolean;
     runtime_network_dependencies: boolean;
+    verified_by: {
+      source_files_scanned: number;
+      built_html_elements_read: number;
+      browser_execution_observed: boolean;
+    };
   };
   licensing: {
     repository_spdx_license: string;
@@ -154,7 +159,10 @@ describe("offline bundle validation", () => {
 
     await expect(
       assertNoForbiddenRuntimeSource(sourceDirectory),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      selfContainedHtml: true,
+      runtimeNetworkDependencies: false,
+    });
   });
 
   it("rejects symbolic links anywhere in a presentation source walk", async () => {
@@ -173,6 +181,210 @@ describe("offline bundle validation", () => {
     await expect(
       assertNoForbiddenRuntimeSource(sourceDirectory),
     ).rejects.toThrowError("Symbolic links are not allowed");
+  });
+
+  it.each([
+    ["beacon.js", "js"],
+    ["beacon.mjs", "mjs"],
+    ["beacon.cjs", "cjs"],
+    ["Beacon.TSX", "upper-case TSX"],
+    ["beacon.jsx", "jsx"],
+  ])(
+    "scans %s, because every file the bundler can reach ships to the customer",
+    async (fileName) => {
+      const sourceDirectory = await temporaryDirectory("presentation-source-");
+      await writeFile(
+        path.join(sourceDirectory, fileName),
+        'export function report() { fetch("https://telemetry.invalid/deck-opened", { method: "POST" }); }\n',
+        "utf8",
+      );
+
+      await expect(
+        assertNoForbiddenRuntimeSource(sourceDirectory),
+      ).rejects.toThrowError(`${fileName}: network capability fetch`);
+    },
+  );
+
+  it("refuses a source file it cannot classify instead of walking past it", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "runtime.wasm"),
+      "\u0000asm-fixture\n",
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).rejects.toThrowError("cannot classify");
+  });
+
+  it("follows an import out of the source tree, where a walk would not look", async () => {
+    const temporaryRoot = await temporaryDirectory("presentation-source-");
+    const sourceDirectory = path.join(temporaryRoot, "src");
+    await mkdir(sourceDirectory);
+    await writeFile(
+      path.join(temporaryRoot, "beacon.ts"),
+      'const endpoint = "https://telemetry.invalid/deck-opened";\nexport function report() { fetch(endpoint, { method: "POST" }); }\n',
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDirectory, "main.ts"),
+      'import { report } from "../beacon";\nreport();\n',
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).rejects.toThrowError("../beacon.ts: network capability fetch");
+  });
+
+  it("refuses an import it cannot resolve rather than assuming it is inert", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "main.ts"),
+      'import { value } from "./missing-module";\nexport const used = value;\n',
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).rejects.toThrowError("cannot resolve to a file it can read");
+  });
+
+  it("records but does not scan an inert data file the bundler can inline", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "main.ts"),
+      'import facts from "./facts.json";\nexport const rows = facts;\n',
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDirectory, "facts.json"),
+      '{"documentation":"https://example.invalid/reference"}\n',
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).resolves.toMatchObject({ filesScanned: 2 });
+  });
+
+  it("scans a stylesheet that ships from source for external resources", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "styles.css"),
+      '@import url("https://fonts.invalid/deck.css");\n',
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).rejects.toThrowError("external CSS resource");
+  });
+
+  it("accepts a stylesheet whose resources are inline", async () => {
+    const sourceDirectory = await temporaryDirectory("presentation-source-");
+    await writeFile(
+      path.join(sourceDirectory, "styles.css"),
+      ".icon{background:url(data:image/svg+xml;base64,AA==)}\n",
+      "utf8",
+    );
+
+    await expect(
+      assertNoForbiddenRuntimeSource(sourceDirectory),
+    ).resolves.toMatchObject({
+      selfContainedHtml: true,
+      runtimeNetworkDependencies: false,
+    });
+  });
+
+  it.each([
+    '<script>fetch("https://telemetry.invalid/deck-opened",{method:"POST"})</script>',
+    "<script>fetch(`https://telemetry.invalid/deck-opened`)</script>",
+    '<script>new WebSocket("wss://telemetry.invalid/socket")</script>',
+    '<script>new EventSource("https://telemetry.invalid/stream")</script>',
+    '<script>navigator.sendBeacon("https://telemetry.invalid/beacon")</script>',
+    '<script type="module">import("https://cdn.invalid/plugin.js")</script>',
+    '<script>const s=document.createElement("script");s.src="https://cdn.invalid/plugin.js";document.head.appendChild(s)</script>',
+    '<script>const l=document.createElement("link");l.rel="stylesheet";l.href="https://cdn.invalid/deck.css";document.head.appendChild(l)</script>',
+    '<script>document.createElement("img").setAttribute("src","https://telemetry.invalid/pixel.gif")</script>',
+    // A regular expression ending in an escaped `//` would begin a comment if
+    // the script were read as text, hiding everything after it on the line.
+    '<script>const p=/^https?:\\/\\//;fetch("https://telemetry.invalid/after-a-regexp")</script>',
+    // An object literal, not a block, so the `/` after `}` divides.
+    '<script>const r=({a:1}/1);fetch("https://telemetry.invalid/after-a-division")</script>',
+    // A name reached by computed member access spells the same capability.
+    '<script>navigator["sendBeacon"]("https://telemetry.invalid/beacon")</script>',
+    '<script>a["href"]="https://telemetry.invalid/computed"</script>',
+    // A no-break space separates tokens in JavaScript but is not a name part.
+    '<script>fetch\u00a0("https://telemetry.invalid/nbsp")</script>',
+    // An identifier may spell its own characters as escapes.
+    '<script>new \\u0057ebSocket("wss://telemetry.invalid/escaped")</script>',
+    // A markup sink carries the address inside a tag rather than as the value.
+    `<script>document.body.innerHTML='<img src="https://telemetry.invalid/pixel.gif">'</script>`,
+  ])("rejects a runtime network dependency inside the deck: %s", (html) => {
+    expect(() => assertSelfContainedHtml(html)).toThrowError(BundleBuildError);
+  });
+
+  it.each([
+    "<p>Reviewers ask why &lt;script src=&quot;app.js&quot;&gt; never appears in the bundle.</p>",
+    "<p>&lt;link href&gt;, &lt;img srcset&gt; and &lt;iframe&gt; are all refused by the offline gate.</p>",
+    "<p>The deck never calls fetch() and never opens a WebSocket.</p>",
+    "<p>A deck that loaded https://fonts.example.invalid/deck.css would not be offline.</p>",
+    '<script>const prompt="Clone https://github.com/Traigent/traigent-first-run and follow GUIDE.md.";document.title=prompt</script>',
+    "<script>const pattern=/^https?:\\/\\//;const ok=!pattern.test(location.hash)</script>",
+  ])("accepts deck copy that only describes the network: %s", (body) => {
+    expect(() =>
+      assertSelfContainedHtml(
+        `<!doctype html><html><body>${body}</body></html>`,
+      ),
+    ).not.toThrow();
+  });
+
+  it("accepts a resource the document carries inline", () => {
+    expect(() =>
+      assertSelfContainedHtml(
+        '<!doctype html><html><head><link rel="icon" href="data:image/svg+xml,%3Csvg/%3E"></head><body></body></html>',
+      ),
+    ).not.toThrow();
+  });
+
+  it("accepts deck copy inside the bundled script that quotes a script tag", () => {
+    // Slide copy is emitted into the inline bundle as a string literal, where
+    // its angle brackets are not escaped. Only a `</script` sequence ends the
+    // block, so text like this is script content, never a second element.
+    expect(() =>
+      assertSelfContainedHtml(
+        '<!doctype html><html><body><script>const copy="Never ship a <script src= tag to a customer";document.title=copy</script></body></html>',
+      ),
+    ).not.toThrow();
+  });
+
+  it.each([
+    '<script type="importmap">{"imports":{"react":"https://cdn.invalid/react.js"}}</script>',
+    '<script type="speculationrules">{"prefetch":[{"urls":["https://telemetry.invalid/p"]}]}</script>',
+  ])(
+    "rejects a script whose whole purpose is to name resources: %s",
+    (html) => {
+      expect(() => assertSelfContainedHtml(html)).toThrowError(
+        "resource-directing script",
+      );
+    },
+  );
+
+  it.each([
+    '<frame src="https://example.invalid/frame">',
+    '<body background="https://example.invalid/tile.png"></body>',
+  ])("rejects a legacy external reference: %s", (html) => {
+    expect(() => assertSelfContainedHtml(html)).toThrowError(BundleBuildError);
+  });
+
+  it("refuses an artifact it cannot read as a document", () => {
+    expect(() =>
+      assertSelfContainedHtml(
+        '<!doctype html><html><body><svg><script/></svg><script src="https://cdn.invalid/beacon.js"></script></body></html>',
+      ),
+    ).toThrowError("cannot be read as a document");
   });
 
   it("discovers nested static, dynamic, and CommonJS runtime imports", async () => {
@@ -311,10 +523,16 @@ describe("customer bundle", () => {
         source_revision: slide.sourceRevision ?? null,
       })),
     );
-    expect(manifest.offline).toEqual({
-      self_contained_html: true,
-      runtime_network_dependencies: false,
-    });
+    expect(manifest.offline.self_contained_html).toBe(true);
+    expect(manifest.offline.runtime_network_dependencies).toBe(false);
+    // The block says what the checks establish: the artifact was read, not run.
+    expect(manifest.offline.verified_by.browser_execution_observed).toBe(false);
+    expect(
+      manifest.offline.verified_by.source_files_scanned,
+    ).toBeGreaterThanOrEqual(presentation.slides.length > 0 ? 1 : 0);
+    expect(
+      manifest.offline.verified_by.built_html_elements_read,
+    ).toBeGreaterThan(0);
     expect(manifest.licensing).toEqual({
       repository_spdx_license: "Apache-2.0",
       repository_license_file: "LICENSE",

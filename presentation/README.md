@@ -68,7 +68,12 @@ npm run check
 ```
 
 `npm run check` runs TypeScript checks, formatting validation, tests, semantic
-content validation, and both presentation builds.
+content validation, and both presentation builds. Each gate identifies itself
+by canonical path, so a gate invoked through a symbolic link runs instead of
+exiting silently, and a gate that cannot place its own entry point fails rather
+than reporting success. The browser-fit gate reads its verdict from the
+attribute the in-page measurement wrote on the document element, so deck copy
+that quotes that attribute cannot answer for a slide.
 
 For focused work:
 
@@ -105,14 +110,33 @@ and shapes editable and includes the presenter notes from the semantic source.
 
 The customer bundle gives the two formats stable names and includes the
 repository's Apache-2.0 `LICENSE` and `NOTICE`, a build manifest, transfer
-checksums, and notices for third-party runtime software. The manifest and
-checksums cover both repository legal files. The manifest records every
-slide's evidence state and the exact source revision for each guide-contract
-slide; the current manifest therefore makes the absence of verified-run slides
-explicit. Bundle creation fails without
-replacing an existing bundle when either repository legal file is missing,
-empty, outside the repository, or a symbolic link. Verify the checksums after
-copying the bundle to another machine using the customer's approved tooling.
+checksums, and notices for third-party runtime software.
+
+The manifest and checksums cover both repository legal files. The manifest
+records every slide's evidence state and the exact source revision for each
+guide-contract slide; the current manifest therefore makes the absence of
+verified-run slides explicit.
+
+The manifest's `offline` block is recorded from the checks that produced it and
+carries a `verified_by` object stating what those checks establish. The scanned
+set is the files the deck can actually reach: the walk of `src/` closed over the
+imports those files declare, because the content module already imports scenario
+data from outside the presentation tree, and a module placed beside it would
+otherwise be compiled into the artifact without ever being opened. An extension
+the scanner does not know is a build failure, not a file it skips. The built HTML
+is then read as markup, so its external references, style declarations, and the
+scripts the browser will run are each inspected, and deck copy that quotes a tag
+or names a network API stays text. Neither check runs the deck:
+`browser_execution_observed` is `false`, and the block records what the artifact
+contains rather than what a browser was seen to do. In the built artifact a
+request is reported when its address is visible, because bundled third-party code
+may call `fetch` for local reasons; the first-party scan is the stricter of the
+two and reports the capability itself.
+
+Bundle creation fails without replacing an existing bundle when either
+repository legal file is missing, empty, outside the repository, or a symbolic
+link. Verify the checksums after copying the bundle to another machine using the
+customer's approved tooling.
 
 ## Evidence labels
 
@@ -142,7 +166,13 @@ Content validation rejects unsupported live-value and improvement claims. It
 also prevents an absent result from becoming an implied green outcome. An
 Excellent expected band is the published grade for this scenario's opening
 contract; it is not a universal grade for the coding agent or proof of a live
-optimization.
+optimization. The claim scan reads every string the content model carries, so a
+claim is caught wherever it renders - slide body, footer evidence, speaker
+notes, catalog card, or deck subtitle - and a field added to the schema is
+covered without editing a list. Two things are not claims: a sentence that
+denies its own claim, and the `Not proven` and `Does not prove` fields, whose
+heading already states that the deck asserts nothing there. A denial in one
+sentence does not cover a claim in the next.
 
 ## Updating the story
 

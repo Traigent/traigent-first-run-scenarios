@@ -24,6 +24,8 @@ import {
 import { presentation } from "../src/content";
 import type { PresentationSpec } from "../src/model";
 import { defaultPptxPath } from "./build-pptx";
+import { HtmlParseError, readHtml, type HtmlElement } from "./html";
+import { findNetworkTargets, findSourceCapabilities } from "./javascript";
 import {
   distRoot,
   isMainModule,
@@ -40,7 +42,71 @@ const CHECKSUMS_FILE_NAME = "checksums.txt";
 const NOTICES_FILE_NAME = "THIRD_PARTY_NOTICES.txt";
 const REPOSITORY_LICENSE_FILE_NAME = "LICENSE";
 const REPOSITORY_NOTICE_FILE_NAME = "NOTICE";
-const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
+// Every file under the presentation source tree is classified, and an
+// extension this scanner does not know is an error rather than a file it
+// quietly walks past. An allow-list of two extensions made a `.js` module - or
+// the same TypeScript file named `.TS` - invisible to the offline scan while
+// the bundler still compiled it into the customer artifact.
+const SCRIPT_EXTENSIONS = new Set([
+  ".cjs",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".mts",
+  ".ts",
+  ".tsx",
+]);
+const STYLE_EXTENSIONS = new Set([".css"]);
+const MARKUP_EXTENSIONS = new Set([".svg"]);
+// Files a bundler can inline but that carry no behavior of their own. They are
+// recorded so the walk stays complete, and are not scanned for code.
+const INERT_EXTENSIONS = new Set([
+  ".avif",
+  ".gif",
+  ".ico",
+  ".jpeg",
+  ".jpg",
+  ".json",
+  ".jsonl",
+  ".md",
+  ".otf",
+  ".png",
+  ".ttf",
+  ".txt",
+  ".webp",
+  ".woff",
+  ".woff2",
+]);
+// Editor and file-manager droppings that no bundler resolves.
+const IGNORED_FILE_NAMES = new Set([
+  ".DS_Store",
+  ".gitignore",
+  ".gitkeep",
+  ".npmignore",
+  "Thumbs.db",
+]);
+// Extensions a bare module specifier may be spelled without.
+const MODULE_RESOLUTION_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".json",
+  ".css",
+  ".svg",
+];
+
+type SourceFileKind = "script" | "style" | "markup" | "inert";
+
+interface ClassifiedSourceFile {
+  readonly path: string;
+  readonly kind: SourceFileKind;
+}
 
 const FORBIDDEN_SOURCE_PATTERNS = [
   { label: "dangerouslySetInnerHTML", pattern: /\bdangerouslySetInnerHTML\b/ },
@@ -57,52 +123,93 @@ const FORBIDDEN_SOURCE_PATTERNS = [
   },
 ] as const;
 
-const EXTERNAL_HTML_PATTERNS = [
-  { label: "external script", pattern: /<script\b[^>]*\bsrc\s*=/i },
+interface ExternalReferenceRule {
+  readonly label: string;
+  readonly elements: readonly string[];
+  // Attributes whose value the browser requests. Omitted when the element is
+  // itself an external surface and is refused on sight.
+  readonly attributes?: readonly string[];
+  // Whether an inline `data:` payload or a same-document fragment is a
+  // self-contained answer for this attribute.
+  readonly allowsInlineValue?: boolean;
+}
+
+// A reference is decided from the parsed markup: which element carries which
+// attribute. Searching the serialized document for the same shapes made deck
+// copy that quotes a tag fail the gate, and could not see a reference an
+// unusual but valid serialization wrote differently.
+const EXTERNAL_REFERENCE_RULES: readonly ExternalReferenceRule[] = [
+  { label: "external script", elements: ["script"], attributes: ["src"] },
   {
     label: "external link resource",
-    pattern: /<link\b[^>]*\bhref\s*=/i,
+    elements: ["link"],
+    attributes: ["href"],
+    allowsInlineValue: true,
   },
-  { label: "base URL", pattern: /<base\b[^>]*\bhref\s*=/i },
+  { label: "base URL", elements: ["base"], attributes: ["href"] },
   {
     label: "embedded active resource",
-    pattern: /<(?:iframe|object|embed)\b/i,
+    elements: ["iframe", "object", "embed", "frame", "frameset", "portal"],
+  },
+  {
+    label: "background image",
+    elements: ["body", "table", "td", "th", "tr"],
+    attributes: ["background"],
+    allowsInlineValue: true,
   },
   {
     label: "external media source",
-    pattern:
-      /<(?:img|source|video|audio|track|input)\b[^>]*\bsrc\s*=\s*["']?(?!data:|#)[^\s"'>]+/i,
+    elements: ["img", "source", "video", "audio", "track", "input"],
+    attributes: ["src"],
+    allowsInlineValue: true,
   },
   {
     label: "responsive media source",
-    pattern: /<(?:img|source)\b[^>]*\bsrcset\s*=/i,
+    elements: ["img", "source"],
+    attributes: ["srcset"],
   },
   {
     label: "external video poster",
-    pattern: /<video\b[^>]*\bposter\s*=\s*["']?(?!data:|#)[^\s"'>]+/i,
+    elements: ["video"],
+    attributes: ["poster"],
+    allowsInlineValue: true,
   },
   {
     label: "external SVG resource",
-    pattern:
-      /<(?:image|use)\b[^>]*\b(?:href|xlink:href)\s*=\s*["']?(?!data:|#)[^\s"'>]+/i,
-  },
-  {
-    label: "automatic page refresh",
-    pattern: /<meta\b(?=[^>]*\bhttp-equiv\s*=\s*["']?refresh\b)[^>]*>/i,
+    elements: ["image", "use"],
+    attributes: ["href", "xlink:href"],
+    allowsInlineValue: true,
   },
   {
     label: "form submission target",
-    pattern: /<(?:form|button|input)\b[^>]*\b(?:action|formaction)\s*=/i,
+    elements: ["form", "button", "input"],
+    attributes: ["action", "formaction"],
   },
-  {
-    label: "hyperlink beacon",
-    pattern: /<a\b[^>]*\bping\s*=/i,
-  },
+  { label: "hyperlink beacon", elements: ["a"], attributes: ["ping"] },
   {
     label: "application cache manifest",
-    pattern: /<html\b[^>]*\bmanifest\s*=/i,
+    elements: ["html"],
+    attributes: ["manifest"],
   },
 ] as const;
+
+// Script content of these types is not JavaScript, so it is inert markup or
+// data rather than code the browser will run. An import map and a speculation
+// rules block are deliberately absent: both exist to name resources the
+// browser should load, so neither is inert.
+const NON_JAVASCRIPT_SCRIPT_TYPES = new Set([
+  "application/json",
+  "application/ld+json",
+  "text/plain",
+  "text/template",
+]);
+
+// Script types whose whole purpose is to point the browser at other
+// resources. A single-file deck has nothing to point at.
+const RESOURCE_DIRECTING_SCRIPT_TYPES = new Set([
+  "importmap",
+  "speculationrules",
+]);
 
 const EXTERNAL_CSS_RESOURCE_PATTERN =
   /\burl\(\s*["']?(?!data:|#)[^)"']+|@import\s+(?:url\(\s*)?["']?(?!data:|#)[^\s;"')]+/i;
@@ -148,6 +255,13 @@ export interface BundleBuildOptions {
   sourceDateEpoch?: string;
   sourceDirectory?: string;
   spec?: PresentationSpec;
+}
+
+/** What the offline checks concluded, and what the manifest then records. */
+export interface OfflineAssurance {
+  readonly selfContainedHtml: boolean;
+  readonly runtimeNetworkDependencies: boolean;
+  readonly filesScanned: number;
 }
 
 export interface BundleBuildResult {
@@ -264,7 +378,32 @@ export function resolveBuildTimestamp(
   return timestamp.toISOString();
 }
 
-async function sourceFiles(directory: string): Promise<string[]> {
+function classifySourceFile(
+  filePath: string,
+  rootDirectory: string,
+): SourceFileKind {
+  const extension = path.extname(filePath).toLocaleLowerCase("en");
+  if (SCRIPT_EXTENSIONS.has(extension)) {
+    return "script";
+  }
+  if (STYLE_EXTENSIONS.has(extension)) {
+    return "style";
+  }
+  if (MARKUP_EXTENSIONS.has(extension)) {
+    return "markup";
+  }
+  if (INERT_EXTENSIONS.has(extension)) {
+    return "inert";
+  }
+  throw new BundleBuildError(
+    `Presentation source contains a file the offline scan cannot classify: ${path.relative(rootDirectory, filePath)}. Every file that can reach the customer bundle must be scannable, so give it a known extension or keep it out of the source tree.`,
+  );
+}
+
+async function sourceFiles(
+  directory: string,
+  rootDirectory: string = directory,
+): Promise<ClassifiedSourceFile[]> {
   const directoryDetails = await lstat(directory);
   if (directoryDetails.isSymbolicLink()) {
     throw new BundleBuildError(
@@ -277,7 +416,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
     );
   }
   const entries = await readdir(directory, { withFileTypes: true });
-  const files: string[] = [];
+  const files: ClassifiedSourceFile[] = [];
   for (const entry of entries) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isSymbolicLink()) {
@@ -286,29 +425,167 @@ async function sourceFiles(directory: string): Promise<string[]> {
       );
     }
     if (entry.isDirectory()) {
-      files.push(...(await sourceFiles(entryPath)));
-    } else if (
-      entry.isFile() &&
-      SOURCE_EXTENSIONS.has(path.extname(entry.name))
-    ) {
-      files.push(entryPath);
+      files.push(...(await sourceFiles(entryPath, rootDirectory)));
+    } else if (entry.isFile() && !IGNORED_FILE_NAMES.has(entry.name)) {
+      files.push({
+        path: entryPath,
+        kind: classifySourceFile(entryPath, rootDirectory),
+      });
     }
   }
-  return files.sort(comparePaths);
+  return files.sort((left, right) => comparePaths(left.path, right.path));
+}
+
+async function isReadableFile(candidate: string): Promise<boolean> {
+  try {
+    const details = await lstat(candidate);
+    if (details.isSymbolicLink()) {
+      throw new BundleBuildError(
+        `Symbolic links are not allowed in presentation source: ${candidate}`,
+      );
+    }
+    return details.isFile();
+  } catch (error: unknown) {
+    if (error instanceof BundleBuildError) {
+      throw error;
+    }
+    return false;
+  }
+}
+
+/**
+ * Resolve one local module specifier to the file the bundler would read.
+ *
+ * A specifier that cannot be resolved is a file this scan cannot open, so it
+ * is refused rather than skipped.
+ */
+async function resolveLocalSpecifier(
+  fromFile: string,
+  specifier: string,
+): Promise<string> {
+  const base = path.resolve(path.dirname(fromFile), specifier);
+  const candidates = [base];
+  // TypeScript sources import a sibling module by its emitted `.js` name.
+  const jsExtension = /\.(m|c)?js$/i.exec(base);
+  if (jsExtension !== null) {
+    const stem = base.slice(0, base.length - jsExtension[0].length);
+    const infix = jsExtension[1] ?? "";
+    candidates.push(`${stem}.${infix}ts`, `${stem}.${infix}tsx`);
+  }
+  for (const extension of MODULE_RESOLUTION_EXTENSIONS) {
+    candidates.push(`${base}${extension}`);
+    candidates.push(path.join(base, `index${extension}`));
+  }
+  for (const candidate of candidates) {
+    if (await isReadableFile(candidate)) {
+      return candidate;
+    }
+  }
+  throw new BundleBuildError(
+    `Presentation source imports ${specifier} from ${fromFile}, which the offline scan cannot resolve to a file it can read`,
+  );
+}
+
+/**
+ * Close the set of source files over the imports they declare.
+ *
+ * A directory walk answers "what is in this folder", but the question the
+ * offline scan has to answer is "what can reach the customer bundle", and the
+ * two are not the same: the deck's own content module already imports scenario
+ * data from outside the presentation tree, so a module placed beside it would
+ * be compiled into the artifact without ever being opened by a walk.
+ */
+export async function reachableSourceFiles(
+  entryFiles: readonly ClassifiedSourceFile[],
+  rootDirectory: string,
+): Promise<ClassifiedSourceFile[]> {
+  const found = new Map<string, ClassifiedSourceFile>();
+  const queue: ClassifiedSourceFile[] = [];
+  for (const file of entryFiles) {
+    if (!found.has(file.path)) {
+      found.set(file.path, file);
+      queue.push(file);
+    }
+  }
+
+  while (queue.length > 0) {
+    const file = queue.shift()!;
+    if (file.kind !== "script") {
+      continue;
+    }
+    const source = await readFile(file.path, "utf8");
+    for (const specifier of importSpecifiers(file.path, source)) {
+      if (!specifier.startsWith(".") && !specifier.startsWith("/")) {
+        // A package specifier is inventoried against the lockfile instead.
+        continue;
+      }
+      const resolved = await resolveLocalSpecifier(file.path, specifier);
+      if (found.has(resolved)) {
+        continue;
+      }
+      const reached: ClassifiedSourceFile = {
+        path: resolved,
+        kind: classifySourceFile(resolved, rootDirectory),
+      };
+      found.set(resolved, reached);
+      queue.push(reached);
+    }
+  }
+
+  return [...found.values()].sort((left, right) =>
+    comparePaths(left.path, right.path),
+  );
+}
+
+async function scannedSourceFiles(
+  directory: string,
+): Promise<ClassifiedSourceFile[]> {
+  return reachableSourceFiles(await sourceFiles(directory), directory);
+}
+
+async function scriptSourceFiles(directory: string): Promise<string[]> {
+  return (await scannedSourceFiles(directory))
+    .filter((file) => file.kind === "script")
+    .map((file) => file.path);
+}
+
+function markupIssues(content: string): string[] {
+  const document = readHtml(content);
+  const issues: string[] = [];
+  for (const element of document.elements) {
+    issues.push(...externalReferenceIssues(element));
+  }
+  if (document.rawText.some((block) => block.name === "script")) {
+    issues.push("embedded script");
+  }
+  return issues;
 }
 
 export async function assertNoForbiddenRuntimeSource(
   directory: string,
-): Promise<void> {
+): Promise<OfflineAssurance> {
   const issues: string[] = [];
-  for (const filePath of await sourceFiles(directory)) {
-    const content = await readFile(filePath, "utf8");
-    for (const forbidden of FORBIDDEN_SOURCE_PATTERNS) {
-      if (forbidden.pattern.test(content)) {
-        issues.push(
-          `${path.relative(directory, filePath)}: ${forbidden.label}`,
-        );
+  const scanned = await scannedSourceFiles(directory);
+  for (const file of scanned) {
+    const relativePath = path.relative(directory, file.path);
+    if (file.kind === "inert") {
+      continue;
+    }
+    const content = await readFile(file.path, "utf8");
+    if (file.kind === "style") {
+      if (EXTERNAL_CSS_RESOURCE_PATTERN.test(content)) {
+        issues.push(`${relativePath}: external CSS resource`);
       }
+      continue;
+    }
+    if (file.kind === "markup") {
+      for (const issue of markupIssues(content)) {
+        issues.push(`${relativePath}: ${issue}`);
+      }
+      continue;
+    }
+    for (const capability of findSourceCapabilities(content)) {
+      issues.push(`${relativePath}: ${capability}`);
     }
   }
   if (issues.length > 0) {
@@ -316,28 +593,115 @@ export async function assertNoForbiddenRuntimeSource(
       `Presentation source contains forbidden runtime behavior:\n- ${issues.join("\n- ")}`,
     );
   }
+  return {
+    selfContainedHtml: true,
+    runtimeNetworkDependencies: false,
+    filesScanned: scanned.length,
+  };
 }
 
-export function assertSelfContainedHtml(html: string): void {
-  const issues: string[] = EXTERNAL_HTML_PATTERNS.filter(({ pattern }) =>
-    pattern.test(html),
-  ).map(({ label }) => label);
-  const cssFragments = [
-    ...[...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(
-      (match) => match[1] ?? "",
-    ),
-    ...[...html.matchAll(/\bstyle\s*=\s*(["'])(.*?)\1/gi)].map(
-      (match) => match[2] ?? "",
-    ),
-  ];
-  if (cssFragments.some((css) => EXTERNAL_CSS_RESOURCE_PATTERN.test(css))) {
-    issues.push("external CSS resource");
+function isInlineValue(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    trimmed.length === 0 || trimmed.startsWith("#") || /^data:/i.test(trimmed)
+  );
+}
+
+function externalReferenceIssues(element: HtmlElement): string[] {
+  const issues: string[] = [];
+  for (const rule of EXTERNAL_REFERENCE_RULES) {
+    if (!rule.elements.includes(element.name)) {
+      continue;
+    }
+    if (rule.attributes === undefined) {
+      issues.push(`${rule.label} <${element.name}>`);
+      continue;
+    }
+    for (const attribute of rule.attributes) {
+      const value = element.attributes.get(attribute);
+      if (value === undefined) {
+        continue;
+      }
+      if (rule.allowsInlineValue === true && isInlineValue(value)) {
+        continue;
+      }
+      issues.push(`${rule.label} <${element.name} ${attribute}>`);
+    }
+  }
+  if (
+    element.name === "meta" &&
+    element.attributes.get("http-equiv")?.toLocaleLowerCase("en") === "refresh"
+  ) {
+    issues.push("automatic page refresh <meta http-equiv=refresh>");
+  }
+  const inlineStyle = element.attributes.get("style");
+  if (
+    inlineStyle !== undefined &&
+    EXTERNAL_CSS_RESOURCE_PATTERN.test(inlineStyle)
+  ) {
+    issues.push(`external CSS resource <${element.name} style>`);
+  }
+  return issues;
+}
+
+/**
+ * Decide whether a built artifact needs the network, from the artifact.
+ *
+ * The answer is read out of the document: which elements carry which
+ * attribute values, what the style blocks declare, and what the scripts the
+ * browser will run actually do. The previous check searched the serialized
+ * text for the same shapes, which both refused deck copy that quoted a script
+ * tag and accepted a beacon written inside an inline script.
+ */
+export function assertSelfContainedHtml(html: string): OfflineAssurance {
+  let document;
+  try {
+    document = readHtml(html);
+  } catch (error: unknown) {
+    if (error instanceof HtmlParseError) {
+      throw new BundleBuildError(
+        `Built HTML cannot be read as a document, so it cannot be shown to be self-contained: ${error.message}`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+  const issues: string[] = [];
+  for (const element of document.elements) {
+    issues.push(...externalReferenceIssues(element));
+  }
+  for (const block of document.rawText) {
+    if (block.name === "style") {
+      if (EXTERNAL_CSS_RESOURCE_PATTERN.test(block.content)) {
+        issues.push("external CSS resource <style>");
+      }
+      continue;
+    }
+    if (block.name !== "script") {
+      continue;
+    }
+    const type = block.attributes.get("type")?.trim().toLocaleLowerCase("en");
+    if (type !== undefined && RESOURCE_DIRECTING_SCRIPT_TYPES.has(type)) {
+      issues.push(`resource-directing script <script type=${type}>`);
+      continue;
+    }
+    if (type !== undefined && NON_JAVASCRIPT_SCRIPT_TYPES.has(type)) {
+      continue;
+    }
+    for (const target of findNetworkTargets(block.content)) {
+      issues.push(`inline script: ${target}`);
+    }
   }
   if (issues.length > 0) {
     throw new BundleBuildError(
-      `Built HTML is not self-contained:\n- ${issues.join("\n- ")}`,
+      `Built HTML is not self-contained:\n- ${[...new Set(issues)].join("\n- ")}`,
     );
   }
+  return {
+    selfContainedHtml: true,
+    runtimeNetworkDependencies: false,
+    filesScanned: document.elements.length,
+  };
 }
 
 function packageNameFromSpecifier(specifier: string): string | null {
@@ -390,16 +754,6 @@ function sourceTokens(source: string): SourceToken[] {
   return tokens;
 }
 
-function recordPackageSpecifier(
-  packages: Set<string>,
-  specifier: string,
-): void {
-  const packageName = packageNameFromSpecifier(specifier);
-  if (packageName !== null) {
-    packages.add(packageName);
-  }
-}
-
 function staticImportSpecifier(
   tokens: SourceToken[],
   start: number,
@@ -442,8 +796,15 @@ function staticExportSpecifier(
   return null;
 }
 
-function runtimeImports(filePath: string, source: string): string[] {
-  const packages = new Set<string>();
+/**
+ * Every module specifier a source file declares, in source order.
+ *
+ * Both callers need this list for different reasons - one inventories the
+ * packages it names, the other follows the local files it reaches - so the
+ * specifiers are collected once and interpreted by each caller.
+ */
+function importSpecifiers(filePath: string, source: string): string[] {
+  const specifiers: string[] = [];
   const tokens = sourceTokens(source);
 
   for (let index = 0; index < tokens.length; index += 1) {
@@ -461,7 +822,7 @@ function runtimeImports(filePath: string, source: string): string[] {
             `Dynamic import must use a string literal so offline dependencies are enumerable: ${filePath}`,
           );
         }
-        recordPackageSpecifier(packages, argument.value);
+        specifiers.push(argument.value);
         continue;
       }
       if (next?.kind === SyntaxKind.DotToken) {
@@ -469,7 +830,7 @@ function runtimeImports(filePath: string, source: string): string[] {
       }
       const specifier = staticImportSpecifier(tokens, index + 1);
       if (specifier !== null) {
-        recordPackageSpecifier(packages, specifier);
+        specifiers.push(specifier);
       }
       continue;
     }
@@ -479,7 +840,7 @@ function runtimeImports(filePath: string, source: string): string[] {
     ) {
       const specifier = staticExportSpecifier(tokens, index + 1);
       if (specifier !== null) {
-        recordPackageSpecifier(packages, specifier);
+        specifiers.push(specifier);
       }
       continue;
     }
@@ -495,10 +856,21 @@ function runtimeImports(filePath: string, source: string): string[] {
           `require must use a string literal so offline dependencies are enumerable: ${filePath}`,
         );
       }
-      recordPackageSpecifier(packages, argument.value);
+      specifiers.push(argument.value);
     }
   }
 
+  return specifiers;
+}
+
+function runtimeImports(filePath: string, source: string): string[] {
+  const packages = new Set<string>();
+  for (const specifier of importSpecifiers(filePath, source)) {
+    const packageName = packageNameFromSpecifier(specifier);
+    if (packageName !== null) {
+      packages.add(packageName);
+    }
+  }
   return [...packages].sort(comparePaths);
 }
 
@@ -577,7 +949,7 @@ export async function discoverRuntimePackageNames(
   sourceDirectory: string,
 ): Promise<string[]> {
   const directPackages = new Set<string>();
-  for (const filePath of await sourceFiles(sourceDirectory)) {
+  for (const filePath of await scriptSourceFiles(sourceDirectory)) {
     const source = await readFile(filePath, "utf8");
     for (const packageName of runtimeImports(filePath, source)) {
       directPackages.add(packageName);
@@ -920,11 +1292,11 @@ export async function buildCustomerBundle(
   assertSafeOutputDirectory(outputDirectory, distDirectory);
   const repositoryLegalFiles =
     await readRepositoryLegalFiles(repositoryDirectory);
-  await assertNoForbiddenRuntimeSource(sourceDirectory);
+  const sourceAssurance = await assertNoForbiddenRuntimeSource(sourceDirectory);
   await assertRequiredFile(sourceHtmlPath, "Built HTML");
   await assertRequiredFile(sourcePptxPath, "Built PowerPoint");
   const html = await readFile(sourceHtmlPath, "utf8");
-  assertSelfContainedHtml(html);
+  const htmlAssurance = assertSelfContainedHtml(html);
   const notices = await buildThirdPartyNotices(
     packageDirectory,
     sourceDirectory,
@@ -989,8 +1361,17 @@ export async function buildCustomerBundle(
       })),
     },
     offline: {
-      self_contained_html: true,
-      runtime_network_dependencies: false,
+      // Recorded from the checks above rather than asserted beside them, and
+      // scoped to what those checks establish: the artifact was read, not run.
+      self_contained_html: htmlAssurance.selfContainedHtml,
+      runtime_network_dependencies:
+        htmlAssurance.runtimeNetworkDependencies ||
+        sourceAssurance.runtimeNetworkDependencies,
+      verified_by: {
+        source_files_scanned: sourceAssurance.filesScanned,
+        built_html_elements_read: htmlAssurance.filesScanned,
+        browser_execution_observed: false,
+      },
     },
     licensing: {
       repository_spdx_license: "Apache-2.0",

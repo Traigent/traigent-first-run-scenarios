@@ -328,4 +328,141 @@ describe("presentation content validation", () => {
       "not-demonstrated slides cannot present metrics",
     );
   });
+
+  it.each([
+    [
+      "slide footer evidence",
+      (candidate: PresentationSpec, claim: string) => {
+        candidate.slides[0]!.evidence.push(claim);
+      },
+    ],
+    [
+      "speaker notes",
+      (candidate: PresentationSpec, claim: string) => {
+        candidate.slides[0]!.notes.push(claim);
+      },
+    ],
+    [
+      "a catalog card",
+      (candidate: PresentationSpec, claim: string) => {
+        candidate.catalog[0]!.expectedRouting = `${candidate.catalog[0]!.expectedRouting} ${claim}`;
+      },
+    ],
+    [
+      "a journey step",
+      (candidate: PresentationSpec, claim: string) => {
+        const slide = candidate.slides.find((item) => item.steps.length > 0)!;
+        slide.steps[0]!.detail = claim;
+      },
+    ],
+    [
+      "a matrix row",
+      (candidate: PresentationSpec, claim: string) => {
+        const slide = candidate.slides.find(
+          (item) => item.testMatrix !== undefined,
+        )!;
+        slide.testMatrix![0]!.passSupports = claim;
+      },
+    ],
+  ])("catches a positive run claim rendered in %s", (_surface, plant) => {
+    const candidate = copyPresentation();
+    plant(candidate, "We achieved a 41% cost reduction.");
+
+    expectValidationIssue(
+      candidate,
+      "positive run claims require evidenceState verified-run",
+    );
+  });
+
+  it("catches a positive run claim in the deck subtitle", () => {
+    const candidate = copyPresentation();
+    candidate.subtitle = `${candidate.subtitle} We achieved a 41% cost reduction.`;
+
+    expectValidationIssue(
+      candidate,
+      "positive run claims require evidenceState verified-run, which deck-level text cannot carry",
+    );
+  });
+
+  it("walks nested content rather than a hand-written field list", () => {
+    const candidate = copyPresentation();
+    candidate.catalog[0]!.dataset = `${candidate.catalog[0]!.dataset} We observed a measured improvement.`;
+
+    expectValidationIssue(
+      candidate,
+      "positive run claims require evidenceState verified-run",
+    );
+  });
+
+  it.each([
+    [
+      "a not-proven catalog line",
+      (candidate: PresentationSpec) => {
+        candidate.catalog[0]!.notProven[0] =
+          "That we measured a cost reduction on live traffic";
+      },
+    ],
+    [
+      "a does-not-prove matrix cell",
+      (candidate: PresentationSpec) => {
+        const slide = candidate.slides.find(
+          (item) => item.testMatrix !== undefined,
+        )!;
+        slide.testMatrix![0]!.doesNotProve =
+          "That quality improved by any amount";
+      },
+    ],
+    [
+      "a speaker note that denies the claim",
+      (candidate: PresentationSpec) => {
+        candidate.slides[0]!.notes.push(
+          "Never say we achieved a result; say what the contract states.",
+        );
+      },
+    ],
+    [
+      "an evidence line that denies the claim",
+      (candidate: PresentationSpec) => {
+        candidate.slides[0]!.evidence.push(
+          "No verified run exists for this deck",
+        );
+      },
+    ],
+  ])(
+    "accepts %s, which states what the deck does not claim",
+    (_surface, plant) => {
+      const candidate = copyPresentation();
+      plant(candidate);
+
+      expect(() => validatePresentationContent(candidate)).not.toThrow();
+    },
+  );
+
+  it("still catches a claim that follows a denial in a separate sentence", () => {
+    const candidate = copyPresentation();
+    candidate.slides[0]!.notes.push(
+      "This deck records no run. We achieved a 41% cost reduction.",
+    );
+
+    expectValidationIssue(
+      candidate,
+      "positive run claims require evidenceState verified-run",
+    );
+  });
+
+  it("does not refuse honest contract copy on the widened surfaces", () => {
+    const candidate = copyPresentation();
+    const slide = candidate.slides[0]!;
+    slide.evidence.push(
+      "Scenario contract at case 46; no recorded coding-agent run supplied",
+    );
+    slide.notes.push(
+      "Talk track: the deliverable is a truthful position and a next step, not a score.",
+    );
+    candidate.catalog[0]!.notProven[0] =
+      "That a coding-agent run reached the published opening";
+    candidate.catalog[0]!.dataset = `${candidate.catalog[0]!.dataset} Cost, quality, and latency are the axes a managed search would trade off.`;
+
+    expect(() => validatePresentationContent(candidate)).not.toThrow();
+  });
 });
