@@ -291,6 +291,31 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         )
         self.assertIn(expected_location, result.stderr)
 
+    def test_a_repository_reference_in_a_TRACKED_path_is_rejected(self) -> None:
+        """The tracked half of the path surface, which is the published half.
+
+        `check_repository` scans paths in two loops -- one over the git index,
+        one over untracked files -- and every other path fixture leaves its
+        file untracked, so only the second loop was ever exercised. Deleting
+        the call in the tracked loop left the whole suite green while the guard
+        stopped reading the paths that actually reach GitHub, which is the only
+        half that publishes.
+        """
+        self._pad_to_floor()
+        organization = self.repo / "Traigent"
+        organization.mkdir()
+        path = organization / "".join(("nonpublic-", "example#31.md"))
+        path.write_text("Customer-visible notes.\n", encoding="utf-8")
+        self._git("add", str(path.relative_to(self.repo)))
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        expected_location = "".join(
+            ("path:", "Traigent/", "nonpublic-", "example#31.md")
+        )
+        self.assertIn(expected_location, result.stderr)
+
     def test_a_bare_work_item_reference_in_a_path_is_rejected(self) -> None:
         """The other half of the reference scan, on the path surface.
 
