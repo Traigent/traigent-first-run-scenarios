@@ -216,6 +216,10 @@ npm ci
 npm run check
 ```
 
+`npm run check` ends with the browser-fit gate, which requires Google Chrome
+or Chromium (set `CHROME_BIN` if it is not on the default path); see
+`presentation/README.md` → Requirements.
+
 Edit the shared semantic source in `presentation/src/`; do not hand-edit build
 artifacts.
 

@@ -112,6 +112,201 @@ class PublicSurfaceGuardTests(unittest.TestCase):
                 self.assertEqual(1, result.returncode, result.stdout)
                 self.assertIn(f"untracked:{filename}:2:", result.stderr)
 
+    def test_wide_encoded_leaks_are_rejected(self) -> None:
+        self._pad_to_floor()
+        planted_value = "/" + "home" + "/example-user/project"
+        for encoding in (
+            "utf-16",
+            "utf-16-le",
+            "utf-16-be",
+            "utf-32",
+            "utf-32-le",
+            "utf-32-be",
+        ):
+            with self.subTest(encoding=encoding):
+                path = self.repo / "wide-notes"
+                path.write_bytes(f"safe first line\n{planted_value}\n".encode(encoding))
+
+                result = self._run_guard()
+                path.unlink()
+
+                self.assertEqual(1, result.returncode, result.stdout)
+                self.assertIn("machine-specific POSIX home path", result.stderr)
+
+    def test_bom_declared_wide_text_without_a_leak_is_accepted(self) -> None:
+        self._pad_to_floor()
+        for encoding in ("utf-16", "utf-32"):
+            with self.subTest(encoding=encoding):
+                path = self.repo / "wide-notes"
+                path.write_bytes("Customer-visible review notes.\n".encode(encoding))
+
+                result = self._run_guard()
+                path.unlink()
+
+                self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_unsupported_binary_content_requires_review(self) -> None:
+        self._pad_to_floor()
+        path = self.repo / "opaque.bin"
+        path.write_bytes(bytes([0xFF, 0xFE, 0x00, 0x9C, 0xFF]))
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("unsupported or ambiguous text encoding", result.stderr)
+
+    def test_a_bare_work_item_reference_is_rejected(self) -> None:
+        """The form the owner-qualified patterns cannot see.
+
+        `<repo>#<number>` carries no `Traigent/` prefix and no URL, so the three
+        patterns above miss it -- and it is the form that actually accumulates
+        in prose and comments. Literals are split so this file does not trip the
+        rule it is testing.
+        """
+        self._pad_to_floor()
+        planted = "".join(("nonpublic", "-exam", "ple#314"))
+        (self.repo / "notes.md").write_text(
+            f"See {planted} for the rationale.\n", encoding="utf-8"
+        )
+        self._git("add", "notes.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("notes.md", result.stderr)
+
+    def test_a_bare_reference_with_no_hyphen_is_rejected(self) -> None:
+        """The shape the hyphen requirement missed, which is the common one here.
+
+        Requiring a hyphen read as a conservative limit, but the sibling
+        repositories this rule exists to keep out of a public file are
+        overwhelmingly CamelCase with no separator, so the limit excluded
+        exactly the exposure. Underscored names are the other real spelling.
+        Literals are split so this file does not trip the rule it is testing.
+        """
+        self._pad_to_floor()
+        for planted in (
+            "".join(("Some", "Private", "Service#4821")),
+            "".join(("Another", "Service#77")),
+            "".join(("Widget", "_fact", "ory#12")),
+        ):
+            with self.subTest(reference=planted):
+                (self.repo / "notes.md").write_text(
+                    f"Blocked on {planted} for now.\n", encoding="utf-8"
+                )
+                self._git("add", "notes.md")
+
+                result = self._run_guard()
+
+                self.assertEqual(1, result.returncode, result.stdout)
+                self.assertIn("notes.md", result.stderr)
+
+    def test_public_work_item_and_plain_numbers_pass(self) -> None:
+        """The false-red half, and it is the reason the rule is not a bare `#N`.
+
+        A public repository's work item, this repository's own pull request, an
+        issue number in prose and an invoice number all have to survive -- the
+        last one because a sibling repository's support-email fixtures carry it.
+        A lowercase single word before the `#` is not a repository reference,
+        which is what keeps support-email invoice numbers and same-file
+        markdown anchors clean. A dot-joined name still passes in bare form --
+        that is the remaining stated limit, kept because widening to dots would
+        read a version string as a work item. In the other direction, an anchor
+        to a purely numeric heading in a hyphenated filename is reported; that
+        is pre-existing and unchanged here, and the digit-then-hyphen lookahead
+        already spares the ordinary `#2-setup` spelling.
+        """
+        self._pad_to_floor()
+        (self.repo / "ok.md").write_text(
+            "See traigent-first-run#79, PR #1 of this repository, issue #244,"
+            " invoice #4821.\n"
+            "Support text: invoice#4821 and refund#77 are not repositories.\n"
+            "Stated limit: internal.example#12 passes in bare form.\n"
+            "Anchor link: [setup](getting-started#2-setup) stays a link.\n",
+            encoding="utf-8",
+        )
+        self._git("add", "ok.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_unknown_traigent_repository_reference_is_rejected(self) -> None:
+        self._pad_to_floor()
+        planted_values = (
+            "".join(("Traigent/", "secret")),
+            "".join(("Traigent/", "nonpublic-example")),
+            "".join(("traigent/", "nonpublic-example")),
+            "".join(("TRAIGENT/", "nonpublic-exam", "ple#12")),
+            "".join(("https://github.com/Traigent/", "nonpublic-example")),
+            "".join(("https://github.com/Traigent/", "nonpublic-example/issues/12")),
+            "".join(("git@github.com:Traigent/", "nonpublic-example.git")),
+            # The repository's own dominant markdown reference styles must not
+            # slip past the terminator class: backticks, revision pins,
+            # markdown links, and bold emphasis.
+            "".join(("`Traigent/", "nonpublic-example`")),
+            "".join(("Traigent/", "nonpublic-example@abc123")),
+            "".join(("[Traigent/", "nonpublic-example](https://example.invalid)")),
+            "".join(("**Traigent/", "nonpublic-example**")),
+            "".join(("https://github.com/Traigent/", "nonpublic-example@main")),
+        )
+        for index, planted_value in enumerate(planted_values):
+            with self.subTest(planted_value=planted_value):
+                path = self.repo / f"cross-ref-{index}"
+                path.write_text(f"see {planted_value} for details\n", encoding="utf-8")
+                result = self._run_guard()
+                path.unlink()
+
+                self.assertEqual(1, result.returncode, result.stdout)
+                self.assertIn("outside the public allowlist", result.stderr)
+
+    def test_foreign_repositories_and_non_repository_work_items_are_accepted(
+        self,
+    ) -> None:
+        self._pad_to_floor()
+        path = self.repo / "external-refs"
+        path.write_text(
+            "https://github.com/ExampleOrg/private-looking/issues/12\n"
+            "invoice#4821 and worst-case issue 19\n"
+            "npm package @traigent/first-run-scenario-presentation\n",
+            encoding="utf-8",
+        )
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_unknown_traigent_repository_in_a_path_is_rejected(self) -> None:
+        self._pad_to_floor()
+        organization = self.repo / "Traigent"
+        organization.mkdir()
+        path = organization / "".join(("nonpublic-", "example#12.md"))
+        path.write_text("Customer-visible notes.\n", encoding="utf-8")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        expected_location = "".join(
+            ("path:", "Traigent/", "nonpublic-", "example#12.md")
+        )
+        self.assertIn(expected_location, result.stderr)
+
+    def test_public_repository_references_are_accepted(self) -> None:
+        self._pad_to_floor()
+        path = self.repo / "public-refs"
+        path.write_text(
+            "Merged in PR #1. See Traigent/traigent-first-run#79,\n"
+            "https://github.com/Traigent/traigent-skills/issues/3, and\n"
+            "git@github.com:Traigent/TraigentSchema.git.\n"
+            "Pinned as `Traigent/traigent-first-run@6ec2b9c1` in the deck.\n",
+            encoding="utf-8",
+        )
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("passed for 1 file(s)", result.stdout)
+
     def test_staged_leak_is_found_when_worktree_copy_is_safe(self) -> None:
         self._pad_to_floor()
         planted_value = "".join(("private", " ", "ticket"))

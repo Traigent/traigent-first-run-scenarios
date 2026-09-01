@@ -15,9 +15,10 @@
     "build:web": "vite build",
     "build:pptx": "tsx scripts/build-pptx.ts",
     "build:bundle": "tsx scripts/build-bundle.ts",
+    "fit:browser": "tsx scripts/check-browser-fit.ts",
     "build": "npm run validate && npm run build:web && npm run build:pptx && npm run build:bundle",
     "format:check": "prettier --check --ignore-path ../.gitignore \"**/*.{ts,tsx,css,json,html,md}\"",
-    "check": "npm run typecheck && npm run format:check && npm run test && npm run build"
+    "check": "npm run typecheck && npm run format:check && npm run test && npm run build && npm run fit:browser"
   },
   "dependencies": {
     "react": "19.2.8",

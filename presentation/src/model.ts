@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const evidenceStateSchema = z.enum([
+  "guide-contract",
   "scenario-contract",
   "verified-run",
   "not-demonstrated",
@@ -82,6 +83,7 @@ export const slideSchema = z
       "matrix",
       "catalog",
     ]),
+    section: z.enum(["core", "appendix"]).optional(),
     eyebrow: z.string().min(1),
     title: z.string().min(1),
     body: z.string().min(1),
@@ -96,6 +98,10 @@ export const slideSchema = z
     catalogView: z.enum(["setup-and-route", "data-and-limits"]).optional(),
     catalogSlug: z.string().min(1).optional(),
     evidenceState: evidenceStateSchema,
+    sourceRevision: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/)
+      .optional(),
     evidence: z.array(z.string().min(1)).min(1),
     notes: z.array(z.string().min(1)).min(1),
   })
@@ -103,7 +109,7 @@ export const slideSchema = z
 
 export const presentationSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     title: z.string().min(1),
     subtitle: z.string().min(1),
     scenario: z
@@ -161,6 +167,27 @@ export const presentationSchema = z
       titles.add(normalizedTitle);
 
       if (
+        slide.evidenceState === "guide-contract" &&
+        slide.sourceRevision === undefined
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "guide-contract slides require an exact source revision",
+          path: ["slides", index, "sourceRevision"],
+        });
+      }
+      if (
+        slide.evidenceState !== "guide-contract" &&
+        slide.sourceRevision !== undefined
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "only guide-contract slides may declare a source revision",
+          path: ["slides", index, "sourceRevision"],
+        });
+      }
+
+      if (
         slide.catalogSlug !== undefined &&
         !catalogSlugs.has(slide.catalogSlug)
       ) {
@@ -207,10 +234,27 @@ export function parsePresentation(value: unknown): PresentationSpec {
   return presentationSchema.parse(value);
 }
 
+export function coverageLabel(
+  coverage: "published" | "coverage-target",
+): string {
+  return coverage === "published"
+    ? "Available here: case 46"
+    : "Shipped in the guide; public test case planned";
+}
+
+export function displayEyebrow(slide: SlideSpec): string {
+  return slide.section === "appendix" &&
+    !slide.eyebrow.toLocaleUpperCase("en").startsWith("APPENDIX")
+    ? `APPENDIX · ${slide.eyebrow}`
+    : slide.eyebrow;
+}
+
 export function evidenceLabel(state: EvidenceState): string {
   switch (state) {
+    case "guide-contract":
+      return "Guide contract · no recorded run";
     case "scenario-contract":
-      return "Expected scenario contract";
+      return "Scenario contract · no recorded run";
     case "verified-run":
       return "Verified run evidence";
     case "not-demonstrated":

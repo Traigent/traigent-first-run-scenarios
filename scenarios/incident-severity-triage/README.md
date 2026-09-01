@@ -36,6 +36,41 @@ declared two cases. It does not import or execute the agent or evaluator to do
 so, and so it does not establish which of those 12 spellings the evaluator
 scores alike -- the catalog makes no claim about that.
 
+## Reading `dataset.jsonl`
+
+Each of the 120 lines is one JSON object with three keys - `input`, `output`,
+and `metadata`. The equivalent object below is formatted across several lines
+for readability; the JSONL file stores it on one physical line:
+
+```json
+{
+  "input": "Every checkout attempt has returned a 502 for the last eleven minutes.",
+  "output": "SEV1",
+  "metadata": { "difficulty": "easy", "split": "tuning", "provenance": "real" }
+}
+```
+
+- `input` - the incident-report text the agent classifies.
+- `output` - the expected label, written as one of 12 **surface labels**
+  (`SEV1`-`SEV4`, `P1`-`P4`, `Critical`, `High`, `Medium`, `Low`). Different
+  fictional ticketing systems use different vocabularies; the evaluator
+  normalizes them, so `SEV1`, `P1`, and `Critical` all count as the same class,
+  `severity-1`. The full 12-to-4 map is the dataset entry's `label_shape.normalization_map`
+  under `catalog.datasets` in `scenario.json`.
+- `metadata.split` - `tuning` (100 rows) or `holdout` (20 rows). Holdout rows
+  are reserved for checking a winner outside the tuning data.
+- `metadata.difficulty` - `easy`, `medium`, `hard`, or `very-hard`, 30 rows
+  each.
+- `metadata.provenance` - always `real` here, and this is the one field that
+  means less than it looks: it is **in-world scorer metadata** - what the
+  fictional customer declares about their rows when the guide scores readiness.
+  It does not describe where these repository bytes came from. Every byte in
+  this scenario is Traigent-authored synthetic content (`content.origin` in
+  `scenario.json`).
+
+`scenario.py check 46` re-derives every one of these counts from the JSONL
+bytes and fails if they drift from the manifest.
+
 ## Context-isolated execution
 
 For a recorded run, start a fresh worker with only a materialized copy of

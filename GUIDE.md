@@ -3,15 +3,22 @@
 Use this guide to inspect a public scenario or captain one reproducible Phase A
 opening run. It does not authorize a credentialed optimization.
 
+In this guide, **captain** means the human test operator who prepares the run,
+controls the worker handoff and stop point, and retains evidence.
+
 The repository currently publishes one reference scenario and its expected
-opening contract. It does not publish a recorded worker result. Until a fresh
-run is captured and verified, describe the opening as **expected**, not
-**verified**.
+opening contract (**published** means checked into this public repository as
+reviewed, versioned files). It does not publish a recorded worker result.
+Until a fresh run is captured and verified, describe the opening as
+**expected**, not **verified**. Every step below works the same way for any
+published scenario; case `46` is the one published today.
 
 ## 1. Create two clean checkouts
 
-Use a disposable directory outside any customer production repository. The
-scenario workflow supports Python 3.11 through 3.13. The selected first-run
+Use a disposable directory outside any customer production repository, and
+outside any workspace an existing coding-agent session already has as context
+— the worker must later open the prepared copy with none of these
+repositories in its supplied context. The scenario workflow supports Python 3.11 through 3.13. The selected first-run
 guide must be a local checkout so the run can identify exactly which guide
 bytes were used.
 
@@ -117,11 +124,17 @@ Do not mention the case number, expected band, verifier, grading contract, or
 previous attempts. Do not place this repository or `run.json` in the worker's
 supplied context.
 
+The worker is not told this is a scenario run; only the captain knows the
+case identity. The worker is deliberately
+blinded so that it behaves like a real customer's coding agent: give it
+nothing beyond the prepared project and the printed handoff, and its opening
+reflects what a fresh agent would actually do.
+
 The captain observes the run and stops it at the first question or decision
 that belongs to the human. For this Phase A opening:
 
 - do not provide a Traigent or model-provider credential;
-- do not approve a paid or remote Traigent/provider call;
+- do not approve a paid or remote Traigent or model-provider call;
 - do not send customer data or permit production mutation;
 - do not install software unless a separate authorized procedure permits it;
 - allow only local inspection and the exact deterministic evaluator calibration
@@ -155,14 +168,16 @@ recorded in `run.json`, and compares these top-level semantic fields:
 Expected `caps` are condition slugs. When captured readiness contains full cap
 objects, verification compares their `condition` fields and ignores
 display-only cap details. It reports every mismatch and never imports or
-executes verifier code. A match
-supports only this statement:
+executes verifier code. A match supports only this statement:
 
-> Under the recorded scenario, guide, and isolation conditions, the captured
-> opening fields matched the published Phase A contract.
+> The four supplied opening fields matched the published Phase A contract at
+> the scenario revision recorded in `run.json`, and the recorded scenario
+> project and contract inventories matched that revision.
 
-It does not establish that a baseline or optimization ran, that quality or cost
-improved, or that another project will receive the same result.
+It does not establish that a worker produced the result, that the recorded
+guide or isolation conditions were used, that a baseline or optimization ran,
+that quality or cost improved, or that another project will receive the same
+result.
 
 A successful comparison prints `PASS` and names the four matched fields. A
 failure prints `FAIL` and every mismatched field; retain the full result rather
@@ -175,19 +190,26 @@ Record:
 - scenario slug and legacy identifier;
 - scenario-repository and guide revisions;
 - prepared `run.json`;
-- worker and environment description;
+- worker, session, environment, and isolation-boundary description;
 - exact handoff and worker response;
 - the verified JSON bytes;
-- complete command output and exit statuses; and
+- complete command output and exit statuses, including verifier output; and
 - the stop point.
 
 Use one of the presentation evidence labels consistently:
 
-- **Expected scenario contract** for published expectations without a captured
-  verified run;
-- **Verified run evidence** only when the referenced run artifact exists and
-  verification passed; or
-- **Not demonstrated** for any later behavior that was not exercised.
+- **Guide contract · no recorded run** for behavior pinned to an exact public
+  guide revision, without a referenced captured run;
+- **Scenario contract · no recorded run** for published scenario facts or
+  expectations, without a referenced captured run;
+- **Verified run evidence** only when every Phase A report item above is
+  retained and referenced, and semantic verification passed; or
+- **Not demonstrated in this deck** for any later behavior or outcome that was
+  not exercised.
+
+A run record, result JSON, and `PASS` alone are insufficient. Without the
+complete retained report, keep the public result at **Scenario contract · no
+recorded run**.
 
 ## 7. Keep Phase B separate
 

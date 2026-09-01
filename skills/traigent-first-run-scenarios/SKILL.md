@@ -87,11 +87,15 @@ then compares `band`, `status`, `recommended_action`, and `caps`. It never
 executes verifier code. Report every mismatch and retain the complete
 output and final status.
 
-A successful comparison may be called **Verified run evidence** only when the
-report also identifies both repository revisions, `run.json`, worker and
-environment, exact handoff, captured result, and stop point. Otherwise use
-**Expected scenario contract**. Anything beyond the opening is **Not
-demonstrated**.
+Guide behavior pinned to an exact public guide revision, without a referenced
+captured run, is **Guide contract · no recorded run**. A successful comparison
+may be called **Verified run evidence** only when the retained report also
+identifies both repository revisions, `run.json`, worker and session identity,
+environment and isolation boundary, exact handoff and worker response,
+complete commands, output and final statuses, verifier output, and stop point.
+A run record, result JSON, and `PASS` alone are insufficient. Otherwise use
+**Scenario contract · no recorded run**. Anything beyond the opening is **Not
+demonstrated in this deck**.
 
 Phase B is a separate live exercise and requires explicit human approval for
 all applicable credential, account, network, installation, data-egress, cost,
