@@ -257,7 +257,7 @@ const rawPresentation = {
       title:
         "Start with the project you have. Leave with a justified next step.",
       accent: "justified next step",
-      body: "The public guide helps a coding agent inspect what exists, preserve useful material, and choose the safest next action. Ready foundations move to baseline approval; gaps lead to a human decision, repair, or stronger evidence. When inspection identifies an evaluator path that would execute generated code or SQL, this guide run ends before candidate output executes. The starting state determines the route and ceiling - not a promised grade.",
+      body: "The open-source guide helps a coding agent inspect what exists, preserve useful material, and choose the safest next action. Ready foundations move to baseline approval; gaps lead to a human decision, repair, or stronger evidence. When inspection identifies an evaluator path that would execute generated code or SQL, this guide run ends before candidate output executes. The starting state determines the route and ceiling - not a promised grade.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -429,7 +429,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - FOUNDATION CAPS",
       title: "Broken measurement sets the lowest ceilings.",
-      body: "A cap is the highest overall score a specific evidence condition permits, not a deduction. Only the ready row has a complete public scenario here - case 46. The other rows are published scorer rules whose public scenario tests are planned.",
+      body: "A cap is the highest overall score a specific evidence condition permits, not a deduction. Only the ready row has a complete published test scenario here. The other rows are shipped scorer rules whose test scenarios are planned; not yet published.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -468,7 +468,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - EVIDENCE CAPS",
       title: "Generated evidence limits the claim before paid work.",
-      body: "The scorer reads the user's declared row provenance and answer-key origin. Those in-project declarations set a ceiling; they are separate from who authored the public scenario files.",
+      body: "The scorer reads the user's declared row provenance and answer-key origin. Those in-project declarations set a ceiling; they are separate from who authored the scenario files in this repository.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -550,10 +550,10 @@ const rawPresentation = {
     {
       id: "case-46-search-space",
       kind: "evidence",
-      eyebrow: "CASE 46 - THE FOUR TUNABLE SETTINGS",
+      eyebrow: "THE PUBLISHED SCENARIO - FOUR TUNABLE SETTINGS",
       title:
         "Four declared tunable settings create 54 candidate configurations.",
-      body: "That multiplication describes case 46's static settings inventory. It is not a recorded paid run and does not establish the final approved search space, how many configurations a later run would submit, or what Traigent would test.",
+      body: "That multiplication describes the published scenario's static settings inventory. It is not a recorded paid run and does not establish the final approved search space, how many configurations a later run would submit, or what Traigent would test.",
       bullets: [],
       metrics: [
         {
@@ -633,7 +633,7 @@ const rawPresentation = {
       sourceRevision: guideRevision,
       evidence: [
         `Traigent/traigent-first-run@${guideRevision.slice(0, 8)} comparison contract`,
-        "Case 46 declares separate tuning and holdout pools",
+        "The published scenario declares separate tuning and holdout pools",
       ],
       notes: [
         "Case 46 declares 100 tuning and 20 holdout rows. That is the public dataset inventory, not a claim that every paid first run uses all 120 rows; the run plan must record the selected row IDs and any bounded subset.",
@@ -669,18 +669,18 @@ const rawPresentation = {
     {
       id: "credible-reproduction",
       kind: "statement",
-      eyebrow: "PUBLIC AND REPRODUCIBLE",
-      title: "The scenario is public. The individual run is context-isolated.",
+      eyebrow: "OPEN AND REPRODUCIBLE",
+      title: "The scenario is open to everyone. Each run is context-isolated.",
       body: "A fresh coding-agent session receives a clean copy of the customer-shaped project, including its evaluator, plus the guide and handoff. The scenario verifier, expected result, and previous outputs stay outside that session's assigned context.",
       bullets: [
         "Anyone can inspect and reproduce the scenario",
         "The coding-agent session is not given the expected result or the verifier kept by the test operator",
-        "Public means inspectable; we do not claim the expected answers are hidden from someone who deliberately looks them up",
+        "Open means inspectable; we do not claim the expected answers are hidden from someone who deliberately looks them up",
       ],
       metrics: [],
       steps: [],
       evidenceState: "scenario-contract",
-      evidence: ["Public scenario isolation methodology"],
+      evidence: ["Scenario isolation methodology"],
       notes: [
         "Customer language: public means inspectable; context-isolated means the coding-agent session does not receive the expected answer.",
       ],
@@ -688,16 +688,16 @@ const rawPresentation = {
     {
       id: "dataset-origin",
       kind: "statement",
-      eyebrow: "DATASET ORIGIN - CASE 46",
+      eyebrow: "DATASET ORIGIN - THE PUBLISHED SCENARIO",
       title:
         "Synthetic test data is useful when its origin and limits stay visible.",
-      body: `The published case-46 material is ${contentOriginLabel}, licensed under ${scenario.content.license}, and contains no customer or third-party dataset. It is designed to exercise readiness routing reproducibly, not to stand in for production evidence.`,
+      body: `The published scenario's material is ${contentOriginLabel}, licensed under ${scenario.content.license}, and contains no customer or third-party dataset. It is designed to exercise readiness routing reproducibly, not to stand in for production evidence.`,
       bullets: [
         `${dataset.rows} authored incident reports and ${dataset.unique_inputs} unique inputs; the declared pool is ${splitSummary}`,
-        `Even difficulty coverage: ${difficultySummary}, so the public pool does not win its score by concentrating only on easy cases`,
+        `Even difficulty coverage: ${difficultySummary}, so the row pool does not win its score by concentrating only on easy cases`,
         `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison`,
         "A row value such as provenance: real is part of the scenario's fiction - the simulated user's declaration read by the readiness scorer - not a claim about where the repository file came from",
-        "The scenario and expected result are public for inspection; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
+        "The scenario and expected result are open for anyone to inspect; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
         "The 100/20 split demonstrates separate tuning and holdout pools; a paid run must still record the exact bounded rows it actually uses",
       ],
       metrics: [],
@@ -715,9 +715,10 @@ const rawPresentation = {
     {
       id: "case-46",
       kind: "evidence",
-      eyebrow: "ONE PUBLIC READY-REFERENCE TODAY",
-      title: "One public ready-reference: incident severity triage.",
-      body: `Case 46 is a complete, known-good starting point for the ready-components route. Its ${dataset.rows} incident reports are Traigent-authored synthetic data under ${scenario.content.license}; they contain no customer or third-party dataset. Its expected opening is case-specific, not a score promised to other projects.`,
+      eyebrow: "THE PUBLISHED SCENARIO",
+      title:
+        "One excellent-readiness scenario: incident severity triage (scenario 46).",
+      body: "A complete, known-good starting point: agent, labeled data, and evaluator all present, so its expected readiness grade is Excellent from the start. It exists to prove the whole flow end to end - the number 46 is just its catalog ID. Its expected result is specific to this scenario, not a score promised to other projects.",
       bullets: [],
       metrics: [
         {
@@ -759,6 +760,7 @@ const rawPresentation = {
         "Talk track: this is the ready-components route in the matrix, not evidence that gap repair has passed.",
         "Expected top band because this case starts complete. It is a reference, not a product success threshold.",
         "Case 46 is a stable numeric alias for incident-severity-triage. It does not mean 46 scenarios are published here.",
+        `The ${dataset.rows} incident reports are Traigent-authored synthetic data under ${scenario.content.license}; they contain no customer or third-party dataset.`,
       ],
     },
     {
@@ -766,7 +768,7 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "REPOSITORY ORGANIZATION",
       title:
-        "Each public scenario is complete, inspectable, and independently resettable.",
+        "Each published scenario is complete, inspectable, and independently resettable.",
       body: "The repository keeps customer-shaped project files, operator-side expectations, methodology, and presentation tooling in explicit locations. Scenarios are not assembled from hidden fragments, and another repository's Git history is not carried into this one.",
       bullets: [
         "scenarios/<slug>/project: files copied into the fresh coding-agent session",
@@ -788,7 +790,8 @@ const rawPresentation = {
       id: "expected-opening",
       kind: "statement",
       eyebrow: "CASE-SPECIFIC EXPECTED RESULT",
-      title: "Case 46 expects 92/100 and no caps. That is not a promise.",
+      title:
+        "The published scenario expects 92/100 and no caps. That is not a promise.",
       body: "An opening is the readiness answer before any paid work. The band summarizes the starting point, the action names the next route, and each cap is a maximum. Confidence means the share of applicable check weight the scorer could measure - not statistical certainty.",
       bullets: [
         `Expected here: ${expectedRouteSummary}`,
@@ -799,7 +802,7 @@ const rawPresentation = {
       metrics: [],
       steps: [],
       evidenceState: "scenario-contract",
-      evidence: ["Published case-46 expected opening contract"],
+      evidence: ["Published expected opening for the ready scenario"],
       notes: [
         'If a prospect asks "will we get Excellent?", the honest answer is: show me your data, your evaluator, and whether anything in your agent varies - those three set your ceiling before we run anything.',
         "Do not sell the band. Sell the routing: the value is being told where you are and what to fix before calls or spend with the customer's project-model provider or Traigent service. The coding-agent service may itself be remote and billed.",
@@ -810,8 +813,8 @@ const rawPresentation = {
       id: "test-layers",
       kind: "matrix",
       eyebrow: "THREE DIFFERENT CHECKS",
-      title: "Each test layer supports a different claim.",
-      body: "A pass at one layer never stands in for the next. This release supplies the case-46 package and expected contract only; it does not include a captured Phase A or Phase B run.",
+      title: "Three checks, three different proofs.",
+      body: "Passing one check proves only that check - never the next one. Today this repository ships the scenario files and the expected result to compare against; no recorded agent run is included yet. Nothing here requires a prior run: anyone can run all three checks from scratch, right now.",
       bullets: [],
       metrics: [],
       testMatrix: [
@@ -823,14 +826,14 @@ const rawPresentation = {
           doesNotProve: "Agent behavior or live value",
         },
         {
-          layer: "Phase A",
+          layer: "Phase A (free opening)",
           action: "Fresh coding-agent session performs Inspect and Readiness",
           passSupports:
-            "Captured readiness matched the public contract in that recorded run",
+            "The agent's captured readiness matched the published expected result",
           doesNotProve: "Paid baseline or optimization",
         },
         {
-          layer: "Phase B",
+          layer: "Phase B (paid optimization)",
           action: "Approved Baseline, Optimize, and Results",
           passSupports: "Live evidence for that approved run",
           doesNotProve: "Universal outcome or production safety",
@@ -842,6 +845,7 @@ const rawPresentation = {
       notes: [
         "Catalog check validates the package; it does not run a coding agent.",
         "Phase A covers Inspect and Readiness. Phase B covers approved Baseline, Optimize, and Results.",
+        "No prior run is needed for any layer; each one can be run today from a fresh clone.",
       ],
     },
     {
@@ -849,7 +853,7 @@ const rawPresentation = {
       kind: "journey",
       eyebrow: "REPRODUCE ON A CUSTOMER PC",
       title: "One safe preparation flow, one independent result check.",
-      body: "Start at https://github.com/Traigent/traigent-first-run-scenarios and follow docs/customer-pc-runbook.md. The CLI creates a disposable project copy without verifier material; the test operator then checks saved readiness JSON against the contract and scenario revision in run.json.",
+      body: "Start at https://github.com/Traigent/traigent-first-run-scenarios and follow docs/customer-pc-runbook.md. The CLI creates a disposable project copy without verifier material; the test operator then compares the saved readiness answer with the published expected result for the exact scenario version recorded in run.json.",
       bullets: [],
       metrics: [],
       steps: [
@@ -877,7 +881,7 @@ const rawPresentation = {
         },
       ],
       evidenceState: "scenario-contract",
-      evidence: ["Public scenario CLI and customer-PC runbook"],
+      evidence: ["Scenario CLI and customer-PC runbook"],
       notes: [
         "The public verifier remains with the test operator, outside the coding agent's project copy.",
       ],
@@ -887,11 +891,11 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "VISIBLE HUMAN CONTROL",
       title:
-        "A Phase A opening covers inspection and readiness behavior only; it says nothing about managed optimization.",
+        "Phase A, the free opening, covers inspection and readiness only; optimization is separate.",
       body: "Credentials, project-provider or Traigent paid calls, additional data egress, installation, mutation, and optimization remain separate approval gates. A Phase A result does not authorize Phase B.",
       bullets: [
         "Phase A stops at the first material human decision",
-        "Access codes and API keys belong to separately approved Phase B",
+        "Access codes and API keys belong to Phase B, the separately approved paid optimization",
         "No claim of quality, cost, or latency improvement",
         "No production mutation or data movement beyond the approved coding-agent context",
         "The coding-agent service itself may be remote and billed; the human approves that service and the context it receives",
@@ -911,15 +915,16 @@ const rawPresentation = {
       id: "next-step",
       kind: "statement",
       eyebrow: "TWO WAYS TO USE THIS MATERIAL",
-      title: "Choose the evidence path before you start.",
-      accent: "evidence path",
-      body: "The two paths are independent, with different instructions and evidence. Auditing case 46 is not a prerequisite for using the guide on a real project, and neither path pre-authorizes later baseline or optimization work, provider calls, Traigent service use, or spend.",
+      title:
+        "Two ways to try it today: audit our test, or point the guide at your project.",
+      accent: "audit our test",
+      body: "The two paths are independent, and neither needs any prior run. Auditing the published scenario is not a prerequisite for using the guide on a real project, and neither path authorizes later paid work - provider calls, Traigent service use, and spend each need their own approval.",
       bullets: [
-        "Public-scenario audit: check and prepare case 46; give a fresh coding agent only the printed instructions",
-        "Audit verification: save the machine-readable readiness answer; compare it with the published expected result identified in the run metadata",
-        "Real-project inspection: paste the public clone prompt into the coding agent already working in the repository",
+        "Audit our test: check and prepare the published scenario; give a fresh coding agent only the printed instructions",
+        "Then verify: save the readiness answer the agent produced and compare it with the published expected result",
+        "Your project: paste the clone prompt from earlier into the coding agent already working in your repository",
         "Shared boundary: neither path authorizes later provider calls, Traigent service use, managed search, or spend",
-        "After a first result, the guide offers the public SDK skills: npx skills add Traigent/traigent-skills --list",
+        "After a first result, the guide offers the SDK skills: npx skills add Traigent/traigent-skills --list",
       ],
       metrics: [],
       steps: [],
@@ -940,9 +945,9 @@ const rawPresentation = {
       eyebrow: "FROM STARTING STATE TO NEXT ACTION",
       title:
         "The goal is justified movement toward optimization - not the same score for everyone.",
-      body: "The public guide defines the route for each supported condition below. This repository publishes one context-isolated scenario today: the ready reference, case 46. Public scenario tests for the other routes are planned, not passed.",
+      body: "The guide routes every condition below toward optimization, creating or repairing what is missing with the user's approval - every route works today. What this repository adds is a downloadable test of each route: the ready scenario is published, and tests for the other routes are planned; not yet published here.",
       bullets: [
-        "Ready → explain readiness; stop at baseline approval (public case 46)",
+        "Ready → explain readiness; stop at baseline approval (the published scenario tests this route)",
         "Missing or invalid material → preserve, resolve the human choice, create or repair, then re-check",
         "Weak evidence → bound the demonstration or request stronger material",
         "Evaluator unvalidated, invalid, or timing out → calibrate, repair or replace, or ask the bounded timeout choice",
@@ -954,7 +959,7 @@ const rawPresentation = {
       evidenceState: "guide-contract",
       sourceRevision: guideRevision,
       evidence: [
-        `Route contracts in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; one public scenario in this repository`,
+        `Route behavior at Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; one published test scenario in this repository`,
       ],
       notes: [
         "Do not promise an Excellent opening. A gap, cap, repair, or stop can be the correct and useful outcome for the material the customer brought.",
@@ -965,9 +970,9 @@ const rawPresentation = {
     {
       id: "coverage-roadmap-material",
       kind: "matrix",
-      eyebrow: "APPENDIX - PUBLIC SCENARIO ROADMAP 1 OF 2",
+      eyebrow: "APPENDIX - TEST SCENARIO ROADMAP 1 OF 2",
       title: "Material and evidence routes remain separate test families.",
-      body: "These are public scenario-test roadmap themes, not additional product capability and not passed runs. A theme can need multiple cases or subcases; passing one case does not pass the theme.",
+      body: "These are roadmap themes for future test scenarios - the routes themselves already work in the guide today. A theme can need multiple cases; publishing one case does not cover its whole theme.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -1017,7 +1022,7 @@ const rawPresentation = {
     {
       id: "coverage-roadmap-gates",
       kind: "matrix",
-      eyebrow: "APPENDIX - PUBLIC SCENARIO ROADMAP 2 OF 2",
+      eyebrow: "APPENDIX - TEST SCENARIO ROADMAP 2 OF 2",
       title:
         "Evaluator, execution, and search-space gates need distinct tests.",
       body: "These roadmap themes can require multiple cases because their conditions lead to materially different actions. A repair route, a human timeout choice, and a hard safety stop must not be presented as the same tested behavior.",
@@ -1053,7 +1058,7 @@ const rawPresentation = {
       evidenceState: "guide-contract",
       sourceRevision: guideRevision,
       evidence: [
-        `Route contracts in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; public scenario tests planned`,
+        `Route contracts in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; test scenarios planned`,
       ],
       notes: [
         "An evaluator timeout is not proof that the evaluator is broken. The guide presents a bounded human choice rather than silently changing the limit.",
@@ -1064,9 +1069,9 @@ const rawPresentation = {
     {
       id: "published-scenario-catalog",
       kind: "catalog",
-      eyebrow: "PUBLIC CATALOG APPENDIX",
+      eyebrow: "SCENARIO CATALOG APPENDIX",
       title: "One scenario is released today, with its boundaries visible.",
-      body: "The catalog records what each public test represents, what route it expects, and what it does not prove. New entries can be added without turning coverage targets into pass claims.",
+      body: "The catalog records what each published test represents, what route it expects, and what it does not prove. New entries can be added without turning coverage targets into pass claims.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -1075,7 +1080,7 @@ const rawPresentation = {
       evidenceState: "scenario-contract",
       evidence: [
         "scenarios/incident-severity-triage/scenario.json",
-        "Published case-46 dataset and expected opening contract",
+        "Published dataset and expected opening result",
       ],
       notes: [
         "This appendix answers what the published scenario actually contains.",
@@ -1086,9 +1091,9 @@ const rawPresentation = {
     {
       id: "published-scenario-data",
       kind: "catalog",
-      eyebrow: "PUBLIC CATALOG APPENDIX",
+      eyebrow: "SCENARIO CATALOG APPENDIX",
       title: "Synthetic origin and evaluation limits stay explicit.",
-      body: "Case 46 makes data shape, evaluator behavior, expected routing, and unsupported claims visible without presenting synthetic rows as customer evidence.",
+      body: "The published scenario makes data shape, evaluator behavior, expected routing, and unsupported claims visible without presenting synthetic rows as customer evidence.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -1097,7 +1102,7 @@ const rawPresentation = {
       evidenceState: "scenario-contract",
       evidence: [
         "scenarios/incident-severity-triage/scenario.json",
-        "Published case-46 dataset and expected opening contract",
+        "Published dataset and expected opening result",
       ],
       notes: [
         `${dataset.unique_inputs} unique inputs; ${splitSummary}; difficulty: ${difficultySummary}.`,
@@ -1109,9 +1114,9 @@ const rawPresentation = {
       id: "choose-next-step",
       kind: "hero",
       eyebrow: "A CONTROLLED FIRST MOVE",
-      title: "Reproduce what is public. Then decide what to authorize.",
+      title: "Reproduce what is published. Then decide what to authorize.",
       accent: "decide what to authorize",
-      body: "Audit case 46 for transparency, or bring the first-run guide to a real project for inspection. Baseline and optimization remain explicit later decisions.",
+      body: "Audit the published scenario for transparency, or bring the first-run guide to a real project for inspection. Baseline and optimization remain explicit later decisions.",
       bullets: [],
       metrics: [],
       steps: [],
