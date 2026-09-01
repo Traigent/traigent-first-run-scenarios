@@ -28,9 +28,10 @@ The subject of this repository is the whole bank of starting points, not one
 case. Every scenario — published and planned — is a realistic starting state
 that the guide takes toward the same finish line: baseline, managed
 optimization, and results. Where the starting state has gaps, the guide's
-route fills them on the way — create, repair, or review, with the required
-human decisions — and then continues; the pauses are where a human decides,
-not where the journey ends. The one deliberate early end is an evaluator path
+route works through them on the way — create, repair, or review, with the
+required human decisions, and honest disclosure of what cannot be closed —
+and then continues; the pauses are where a human decides, not where the
+journey ends. The one deliberate early end is an evaluator path
 that would execute candidate code or SQL. Case 46 is simply the first
 published starting point: the one that begins with no gaps to fill.
 
@@ -190,7 +191,7 @@ only. A `PASS` means those four fields matched — nothing more.
 From there the route continues, not the exercise: with your approvals,
 credentials, and cost boundaries in place, the same `customer-project/`
 proceeds through baseline, managed optimization, and results, the guide
-filling any gaps on the way. No such continuation is recorded in this
+working through gaps on the way. No such continuation is recorded in this
 repository. Full workflow detail: [GUIDE.md](GUIDE.md); before using a
 customer-controlled machine, read
 [the customer-PC runbook](docs/customer-pc-runbook.md).
@@ -208,7 +209,7 @@ Every Phase A opening — case 46's included — ends at the first question that
 belongs to a human; that is the exercise's boundary, not the route's. With the
 separate approvals, credentials, and cost boundaries in place, the same
 prepared `customer-project/` continues past the opening into baseline, managed
-optimization, and results, the guide filling any gaps on the way. No such
+optimization, and results, the guide working through gaps on the way. No such
 continuation is recorded here.
 
 ```mermaid
@@ -222,7 +223,7 @@ flowchart TD
     G --> H["scenario.py verify 46<br/>--run-record run.json --result opening-result.json"]
     H -->|"band, status, recommended_action, caps all match"| I["PASS - the captured Phase A opening<br/>matched the published contract"]
     H -->|"any mismatch"| J["FAIL - every mismatched field reported"]
-    I -.->|"never automatic - separate human approvals"| K["Phase B: the same customer-project/ continues through<br/>baseline, managed optimization, and results,<br/>the guide filling any gaps on the way"]
+    I -.->|"never automatic - separate human approvals"| K["Phase B: the same customer-project/ continues through<br/>baseline, managed optimization, and results,<br/>the guide working through gaps on the way"]
 ```
 
 ## Three distinct proof layers
