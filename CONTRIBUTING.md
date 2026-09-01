@@ -100,10 +100,16 @@ A declaration that switches a check off is itself checked against the bytes:
   the columns the task does not use. A column path is spelled the way the
   catalog spells one, so a `metadata` object holding `split` is described by
   `metadata.split`; naming a field describes its whole subtree, so a structured
-  input column is named once rather than one key at a time. This holds for
+  input column is named once rather than one key at a time. An empty object
+  sitting where declared leaves live carries none of them, and no column
+  either, so it needs no naming of its own. This holds for
   every label shape, so `label_shape.kind: absent` cannot claim rows carry no
   label while an undescribed column ships. A `passthrough_fields` entry no row
   carries is refused, so the declaration cannot outlive what it described.
+  The walk goes at most `4` object levels deep, and it fails closed at the
+  edge: a row nesting objects deeper is refused as unenumerable rather than
+  waved through, and a declared field path deeper than the walk can reach is
+  refused when the manifest is read.
 - Under an `absent` shape, any column whose values across the rows are a small
   repeating set of short strings is a label surface whatever the catalog calls
   it -- including a column nested inside a described object. Only the input
@@ -118,9 +124,12 @@ A declaration that switches a check off is itself checked against the bytes:
   a check that decides that from the bytes is a check a file can be dressed to
   slip past. Each `non_dataset_files` entry must name a file that is there, and
   a declared record whose rows carry a closed label surface is refused: naming
-  a dataset a record does not stop it being one. That scan reads the file as a
-  JSON row stream and then as a delimited table, counting the rows it finds
-  rather than letting the first line it cannot parse answer for the file.
+  a dataset a record does not stop it being one. That scan reads the file both
+  as a JSON row stream and as a delimited table -- each line goes to the
+  reading it parses under, and the two answers are joined -- counting the rows
+  each reading finds rather than letting the first line it cannot parse, a
+  stray row of the other spelling, or a note above the table's header answer
+  for the file.
 - A component slot names bytes that read as Python source. `agent.path` and
   `evaluator.path` used to be checked only for naming a regular file under
   `project/`, which a byte-identical copy of the labelled dataset satisfied.
@@ -156,7 +165,7 @@ the limits are worth stating rather than leaving to be discovered:
   it compared the manifest with a partition the manifest declared about itself.
   Establishing any of it means running the evaluator, which this module does
   not do.
-- The label-surface scan reads a record as JSON rows or as a delimited table.
+- The label-surface scan reads a record as JSON rows and as a delimited table.
   A record that is neither -- free-form prose carrying `INC-001: SEV1` on every
   line, say -- is reported as carrying no closed label surface. That is the one
   place left where "I could not establish this is a label surface" is answered

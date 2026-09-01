@@ -2535,6 +2535,298 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertIn("distinct columns", error)
         self.assertIn("cannot be ruled out", error)
 
+    def test_a_stray_json_line_does_not_exempt_a_table_from_the_scan(self) -> None:
+        """One JSON row inside a labelled CSV must not veto the table around it.
+
+        The table reading used to run only when the whole file failed to be a
+        JSON row stream, so a single ``{}`` line made the file "JSON rows" and
+        the labelled table around it was never scanned -- the one-line-veto
+        defect again, worn as a format choice.
+        """
+
+        root = self.create_scenario("json-dressed-table", 314)
+        record = root / "project" / "traigent-runs" / "events.csv"
+        record.parent.mkdir()
+        manifest = valid_manifest("json-dressed-table", 314)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        record.write_text(
+            "report,severity\n"
+            + "{}\n"
+            + "".join(
+                f"incident {index},{'SEV1' if index % 2 else 'SEV2'}\n"
+                for index in range(8)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Dress the table with a JSON row")
+
+        status, output, error = self.run_cli("check", "json-dressed-table")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a stray JSON line is one row of the JSON reading, not an answer "
+            "about the table around it",
+        )
+        self.assertEqual("", output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("severity", error)
+
+        record.write_text(
+            "report,severity\n"
+            + "{}\n"
+            + "".join(f"incident {index},ticket-{index}\n" for index in range(8)),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship an identifier table")
+
+        status, output, error = self.run_cli("check", "json-dressed-table")
+
+        self.assertEqual(
+            0,
+            status,
+            f"an identifier table dressed with a JSON row is still a record: "
+            f"{error}",
+        )
+        self.assertIn("OK: json-dressed-table", output)
+
+    def test_a_note_above_the_header_does_not_hide_the_table(self) -> None:
+        """The header is the first line that reads as one, not line one.
+
+        Committing to line one re-created the one-line-veto defect in the last
+        position the ragged-line fix could not reach: one prose note above the
+        header and the whole labelled table was invisible.
+        """
+
+        root = self.create_scenario("noted-table", 315)
+        record = root / "project" / "traigent-runs" / "events.csv"
+        record.parent.mkdir()
+        manifest = valid_manifest("noted-table", 315)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        record.write_text(
+            "Ops notes from the run\n"
+            + "report,severity\n"
+            + "".join(
+                f"incident {index},{'SEV1' if index % 2 else 'SEV2'}\n"
+                for index in range(8)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Put a note above the header")
+
+        status, output, error = self.run_cli("check", "noted-table")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a note above the header is the noise around the table, not a "
+            "verdict about it",
+        )
+        self.assertEqual("", output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("severity", error)
+
+        record.write_text(
+            "Ops notes from the run\n"
+            + "report,severity\n"
+            + "".join(f"incident {index},ticket-{index}\n" for index in range(8)),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship an identifier table")
+
+        status, output, error = self.run_cli("check", "noted-table")
+
+        self.assertEqual(
+            0,
+            status,
+            f"finding the header must not start refusing identifier tables: "
+            f"{error}",
+        )
+        self.assertIn("OK: noted-table", output)
+
+    def test_a_row_nested_past_the_walk_is_refused_not_invisible(self) -> None:
+        """Depth overflow is a refusal, the same answer column overflow gives.
+
+        A non-empty object at the walk's cap used to be yielded as an opaque
+        cell, and an opaque cell is never a short string, so a label one level
+        below the cap was invisible to the disguised-label scan -- the
+        defeat-by-nesting defect again, one constant down. A declared field
+        path deeper than the walk can reach is refused when the manifest is
+        read, because a field the checks could never see is a field they may
+        not vouch for.
+        """
+
+        def wrapped(value: object) -> dict[str, object]:
+            wrapped_value: object = value
+            for name in ("e", "d", "c", "b"):
+                wrapped_value = {name: wrapped_value}
+            assert isinstance(wrapped_value, dict)
+            return wrapped_value
+
+        root = self.create_scenario("deep-rows", 316)
+        manifest = valid_manifest("deep-rows", 316)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "label_field": None,
+                "label_shape": {
+                    "kind": "absent",
+                    "surface_label_count": 0,
+                    "label_counts": {},
+                },
+                "passthrough_fields": ["a"],
+                "rows": 8,
+                "unique_inputs": 8,
+                "splits": {"field": "metadata.split", "counts": {"tuning": 8}},
+                "difficulty_strata": {
+                    "field": "metadata.difficulty",
+                    "counts": {"easy": 8},
+                },
+            }
+        )
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                    "a": wrapped({"severity": "SEV1" if index % 2 else "SEV2"}),
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "deep-rows")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a label below the walk's cap is a label no one ruled out",
+        )
+        self.assertEqual("", output)
+        self.assertIn("nests objects deeper than", error)
+        self.assertIn("cannot be ruled out", error)
+
+        dataset["passthrough_fields"] = ["a.b.c.d.e.f"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "deep-rows")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a declared path the walk can never reach is unsupported, not "
+            "quietly unenforced",
+        )
+        self.assertEqual("", output)
+        self.assertIn("dotted segments, deeper than", error)
+
+        dataset["passthrough_fields"] = ["a"]
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                    "a": wrapped(f"ticket-{index}"),
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "deep-rows")
+
+        self.assertEqual(
+            0,
+            status,
+            f"an identifier at the depth the walk does reach is what a "
+            f"passthrough is for: {error}",
+        )
+        self.assertIn("OK: deep-rows", output)
+
+    def test_an_empty_object_where_declared_leaves_live_is_not_a_column(
+        self,
+    ) -> None:
+        """A row whose declared object is empty ships nothing undescribed.
+
+        Enumerating to the leaf made ``"extra": {}`` a refused column when only
+        ``extra.note`` was declared -- a regression from the root comparison,
+        which passed it. An empty object where declared leaves live carries
+        none of them, and no other column either; an empty object nothing
+        declares is still a column the catalog has to name.
+        """
+
+        root = self.create_scenario("empty-extra", 317)
+        manifest = self.labelled_manifest(
+            "empty-extra", 317, rows=2, label_counts={"A": 2}
+        )
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset["passthrough_fields"] = ["extra.note"]
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": "example-0",
+                    "output": "A",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                    "extra": {"note": "an aside the catalog names"},
+                },
+                {
+                    "input": "example-1",
+                    "output": "A",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                    "extra": {},
+                },
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "empty-extra")
+
+        self.assertEqual(
+            0,
+            status,
+            f"an empty object under a declared leaf carries no column: {error}",
+        )
+        self.assertIn("OK: empty-extra", output)
+
+        dataset["passthrough_fields"] = []
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "output": "A",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                    "extra": {},
+                }
+                for index in range(2)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "empty-extra")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "an empty object nothing declares is still a column to name",
+        )
+        self.assertEqual("", output)
+        self.assertIn("carries extra, which the catalog does not describe", error)
+
     def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
         root = self.create_scenario("unparsable-code", 122)
         manifest = valid_manifest("unparsable-code", 122)

@@ -46,7 +46,10 @@ MAX_DATASET_ROW_BYTES = 1 << 20
 _FILE_READ_BLOCK_BYTES = 1 << 16
 # How deep a row is walked when naming the columns it carries. A label one
 # level down is still a label, so a scan that stopped at the top level could be
-# defeated by nesting the answer key inside an object.
+# defeated by nesting the answer key inside an object. Nesting past the cap is
+# a refusal rather than an opaque pass -- the same rule column overflow
+# follows -- and a declared field path is capped to the depth this walk can
+# reach, so a declaration the walk could never check is refused up front.
 MAX_ROW_NESTING_DEPTH = 4
 # The most distinct column paths one record may carry before this module stops
 # claiming it can name them all. Overflowing it is a refusal rather than an
@@ -247,6 +250,10 @@ class _NotRowShaped(Exception):
 
 class _TooManyColumns(Exception):
     """Internal signal that a record carries more columns than can be named."""
+
+
+class _TooDeeplyNested(Exception):
+    """Internal signal that a row nests objects deeper than can be walked."""
 
 
 @dataclass(frozen=True)
@@ -591,6 +598,15 @@ def _require_field_path(
             field,
             "must be a dotted JSON object field path",
         )
+    segments = normalized.count(".") + 1
+    if segments > MAX_ROW_NESTING_DEPTH + 1:
+        raise _manifest_error(
+            manifest_path,
+            field,
+            f"has {segments} dotted segments, deeper than the "
+            f"{MAX_ROW_NESTING_DEPTH + 1} the row walk can reach; a field the "
+            "checks could never see is a field they may not vouch for",
+        )
     return normalized
 
 
@@ -771,6 +787,14 @@ def _row_cells(
     described by the catalog, and enumerating its interior would ask the author
     to declare the shape of the model's input rather than the columns a row
     carries.
+
+    A non-empty object sitting at ``MAX_ROW_NESTING_DEPTH`` raises
+    ``_TooDeeplyNested`` rather than being yielded as an opaque cell. An earlier
+    version yielded it, and an opaque cell is never a short string, so a label
+    one level below the cap was invisible to every scan built on this walk --
+    the very defeat-by-nesting this walk exists to close, one constant down.
+    Depth overflow is the same kind of answer as column overflow: "I cannot
+    enumerate this" is a refusal, not a clean bill.
     """
 
     columns = _row_columns(row)
@@ -780,7 +804,9 @@ def _row_cells(
         path = f"{prefix}{name}"
         if path in skip:
             continue
-        if isinstance(value, dict) and value and depth < MAX_ROW_NESTING_DEPTH:
+        if isinstance(value, dict) and value:
+            if depth >= MAX_ROW_NESTING_DEPTH:
+                raise _TooDeeplyNested
             yield from _row_cells(
                 value,
                 skip=skip,
@@ -2019,16 +2045,31 @@ def _validate_materialized_dataset(
             if declared is not None
         }
     )
+    # An empty object sitting where declared leaves live carries none of them,
+    # and no other column either: {"metadata": {}} under a declared
+    # metadata.provenance ships nothing a worker could read undescribed. The
+    # prefixes are precomputed so the per-row filter is a set lookup.
+    declared_prefixes: set[str] = set()
+    for declared in declared_fields:
+        parts = declared.split(".")
+        for stop in range(1, len(parts)):
+            declared_prefixes.add(".".join(parts[:stop]))
     observed_fields: set[str] = set()
     for line_number, row in enumerate(rows, start=1):
         try:
-            carried = {path for path, _ in _row_cells(row, skip=declared_fields)}
-        except _TooManyColumns as exc:
+            carried = {
+                path
+                for path, value in _row_cells(row, skip=declared_fields)
+                if not (
+                    path in declared_prefixes and isinstance(value, dict) and not value
+                )
+            }
+        except _TooDeeplyNested as exc:
             raise _catalog_materialized_error(
                 scenario,
                 field,
-                f"{dataset_path.name}:{line_number} carries more than "
-                f"{MAX_ROW_COLUMNS} distinct columns, which this check cannot "
+                f"{dataset_path.name}:{line_number} nests objects deeper than "
+                f"{MAX_ROW_NESTING_DEPTH} levels, which this check cannot "
                 "enumerate",
             ) from exc
         observed_fields.update(carried)
@@ -2203,6 +2244,15 @@ def _validate_materialized_dataset(
                 f"{dataset_path.name} carries more than {MAX_ROW_COLUMNS} "
                 "distinct columns, which this check cannot enumerate",
             ) from exc
+        except _TooDeeplyNested as exc:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"{dataset_path.name} nests objects deeper than "
+                f"{MAX_ROW_NESTING_DEPTH} levels, which this check cannot "
+                "enumerate; a dataset whose columns cannot be named is one "
+                "whose label surface cannot be ruled out",
+            ) from exc
         if disguised:
             raise _catalog_materialized_error(
                 scenario,
@@ -2322,12 +2372,21 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
     """Yield a delimited table's data lines as rows keyed by its header.
 
     A labelled CSV is a labelled dataset, and it reaches a worker as readably as
-    a labelled JSONL file does. This is tried only once the bytes have failed to
-    be a JSON row stream, and it is deliberately narrow: one header line, a
+    a labelled JSONL file does. This reading runs alongside the JSON one rather
+    than only after it fails, and it is deliberately narrow: one header line, a
     single separator, and the same number of fields on every line.
 
-    The separator is chosen from the header alone and the rest is streamed a
-    line at a time, so reading a record still costs the longest line the bank
+    A line that reads as a JSON row belongs to the JSON reading and is not part
+    of any table, so it is skipped here. An earlier version ran this reading
+    only when the whole file failed to be a JSON row stream, so one stray ``{}``
+    line inside a labelled table answered "this file is JSON rows" and the
+    table around it was never looked at -- the one-line-veto defect again, worn
+    as a format choice.
+
+    The header is the first line that reads as one, not line one: a note above
+    the header used to make the whole table invisible, which is the same defect
+    in the remaining position. From the header on, the rest is streamed a line
+    at a time, so reading a record still costs the longest line the bank
     accepts rather than the size of the file.
 
     A line that disagrees with the header about how many fields it has is not a
@@ -2343,9 +2402,19 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
                 if not raw_line.strip():
                     continue
                 try:
-                    yield raw_line.decode("utf-8")
+                    line = raw_line.decode("utf-8")
                 except UnicodeDecodeError:
                     continue
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue
+                try:
+                    value = json.loads(stripped)
+                except ValueError:
+                    yield line
+                    continue
+                if not isinstance(value, (dict, list)):
+                    yield line
         except _OversizedLine as exc:
             raise _oversized_line_error(scenario, path, field) from exc
         except OSError as exc:
@@ -2356,13 +2425,15 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
             ) from exc
 
     stream = lines()
-    first = next(stream, None)
-    if first is None:
+    delimiter: str | None = None
+    header: list[str] = []
+    for line in stream:
+        chosen = _delimited_header(line)
+        if chosen is not None:
+            delimiter, header = chosen
+            break
+    if delimiter is None:
         return
-    chosen = _delimited_header(first)
-    if chosen is None:
-        return
-    delimiter, header = chosen
     for record in csv.reader(stream, delimiter=delimiter):
         if len(record) != len(header):
             continue
@@ -2372,9 +2443,13 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
 def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[str]:
     """Name the closed label columns a declared record carries.
 
-    The record is read as a JSON row stream first, then as a delimited table,
+    The record is read both as a JSON row stream and as a delimited table,
     because those are the two spellings of a labelled dataset this module can
-    read. A record that is neither is reported as carrying no closed label
+    read, and one file can wear both: each line goes to the reading it parses
+    under, and the two answers are joined. An earlier version tried the table
+    reading only when the whole file failed to be JSON rows, so a single JSON
+    line inside a labelled CSV exempted the table from ever being scanned. A
+    record that is neither spelling is reported as carrying no closed label
     surface, which is the one place left where "I could not establish this is a
     label surface" is answered as "it is not one" -- see CONTRIBUTING.md, which
     states the limit rather than leaving it implied.
@@ -2382,9 +2457,14 @@ def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[st
 
     try:
         try:
-            return _closed_label_columns(_iter_record_rows(scenario, path, field))
+            json_columns = _closed_label_columns(
+                _iter_record_rows(scenario, path, field)
+            )
         except _NotRowShaped:
-            return _closed_label_columns(_iter_delimited_rows(scenario, path, field))
+            json_columns = []
+        delimited_columns = _closed_label_columns(
+            _iter_delimited_rows(scenario, path, field)
+        )
     except _TooManyColumns as exc:
         raise _catalog_materialized_error(
             scenario,
@@ -2394,6 +2474,16 @@ def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[st
             "enumerate; a record whose columns cannot be named is a record "
             "whose label surface cannot be ruled out",
         ) from exc
+    except _TooDeeplyNested as exc:
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"{path.relative_to(scenario.root).as_posix()} nests objects deeper "
+            f"than {MAX_ROW_NESTING_DEPTH} levels, which this check cannot "
+            "enumerate; a record whose columns cannot be named is a record "
+            "whose label surface cannot be ruled out",
+        ) from exc
+    return sorted(set(json_columns) | set(delimited_columns))
 
 
 def _validate_project_inventory(
