@@ -631,7 +631,7 @@ const rawPresentation = {
       title: "Anyone can re-run the example and check the result themselves.",
       body: "A fresh coding-agent session receives a clean copy of the customer-shaped project, including its evaluator, plus the guide and handoff. The scenario verifier, expected result, and previous outputs stay outside that session's assigned context.",
       bullets: [
-        "Everything needed to re-run it is in this repository - no account, key, or prior run required",
+        "Everything needed to re-run it is in this repository - no Traigent account, model key, or prior run required, only a coding agent",
         "The coding-agent session is not given the expected result or the verifier kept by the test operator",
         "Open means inspectable; we do not claim the expected answers are hidden from someone who deliberately looks them up",
       ],
@@ -727,7 +727,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "THREE DIFFERENT CHECKS",
       title: "Three checks, three different proofs.",
-      body: "Passing one check proves only that check - never the next one. Today this repository ships the scenario files and the expected result to compare against; no recorded agent run is included yet. Nothing here requires a prior run: anyone can run all three checks from scratch, right now.",
+      body: "Passing one check proves only that check - never the next one. Today this repository ships the scenario files and the expected result to compare against; no recorded agent run is included yet. Nothing here requires a prior run: anyone can run all three from a fresh clone - the paid layer with their own approved keys and spend.",
       bullets: [],
       metrics: [],
       testMatrix: [

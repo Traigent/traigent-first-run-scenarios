@@ -160,7 +160,7 @@ function StartingPointMatrix({ slide }: { slide: SlideSpec }) {
       </span>
       <table className="starting-matrix">
         <caption>
-          Starting condition, safest next step, and public coverage
+          Starting condition, safest next step, and coverage status
         </caption>
         <thead>
           <tr>
