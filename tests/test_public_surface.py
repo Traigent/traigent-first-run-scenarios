@@ -133,7 +133,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         in prose and comments. Literals are split so this file does not trip the
         rule it is testing.
         """
-        planted = "".join(("agents", "-skil", "ls#314"))
+        planted = "".join(("nonpublic", "-exam", "ple#314"))
         (self.repo / "notes.md").write_text(
             f"See {planted} for the rationale.\n", encoding="utf-8"
         )
@@ -150,10 +150,16 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         A public repository's work item, this repository's own pull request, an
         issue number in prose and an invoice number all have to survive -- the
         last one because a sibling repository's support-email fixtures carry it.
+        Bare slugs without a hyphen (single-word, underscore- or dot-joined)
+        pass by the rule's stated limit, and a same-directory markdown anchor
+        to a numbered heading is not a work item.
         """
-        public = "".join(("traigent", "-first", "-run#79"))
         (self.repo / "ok.md").write_text(
-            f"See {public}, PR #1 of this repository, issue #244, invoice #4821.\n",
+            "See traigent-first-run#79, PR #1 of this repository, issue #244,"
+            " invoice #4821.\n"
+            "Stated limit: example_pipeline#12 and internal.example#12 pass in"
+            " bare form.\n"
+            "Anchor link: [setup](getting-started#2-setup) stays a link.\n",
             encoding="utf-8",
         )
         self._git("add", "ok.md")

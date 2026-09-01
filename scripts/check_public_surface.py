@@ -157,10 +157,14 @@ _TRAIGENT_REPOSITORY_REFERENCE_PATTERNS = (
 #
 # The hyphen is required, and that is a stated limit rather than an oversight.
 # It keeps `PR #1`, `issue #244` and `invoice #4821` out of the results, at the
-# cost of missing a single-word private slug in bare form. Owner-qualified and
-# URL spellings of such a repository are still caught above.
+# cost of missing a bare slug with no hyphen: single-word, underscore-joined,
+# and dot-joined forms all pass in bare form. Owner-qualified and URL spellings
+# of such a repository are still caught above. The trailing lookahead stops a
+# digit-then-hyphen tail, so a same-directory markdown anchor to a numbered
+# heading (`page#2-setup`) is not read as a work item.
 _BARE_WORK_ITEM_REFERENCE = re.compile(
-    r"(?<![A-Za-z0-9_./-])(?P<repository>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)#\d+\b"
+    r"(?<![A-Za-z0-9_./-])(?P<repository>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)"
+    r"#\d+(?![A-Za-z0-9-])"
 )
 
 
