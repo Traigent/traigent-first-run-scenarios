@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   evaluateFitDump,
+  isColdStartTimeout,
   parseViewportProbe,
   viewportInsets,
 } from "../scripts/check-browser-fit";
@@ -159,5 +160,21 @@ describe("browser-fit verdicts", () => {
     );
 
     expect(attributes.get("data-fit-status")).toBe("fail");
+  });
+
+  it("retries only a cold-start spawn timeout, never another spawn error", () => {
+    const timedOut = Object.assign(
+      new Error("spawnSync /usr/bin/google-chrome ETIMEDOUT"),
+      { code: "ETIMEDOUT" },
+    );
+    expect(isColdStartTimeout(timedOut)).toBe(true);
+
+    const missingBinary = Object.assign(
+      new Error("spawnSync /usr/bin/google-chrome ENOENT"),
+      { code: "ENOENT" },
+    );
+    expect(isColdStartTimeout(missingBinary)).toBe(false);
+    expect(isColdStartTimeout(new Error("ETIMEDOUT"))).toBe(false);
+    expect(isColdStartTimeout("ETIMEDOUT")).toBe(false);
   });
 });

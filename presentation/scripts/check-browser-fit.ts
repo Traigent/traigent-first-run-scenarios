@@ -185,11 +185,27 @@ function probeViewport(
     {
       encoding: "utf8",
       maxBuffer: 1024 * 1024,
-      timeout: 10_000,
+      // The probe is the run's first Chrome launch, and a cold start on a
+      // busy CI runner can exceed the 10s the warmed per-slide launches get.
+      timeout: 30_000,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
   return parseViewportProbe(html);
+}
+
+/**
+ * A cold Chrome start on a busy CI runner occasionally exceeds the probe's
+ * spawn timeout, surfacing as an ETIMEDOUT errno rather than a
+ * BrowserFitError. Only the run's first launch fails this way, so the probe
+ * retries it like a zero-sized reading; per-slide launches after warm-up
+ * still fail loudly on any spawn error.
+ */
+export function isColdStartTimeout(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as NodeJS.ErrnoException).code === "ETIMEDOUT"
+  );
 }
 
 /**
@@ -215,7 +231,7 @@ function measureViewportInsets(
         probeViewport(chrome, profileDirectory, requested),
       );
     } catch (error: unknown) {
-      if (!(error instanceof BrowserFitError)) {
+      if (!(error instanceof BrowserFitError) && !isColdStartTimeout(error)) {
         throw error;
       }
       lastFailure = error;
