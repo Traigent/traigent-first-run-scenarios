@@ -2415,32 +2415,62 @@ class ScenarioBankTests(unittest.TestCase):
             f"accept, not the size of the file; this one is {size} bytes",
         )
 
-    def test_a_table_whose_lines_disagree_is_not_a_table(self) -> None:
-        """A file that is neither rows nor a consistent table reports nothing."""
+    def test_a_ragged_line_does_not_hide_the_table_behind_it(self) -> None:
+        """One line that is not a row is not an answer about the rows that are.
+
+        This is the same defect as a junk row in front of a labelled JSONL file,
+        one file format along: abandoning the whole table on a line that
+        disagrees with the header would let a labelled CSV ship behind a single
+        trailing note.
+        """
 
         root = self.create_scenario("ragged-table", 311)
         record = root / "project" / "traigent-runs" / "events.csv"
         record.parent.mkdir()
-        record.write_text(
-            "report,severity\n"
-            + "".join(f"incident {index},SEV1\n" for index in range(8))
-            + "a trailing note with, two, extra, commas\n",
-            encoding="utf-8",
-        )
         manifest = valid_manifest("ragged-table", 311)
         catalog = manifest["catalog"]
         assert isinstance(catalog, dict)
         catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
         self.write_manifest(root, manifest)
-        self.commit_repository_paths(root, message="Ship a ragged table")
+        labelled = "".join(
+            f"incident {index},{'SEV1' if index % 2 else 'SEV2'}\n"
+            for index in range(8)
+        )
+
+        # The ragged line comes first, where abandoning on it hides everything
+        # behind it -- the position a trailing one cannot test.
+        record.write_text(
+            "report,severity\n"
+            + "a leading note with, two, extra, commas\n"
+            + labelled
+            + "a trailing note with, two, extra, commas\n",
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship a labelled ragged table")
+
+        status, output, error = self.run_cli("check", "ragged-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("severity", error)
+
+        record.write_text(
+            "report,severity\n"
+            + "a leading note with, two, extra, commas\n"
+            + "".join(f"incident {index},ticket-{index}\n" for index in range(8))
+            + "a trailing note with, two, extra, commas\n",
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship a ragged run record")
 
         status, output, error = self.run_cli("check", "ragged-table")
 
         self.assertEqual(
             0,
             status,
-            "lines that disagree with the header are not a table, and a partial "
-            f"count of the ones that agreed is not an answer either: {error}",
+            "skipping the lines that are not rows must not start refusing the "
+            f"records this key exists for: {error}",
         )
         self.assertIn("OK: ragged-table", output)
 
