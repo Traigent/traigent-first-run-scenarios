@@ -155,15 +155,38 @@ _TRAIGENT_REPOSITORY_REFERENCE_PATTERNS = (
 # lets this be fail-closed WITHOUT naming a private repository in this public
 # file, which is the property the earlier denylist gave up.
 #
-# The hyphen is required, and that is a stated limit rather than an oversight.
-# It keeps `PR #1`, `issue #244` and `invoice #4821` out of the results, at the
-# cost of missing a bare slug with no hyphen: single-word, underscore-joined,
-# and dot-joined forms all pass in bare form. Owner-qualified and URL spellings
-# of such a repository are still caught above. The trailing lookahead stops a
-# digit-then-hyphen tail, so a same-directory markdown anchor to a numbered
-# heading (`page#2-setup`) is not read as a work item.
+# Three repository-name shapes count, and the reason is the shape of the
+# sibling repositories this exists to keep out of a public file. Requiring a
+# hyphen was a stated limit, but it happened to exclude the commonest private
+# spelling here: the siblings are overwhelmingly CamelCase with no separator at
+# all, so a CamelCase sibling sailed straight through while a hyphenated one
+# was caught. A limit that misses the actual exposure is not worth keeping.
+#
+# The `#` is spaced out below so this comment does not trip the rule it
+# documents -- a real reference has the slug directly against the `#`:
+#
+#   hyphenated    some-service  #12
+#   CamelCase     SomeService   #4821   (an internal capital is required)
+#   underscored   Some_Service  #12
+#
+# A lowercase single word is still not a repository reference, and that is what
+# keeps the false positives out: an invoice number in customer support text,
+# and a same-file markdown anchor to a numbered heading, both stay clean.
+# `PR #1` and
+# `issue #244` never matched anyway -- the slug has to sit directly against the
+# `#`. The trailing lookahead stops a digit-then-hyphen tail, so an anchor to a
+# numbered heading (`page#2-setup`) is not read as a work item.
+_REPOSITORY_NAME_SHAPES = (
+    r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+"  # hyphenated
+    # The inner class deliberately excludes uppercase. Allowing it there makes
+    # the split points ambiguous, and a long run of capitals then backtracks
+    # exponentially -- measured at 4x per two characters, so a 40-character
+    # token hangs the guard rather than failing it.
+    r"|[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+"  # CamelCase
+    r"|[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+"  # underscored
+)
 _BARE_WORK_ITEM_REFERENCE = re.compile(
-    r"(?<![A-Za-z0-9_./-])(?P<repository>[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)"
+    r"(?<![A-Za-z0-9_./-])(?P<repository>" + _REPOSITORY_NAME_SHAPES + r")"
     r"#\d+(?![A-Za-z0-9-])"
 )
 
