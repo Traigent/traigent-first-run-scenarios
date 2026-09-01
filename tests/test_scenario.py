@@ -2474,6 +2474,67 @@ class ScenarioBankTests(unittest.TestCase):
         )
         self.assertIn("OK: ragged-table", output)
 
+    def test_a_file_too_large_to_classify_is_refused_rather_than_assumed(
+        self,
+    ) -> None:
+        """A file this check declines to read is not one it may vouch for."""
+
+        root = self.create_scenario("huge-slot", 312)
+        planted = root / "project" / "agent_impl.py"
+        planted.write_bytes(b"# " + b"x" * scenario.MAX_SOURCE_CLASSIFY_BYTES + b"\n")
+        manifest = valid_manifest("huge-slot", 312)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["components"]["agent"]["path"] = "project/agent_impl.py"
+        catalog["non_dataset_files"] = ["project/agent.py"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship an unreadably large slot")
+
+        status, output, error = self.run_cli("check", "huge-slot")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "declining to read a file is not the same as establishing it is "
+            "harmless, and the direction of the guess matters here",
+        )
+        self.assertEqual("", output)
+        self.assertIn("larger than", error)
+        self.assertIn("cannot vouch for", error)
+
+    def test_a_record_with_more_columns_than_can_be_named_is_refused(self) -> None:
+        """A record whose columns cannot be enumerated has a label surface no one ruled out."""
+
+        root = self.create_scenario("wide-record", 313)
+        record = root / "project" / "traigent-runs" / "events.jsonl"
+        record.parent.mkdir()
+        record.write_text(
+            "".join(
+                json.dumps(
+                    {
+                        f"column-{column}": f"value-{row}"
+                        for column in range(scenario.MAX_ROW_COLUMNS + 8)
+                    }
+                )
+                + "\n"
+                for row in range(4)
+            ),
+            encoding="utf-8",
+        )
+        manifest = valid_manifest("wide-record", 313)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a very wide record")
+
+        status, output, error = self.run_cli("check", "wide-record")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("distinct columns", error)
+        self.assertIn("cannot be ruled out", error)
+
     def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
         root = self.create_scenario("unparsable-code", 122)
         manifest = valid_manifest("unparsable-code", 122)
