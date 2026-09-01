@@ -125,12 +125,85 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertIn("unsupported or ambiguous text encoding", result.stderr)
 
+    def test_a_bare_work_item_reference_is_rejected(self) -> None:
+        """The form the owner-qualified patterns cannot see.
+
+        `<repo>#<number>` carries no `Traigent/` prefix and no URL, so the three
+        patterns above miss it -- and it is the form that actually accumulates
+        in prose and comments. Literals are split so this file does not trip the
+        rule it is testing.
+        """
+        planted = "".join(("nonpublic", "-exam", "ple#314"))
+        (self.repo / "notes.md").write_text(
+            f"See {planted} for the rationale.\n", encoding="utf-8"
+        )
+        self._git("add", "notes.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("notes.md", result.stderr)
+
+    def test_a_bare_reference_with_no_hyphen_is_rejected(self) -> None:
+        """The shape the hyphen requirement missed, which is the common one here.
+
+        Requiring a hyphen read as a conservative limit, but the sibling
+        repositories this rule exists to keep out of a public file are
+        overwhelmingly CamelCase with no separator, so the limit excluded
+        exactly the exposure. Underscored names are the other real spelling.
+        Literals are split so this file does not trip the rule it is testing.
+        """
+        for planted in (
+            "".join(("Some", "Private", "Service#4821")),
+            "".join(("Another", "Service#77")),
+            "".join(("Widget", "_fact", "ory#12")),
+        ):
+            with self.subTest(reference=planted):
+                (self.repo / "notes.md").write_text(
+                    f"Blocked on {planted} for now.\n", encoding="utf-8"
+                )
+                self._git("add", "notes.md")
+
+                result = self._run_guard()
+
+                self.assertEqual(1, result.returncode, result.stdout)
+                self.assertIn("notes.md", result.stderr)
+
+    def test_public_work_item_and_plain_numbers_pass(self) -> None:
+        """The false-red half, and it is the reason the rule is not a bare `#N`.
+
+        A public repository's work item, this repository's own pull request, an
+        issue number in prose and an invoice number all have to survive -- the
+        last one because a sibling repository's support-email fixtures carry it.
+        A lowercase single word before the `#` is not a repository reference,
+        which is what keeps support-email invoice numbers and same-file
+        markdown anchors clean. A dot-joined name still passes in bare form --
+        that is the remaining stated limit, kept because widening to dots would
+        read a version string as a work item. In the other direction, an anchor
+        to a purely numeric heading in a hyphenated filename is reported; that
+        is pre-existing and unchanged here, and the digit-then-hyphen lookahead
+        already spares the ordinary `#2-setup` spelling.
+        """
+        (self.repo / "ok.md").write_text(
+            "See traigent-first-run#79, PR #1 of this repository, issue #244,"
+            " invoice #4821.\n"
+            "Support text: invoice#4821 and refund#77 are not repositories.\n"
+            "Stated limit: internal.example#12 passes in bare form.\n"
+            "Anchor link: [setup](getting-started#2-setup) stays a link.\n",
+            encoding="utf-8",
+        )
+        self._git("add", "ok.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_unknown_traigent_repository_reference_is_rejected(self) -> None:
         planted_values = (
             "".join(("Traigent/", "secret")),
             "".join(("Traigent/", "nonpublic-example")),
             "".join(("traigent/", "nonpublic-example")),
-            "".join(("TRAIGENT/", "nonpublic-example#12")),
+            "".join(("TRAIGENT/", "nonpublic-exam", "ple#12")),
             "".join(("https://github.com/Traigent/", "nonpublic-example")),
             "".join(("https://github.com/Traigent/", "nonpublic-example/issues/12")),
             "".join(("git@github.com:Traigent/", "nonpublic-example.git")),

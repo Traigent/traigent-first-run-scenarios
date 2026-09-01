@@ -144,6 +144,53 @@ _TRAIGENT_REPOSITORY_REFERENCE_PATTERNS = (
     ),
 )
 
+# A repo-shaped slug immediately followed by `#<number>` is unambiguously a
+# work-item reference, and the owner-qualified patterns above never see it:
+# a bare `<repo>#<number>` carries no `Traigent/` prefix and no URL. That form
+# is the one that actually accumulates -- 42 of them had to be scrubbed by hand
+# from a sibling repository's public-bound files -- so it is worth its own
+# pattern.
+#
+# It reuses `_PUBLIC_TRAIGENT_REPOSITORIES` deliberately: the allowlist is what
+# lets this be fail-closed WITHOUT naming a private repository in this public
+# file, which is the property the earlier denylist gave up.
+#
+# Three repository-name shapes count, and the reason is the shape of the
+# sibling repositories this exists to keep out of a public file. Requiring a
+# hyphen was a stated limit, but it happened to exclude the commonest private
+# spelling here: the siblings are overwhelmingly CamelCase with no separator at
+# all, so a CamelCase sibling sailed straight through while a hyphenated one
+# was caught. A limit that misses the actual exposure is not worth keeping.
+#
+# The `#` is spaced out below so this comment does not trip the rule it
+# documents -- a real reference has the slug directly against the `#`:
+#
+#   hyphenated    some-service  #12
+#   CamelCase     SomeService   #4821   (an internal capital is required)
+#   underscored   Some_Service  #12
+#
+# A lowercase single word is still not a repository reference, and that is what
+# keeps the false positives out: an invoice number in customer support text,
+# and a same-file markdown anchor to a numbered heading, both stay clean.
+# `PR #1` and
+# `issue #244` never matched anyway -- the slug has to sit directly against the
+# `#`. The trailing lookahead stops a digit-then-hyphen tail, so an anchor to a
+# numbered heading (`page#2-setup`) is not read as a work item.
+_REPOSITORY_NAME_SHAPES = (
+    r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+"  # hyphenated
+    # The inner class deliberately excludes uppercase. Allowing it there makes
+    # the split points ambiguous, and a long run of capitals then backtracks
+    # exponentially -- measured at 4x per two characters, so a 40-character
+    # token hangs the guard rather than failing it.
+    r"|[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+"  # CamelCase
+    r"|[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+"  # underscored
+)
+_BARE_WORK_ITEM_REFERENCE = re.compile(
+    r"(?<![A-Za-z0-9_./-])(?P<repository>" + _REPOSITORY_NAME_SHAPES + r")"
+    r"#\d+(?![A-Za-z0-9-])"
+)
+
+
 _GITLINK_MODE = "160000"
 
 
@@ -363,6 +410,16 @@ def _repository_reference_findings(
                         rule="repository reference outside the public allowlist",
                     )
                 )
+    for match in _BARE_WORK_ITEM_REFERENCE.finditer(line):
+        if match.group("repository").casefold() not in _PUBLIC_TRAIGENT_REPOSITORIES:
+            findings.append(
+                Finding(
+                    surface=surface,
+                    path=relative_path,
+                    line=line_number,
+                    rule="work-item reference to a repository outside the public allowlist",
+                )
+            )
     return findings
 
 
