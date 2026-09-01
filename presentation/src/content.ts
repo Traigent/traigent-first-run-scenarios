@@ -277,7 +277,7 @@ const rawPresentation = {
       kind: "journey",
       eyebrow: "AGENT-LED, HUMAN-GOVERNED",
       title: "Five stages. Three actors. Human approval stays explicit.",
-      body: "Every supported project enters Inspect. Gaps loop through a human choice, creation, repair, or review. Ready foundations move only after approval. An evaluator path that would execute generated code or SQL ends this guide run before candidate output executes; containment and any restart are separate. The coding agent coordinates, the human governs, and Traigent executes only an approved managed search.",
+      body: "Every supported project enters Inspect. Gaps loop through a human choice, creation, repair, or review. Ready foundations move only after approval. When inspection identifies an evaluator path that would execute candidate code or SQL, this guide run ends before candidate output executes; containment and any restart are separate. The coding agent coordinates, the human governs, and Traigent executes only an approved managed search.",
       bullets: [],
       metrics: [],
       steps: [
@@ -520,7 +520,7 @@ const rawPresentation = {
       ],
       notes: [
         "The coding-agent service itself may already be remote or billed. Baseline is specifically the first model-provider execution stage in this workflow.",
-        "An existing baseline is never replaced: even a one-row or SDK-incompatible baseline is preserved unchanged (the path pauses instead). Only a truly missing baseline gets the generated grid - an exact, pre-declared 12 configurations, each run once, with count and cost approved before any spend; it can shrink only by approved disclosure and never grows.",
+        "An existing baseline is never replaced: even a one-row baseline is preserved unchanged and measured as it stands. Only a truly missing baseline gets the generated grid - an exact, pre-declared 12 configurations, each run once, with count and cost approved before any spend; it can shrink only by approved disclosure and never grows.",
       ],
     },
     {
@@ -588,7 +588,7 @@ const rawPresentation = {
         "Say the multiplication aloud: three models x three prompt styles x three retrieval depths x two output formats = 54 possible configurations.",
         "The model control spans OpenAI and Anthropic in this public simulation. Do not claim current prices; no price evidence is bundled here.",
         "The code defaults are gpt-4o-mini, plain, retrieval 0, and label. Those defaults describe one initial configuration, not proof that a customer's preserved baseline has only one row.",
-        "The managed first-run search tests up to 12 configurations chosen from an approved space larger than that 12-trial budget, so Traigent selects what to test rather than running everything. Do not imply that the static 54-item inventory is the final submitted space. The optimization-stage slide separately explains the guide's bounded managed-search contract.",
+        "The managed first-run search chooses which configurations to try as it goes, from a materially larger space than the baseline grid",
       ],
     },
     {
