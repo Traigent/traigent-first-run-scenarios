@@ -159,6 +159,8 @@ DATASET_KEYS = {
     "task",
     "unique_inputs",
 }
+OPTIONAL_DATASET_KEYS = {"passthrough_fields"}
+OPTIONAL_CATALOG_KEYS = {"non_dataset_files"}
 COUNT_DIMENSION_KEYS = {"counts", "field"}
 LABEL_SHAPE_KEYS = {
     "kind",
@@ -453,12 +455,13 @@ def _require_object_keys(
     field: str,
     value: Any,
     expected_keys: set[str],
+    optional_keys: set[str] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise _manifest_error(manifest_path, field, "must be an object")
     actual_keys = set(value)
     missing = sorted(expected_keys - actual_keys)
-    unknown = sorted(actual_keys - expected_keys)
+    unknown = sorted(actual_keys - expected_keys - (optional_keys or set()))
     if missing:
         raise _manifest_error(
             manifest_path,
@@ -1275,6 +1278,7 @@ def _validate_dataset_profile(
         field,
         value,
         DATASET_KEYS,
+        OPTIONAL_DATASET_KEYS,
     )
     state = _require_enum_string(
         manifest_path,
@@ -1360,6 +1364,13 @@ def _validate_dataset_profile(
         minimum_items=1,
         normalizer=_require_catalog_identifier,
     )
+    passthrough_fields = _require_unique_strings(
+        manifest_path,
+        f"{field}.passthrough_fields",
+        dataset.get("passthrough_fields", []),
+        minimum_items=0,
+        normalizer=_require_field_path,
+    )
 
     if is_missing:
         if path is not None or dataset_format is not None:
@@ -1436,6 +1447,7 @@ def _validate_dataset_profile(
         "difficulty_strata": difficulty_strata,
         "label_shape": label_shape,
         "limitations": limitations,
+        "passthrough_fields": passthrough_fields,
     }
 
 
@@ -1445,6 +1457,7 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
         "catalog",
         value,
         CATALOG_KEYS,
+        OPTIONAL_CATALOG_KEYS,
     )
     starting_condition = _require_enum_string(
         manifest_path,
@@ -1529,6 +1542,20 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
             "catalog.components.data.state",
             "can be ready only when every dataset profile is ready",
         )
+    non_dataset_files = _require_unique_strings(
+        manifest_path,
+        "catalog.non_dataset_files",
+        catalog.get("non_dataset_files", []),
+        minimum_items=0,
+        normalizer=_normalize_scenario_path,
+    )
+    declared_as_dataset = sorted(set(non_dataset_files) & set(dataset_paths))
+    if declared_as_dataset:
+        raise _manifest_error(
+            manifest_path,
+            "catalog.non_dataset_files",
+            f"also declared as dataset paths: {', '.join(declared_as_dataset)}",
+        )
     _validate_label_resolution(manifest_path, components, datasets)
 
     expected_route_value = _require_object_keys(
@@ -1610,6 +1637,7 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
         "starting_condition": starting_condition,
         "components": components,
         "datasets": datasets,
+        "non_dataset_files": non_dataset_files,
         "expected_route": expected_route,
         "evidence": evidence,
     }
@@ -1979,7 +2007,10 @@ def _validate_materialized_dataset(
         resolve(label): normalized_class
         for label, normalized_class in normalization_map.items()
     }
-    declared_roots = {
+    passthrough_roots = {
+        declared.split(".", 1)[0] for declared in dataset["passthrough_fields"]
+    }
+    declared_roots = passthrough_roots | {
         declared.split(".", 1)[0]
         for declared in (
             dataset["input_field"],
@@ -1989,19 +2020,26 @@ def _validate_materialized_dataset(
         )
         if declared is not None
     }
+    observed_roots: set[str] = set()
     for line_number, row in enumerate(rows, start=1):
-        if label_kind == "absent":
-            undeclared_fields = sorted(set(row) - declared_roots)
-            if undeclared_fields:
-                raise _catalog_materialized_error(
-                    scenario,
-                    f"{field}.label_shape.kind",
-                    f"claims this dataset carries no labels, but "
-                    f"{dataset_path.name}:{line_number} also carries "
-                    f"{', '.join(undeclared_fields)}, which the catalog does not "
-                    "describe. An unlabeled dataset has to account for every "
-                    "field a worker receives",
-                )
+        observed_roots.update(row)
+        undeclared_fields = sorted(set(row) - declared_roots)
+        if undeclared_fields:
+            named = ", ".join(undeclared_fields)
+            detail = (
+                f"claims this dataset carries no labels, but "
+                f"{dataset_path.name}:{line_number} also carries {named}, which "
+                "the catalog does not describe"
+                if label_kind == "absent"
+                else f"{dataset_path.name}:{line_number} carries {named}, which "
+                "the catalog does not describe"
+            )
+            raise _catalog_materialized_error(
+                scenario,
+                f"{field}.passthrough_fields",
+                f"{detail}. A worker receives every column a row carries, so "
+                "the catalog has to name the ones the task does not use",
+            )
         input_value = _row_field(
             scenario,
             row,
@@ -2086,6 +2124,14 @@ def _validate_materialized_dataset(
                 f"does not cover observed label {label!r}",
             )
 
+    stale_passthrough = sorted(passthrough_roots - observed_roots)
+    if stale_passthrough:
+        raise _catalog_materialized_error(
+            scenario,
+            f"{field}.passthrough_fields",
+            f"names {', '.join(stale_passthrough)}, which no row carries; a "
+            "declaration that describes nothing outlives what it described",
+        )
     if len(input_identities) != dataset["unique_inputs"]:
         raise _catalog_materialized_error(
             scenario,
@@ -2227,11 +2273,12 @@ def _validate_dataset_inventory(
     says does not exist.
     """
 
+    catalog = scenario.manifest["catalog"]
     declared_paths = {
         dataset["path"]
-        for dataset in scenario.manifest["catalog"]["datasets"]
+        for dataset in catalog["datasets"]
         if dataset["path"] is not None
-    }
+    } | set(catalog["non_dataset_files"])
     undeclared = sorted(
         relative
         for relative, path in (
@@ -2247,7 +2294,9 @@ def _validate_dataset_inventory(
             "catalog.datasets",
             f"{PROJECT_DIRECTORY}/ ships dataset rows no dataset profile "
             f"declares: {', '.join(undeclared)}. A worker receives them, so the "
-            "catalog must declare them or the scenario must stop shipping them",
+            "catalog must declare them -- as a dataset profile, or under "
+            "catalog.non_dataset_files when they are records rather than task "
+            "data -- or the scenario must stop shipping them",
         )
 
 
@@ -2453,6 +2502,17 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
             scenario,
             data_path,
             f"catalog.components.data.paths[{index}]",
+            scenario.project_dir,
+        )
+
+    # A declared non-dataset file has to be a file that is there, for the same
+    # reason the spelling gate's skip list has to match a tracked path: a skip
+    # that names nothing is a blind spot no one can see.
+    for index, other_path in enumerate(catalog["non_dataset_files"]):
+        _catalog_regular_file(
+            scenario,
+            other_path,
+            f"catalog.non_dataset_files[{index}]",
             scenario.project_dir,
         )
 

@@ -502,6 +502,12 @@ class ScenarioBankTests(unittest.TestCase):
             ),
         )
         self.assertEqual(scenario.DATASET_KEYS, set(dataset_schema["required"]))
+        for optional_key in scenario.OPTIONAL_DATASET_KEYS:
+            self.assertIn(optional_key, dataset_properties)
+            self.assertNotIn(optional_key, dataset_schema["required"])
+        for optional_key in scenario.OPTIONAL_CATALOG_KEYS:
+            self.assertIn(optional_key, catalog_properties)
+            self.assertNotIn(optional_key, catalog_schema["required"])
         self.assertEqual(
             scenario.COUNT_DIMENSION_KEYS,
             set(definitions["countDimension"]["required"]),
@@ -752,6 +758,9 @@ class ScenarioBankTests(unittest.TestCase):
         dataset["state"] = "limited"
         dataset["splits"] = {"field": None, "counts": {}}
         dataset["difficulty_strata"] = {"field": None, "counts": {}}
+        # Dropping the split and difficulty dimensions leaves the rows' metadata
+        # column described by nothing, which is what passthrough_fields is for.
+        dataset["passthrough_fields"] = ["metadata"]
         dataset["label_shape"] = {
             "kind": "free-text",
             "surface_label_count": 0,
@@ -1268,6 +1277,168 @@ class ScenarioBankTests(unittest.TestCase):
 
         self.assertEqual(0, status, error)
         self.assertIn("OK: denied-labels", output)
+
+    def write_rows(self, root: Path, rows: list[dict[str, object]]) -> None:
+        (root / "project" / "input.txt").write_text(
+            "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+        )
+
+    def test_a_column_the_task_does_not_use_can_be_declared(self) -> None:
+        """An unlabeled dataset may still carry an ordinary row_id column."""
+
+        root = self.create_scenario("unlabeled-row-id", 170)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": "example",
+                    "row_id": 1,
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            ],
+        )
+        manifest = valid_manifest("unlabeled-row-id", 170)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset["label_field"] = None
+        dataset["label_shape"] = {
+            "kind": "absent",
+            "surface_label_count": 0,
+            "normalized_class_count": 0,
+            "normalization_map": {},
+        }
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "unlabeled-row-id")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("which the catalog does not describe", error)
+
+        dataset["passthrough_fields"] = ["row_id"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "unlabeled-row-id")
+
+        self.assertEqual(
+            0,
+            status,
+            "a column the catalog names is a column a captain can see, which is "
+            f"what this check is for: {error}",
+        )
+        self.assertIn("OK: unlabeled-row-id", output)
+
+    def test_every_label_kind_accounts_for_the_columns_its_rows_carry(self) -> None:
+        """The same undeclared column must not pass merely because labels are mapped."""
+
+        root = self.create_scenario("mapped-row-id", 171)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": "example",
+                    "output": "A",
+                    "row_id": 1,
+                    "source_tool": "legacy",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "mapped-row-id")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a mapped-labels dataset receives the same undeclared columns an "
+            "unlabeled one does, so it cannot be held to a looser rule",
+        )
+        self.assertIn("row_id, source_tool", error)
+
+        manifest = valid_manifest("mapped-row-id", 171)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["passthrough_fields"] = ["row_id", "source_tool"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "mapped-row-id")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: mapped-row-id", output)
+
+    def test_a_declared_passthrough_column_must_be_one_the_rows_carry(self) -> None:
+        root = self.create_scenario("stale-passthrough", 172)
+        manifest = valid_manifest("stale-passthrough", 172)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["passthrough_fields"] = ["row_id"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "stale-passthrough")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("which no row carries", error)
+
+    def test_a_row_shaped_file_that_is_not_task_data_can_be_declared(self) -> None:
+        """A run record under project/ is not a dataset, and saying so is honest."""
+
+        root = self.create_scenario("run-records", 173)
+        records = root / "project" / "traigent-runs" / "events.jsonl"
+        records.parent.mkdir()
+        records.write_text(
+            "".join(
+                json.dumps({"event": name, "sequence": index}) + "\n"
+                for index, name in enumerate(("started", "scored", "finished"))
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(records, message="Ship a run record")
+
+        status, output, error = self.run_cli("check", "run-records")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("catalog.non_dataset_files", error)
+
+        manifest = valid_manifest("run-records", 173)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "run-records")
+
+        self.assertEqual(
+            0,
+            status,
+            "declaring the file is the workaround the catalog should have had; "
+            f"calling it a dataset would have been the wrong one: {error}",
+        )
+        self.assertIn("OK: run-records", output)
+
+    def test_a_declared_non_dataset_file_must_be_one_that_ships(self) -> None:
+        root = self.create_scenario("stale-non-dataset", 174)
+        manifest = valid_manifest("stale-non-dataset", 174)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "stale-non-dataset")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("catalog.non_dataset_files[0]", error)
+
+        catalog["non_dataset_files"] = ["project/input.txt"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "stale-non-dataset")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a file cannot be a dataset and not a dataset at the same time",
+        )
+        self.assertIn("also declared as dataset paths", error)
 
     def test_dataset_rows_that_ship_must_be_declared(self) -> None:
         root = self.create_scenario("denied-dataset", 121)

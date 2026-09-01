@@ -45,7 +45,9 @@ The manifest follows `schema/scenario.schema.json` and includes:
 - `content.license: Apache-2.0`; and
 - a required `catalog` containing the starting condition, component states and
   paths, agent controls, dataset profiles and limitations, evaluator method and
-  calibration facts, expected-route reference, and bounded evidence scope.
+  calibration facts, expected-route reference, and bounded evidence scope. Two
+  optional catalog keys account for content the task does not use:
+  `datasets[].passthrough_fields` and `catalog.non_dataset_files`.
 
 Catalog values are stable machine-readable identifiers and facts, not sales
 copy. Put narrative explanation in the scenario README and presentation
@@ -63,18 +65,38 @@ labels, and normalized classes must match the checked-in bytes exactly.
 
 A declaration that switches a check off is itself checked against the bytes:
 
-- Labels are counted and matched the way the declared evaluator `method`
-  resolves them. Under `normalized-exact-match` two spellings that differ only
-  in case or punctuation are one label, so the map may not list both and a row
-  may use either. Under any other method labels are compared exactly.
+- What the evaluator can tell apart is read from the evaluator, not from the
+  manifest. The shipped source's single module-level label table is read with
+  `ast.literal_eval` -- a literal, never an import or a run -- and it settles
+  three things: which `method` the catalog may declare (a table keyed entirely
+  in resolved form is a `normalized-exact-match` table, otherwise it is an
+  `exact-match` one), that every declared label is one the evaluator can score,
+  and that the declared classes are the table's own classes. Splitting into
+  four classes what the evaluator scores as one is refused, and so is merging
+  into one what it scores as two. `method` is a closed enum: `exact-match` or
+  `normalized-exact-match`.
+- Under `normalized-exact-match` two spellings that differ only in case or
+  punctuation are one label, so the map may not list both and a row may use
+  either.
 - Declared calibration `probes` state facts about that same resolution.
   `good` and `equivalent_good` must land in the recorded label's normalized
   class; `partial` and `bad` must land outside it.
-- `label_shape.kind: absent` claims the rows carry no label, so every field a
-  row does carry must be named by `input_field` or a dimension field.
+- Every column a row carries must be named by the catalog: `input_field`,
+  `label_field`, a dimension field, or `passthrough_fields` for the columns the
+  task does not use. This holds for every label shape, so `label_shape.kind:
+  absent` cannot claim rows carry no label while an undescribed column ships.
+  A `passthrough_fields` entry no row carries is refused, so the declaration
+  cannot outlive what it described.
 - Rows that ship must be declared. A file under `project/` whose lines are JSON
   objects belongs to a dataset profile, whatever it is named, so a dataset
-  cannot be declared missing while its rows stay in the worker's directory.
+  cannot be declared missing while its rows stay in the worker's directory. A
+  blank line does not make a file something other than rows. Row-shaped files
+  that are records rather than task data -- a run log, say -- are declared in
+  `catalog.non_dataset_files`, and each entry must name a file that is there.
+- Both sweeps read the Git index rather than the directory, because `prepare`
+  copies recorded blobs: an untracked scratch file never reaches a worker.
+  Outside a Git work tree every regular file is swept instead, which covers
+  more rather than fewer.
 - Published Python is parsed for syntax. It is never imported or executed.
 
 The current schema admits only that origin and license pair. Adding another
