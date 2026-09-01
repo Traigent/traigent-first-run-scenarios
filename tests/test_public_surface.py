@@ -156,7 +156,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         for planted in (
             "".join(("Some", "Private", "Service#4821")),
             "".join(("Another", "Service#77")),
-            "".join(("E2E", "_priv", "ate#12")),
+            "".join(("Widget", "_fact", "ory#12")),
         ):
             with self.subTest(reference=planted):
                 (self.repo / "notes.md").write_text(
