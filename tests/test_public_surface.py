@@ -316,7 +316,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         )
 
     def test_public_repository_references_are_accepted(self) -> None:
-        self._pad_to_floor()
+        padding = self._pad_to_floor()
         path = self.repo / "public-refs"
         path.write_text(
             "Merged in PR #1. See Traigent/traigent-first-run#79,\n"
@@ -329,7 +329,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         result = self._run_guard()
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("passed for 1 file(s)", result.stdout)
+        self.assertIn(f"passed for {padding + 1} file(s)", result.stdout)
 
     def test_staged_leak_is_found_when_worktree_copy_is_safe(self) -> None:
         self._pad_to_floor()
