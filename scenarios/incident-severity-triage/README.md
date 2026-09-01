@@ -28,11 +28,13 @@ The worker-visible project contains exactly these files:
 - `traigent-runs/calibration-cases.json`
 
 The catalog declares 120 unique labeled reports: 100 tuning and 20 holdout,
-with 30 rows in each of four difficulty strata. The 12 surface labels present
-in the rows map to four normalized severity classes. `scenario.py check`
-derives those counts from the JSONL bytes and compares them with the manifest;
-it also checks that the calibration JSON contains the declared two cases. It
-does not import or execute the agent or evaluator to do so.
+with 30 rows in each of four difficulty strata, and it lists the 12 distinct
+label strings the rows carry with the number of rows carrying each.
+`scenario.py check` derives those counts from the JSONL bytes and compares them
+with the manifest; it also checks that the calibration JSON contains the
+declared two cases. It does not import or execute the agent or evaluator to do
+so, and so it does not establish which of those 12 spellings the evaluator
+scores alike -- the catalog makes no claim about that.
 
 ## Context-isolated execution
 

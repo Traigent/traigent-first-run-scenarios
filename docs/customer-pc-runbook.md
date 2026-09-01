@@ -70,10 +70,11 @@ Retain the complete output and final status of each command. Confirm the
 scenario title, starting condition, component states and paths, dataset profile
 and limitations, expected route, evidence scope, phase, content origin, and
 license. A green catalog check confirms the declared dataset row, unique-input,
-split, difficulty, label, normalized-class, and calibration counts against the
-published files. It also confirms that the expected opening has valid strict
-structure and value ranges. It still proves package integrity only, not agent
-behavior.
+split, difficulty, per-label, and calibration counts against the published
+files. It also confirms that the expected opening has valid strict structure
+and value ranges. It still proves package integrity only, not agent or
+evaluator behavior: nothing is imported or executed, so what the shipped
+evaluator scores alike is not among the things a green check has confirmed.
 
 If any command fails, stop. Do not repair the published scenario on the
 customer machine or substitute other data.

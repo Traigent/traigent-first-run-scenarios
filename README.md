@@ -32,13 +32,19 @@ copy:
 
 | Dataset | Task | Shape | Splits | Difficulty | Important limits |
 | --- | --- | --- | --- | --- | --- |
-| `incident-reports` | Closed-label classification | 120 unique inputs; 12 observed surface labels mapped to 4 normalized severity classes | 100 tuning / 20 holdout | 30 each: easy, medium, hard, very hard | Traigent-authored synthetic data; no customer data or observed model performance |
+| `incident-reports` | Closed-label classification | 120 unique inputs; 12 distinct label strings, each with its row count | 100 tuning / 20 holdout | 30 each: easy, medium, hard, very hard | Traigent-authored synthetic data; no customer data or observed model performance |
 
 These facts come from the scenario's strict `scenario.json` catalog. `check`
 compares its declared paths, row and unique-input counts, split and difficulty
-counts, label coverage, normalized classes, and evaluator calibration count
-with the materialized files. The presentation can render those facts, but it
-does not own a second copy of them.
+counts, label strings with their per-label row counts, and evaluator
+calibration count with the materialized files. The presentation can render
+those facts, but it does not own a second copy of them.
+
+Every fact the catalog states is a fact about bytes that ship. `check` never
+imports or executes a scenario file, so it does not establish what the shipped
+evaluator does when it runs -- which spellings it scores alike, or what a
+constant answer would score against it. The catalog therefore does not claim
+it.
 
 See [Scenario and dataset coverage](docs/scenario-coverage.md) for the current
 public case, the explicitly not-yet-published coverage roadmap, dataset-origin

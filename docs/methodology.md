@@ -51,10 +51,18 @@ not become a parallel source of scenario facts.
 
 `scenario.py check` verifies declared local files without importing them. For a
 present JSONL dataset it strictly parses every row and compares row count,
-canonical unique inputs, available split and difficulty counts, observed label
-coverage, and mapped normalized classes in both directions. It also checks the
-declared evaluator calibration count against a strict JSON array. Unsupported
-profile kinds and undeclared or unreadable files fail loudly.
+canonical unique inputs, available split and difficulty counts, and the label
+strings the rows carry with their declared per-label row counts, in both
+directions. It also checks the declared evaluator calibration count against a
+strict JSON array. Unsupported profile kinds and undeclared or unreadable files
+fail loudly.
+
+Because it never runs a scenario file, it establishes nothing about what the
+shipped evaluator does at run time: whether it distinguishes the classes a
+scenario is built around, and what a constant answer would score against it,
+are properties no manifest key claims. Establishing them means executing the
+evaluator under isolation, or diffing a checked-in witness produced by a real
+run.
 
 ## Roles and information boundaries
 
