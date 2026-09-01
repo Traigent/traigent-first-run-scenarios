@@ -450,6 +450,38 @@ describe("presentation content validation", () => {
     );
   });
 
+  it.each([
+    "No customer data leaves the laptop, and we measured a 41% quality improvement.",
+    "Without leaving the laptop, we measured a 41% quality improvement.",
+    "None of this is a benchmark, but cost fell by 30% in our run.",
+  ])(
+    "still catches a claim after a denial in the same sentence: %s",
+    (line) => {
+      // A negator disclaims what it governs, and it stops governing at the
+      // comma. Treating the whole sentence as disclaimed exempted exactly the
+      // phrasings a local-only deck reaches for - an honest clause about where
+      // the data stays, followed by a result nobody measured.
+      const candidate = copyPresentation();
+      candidate.slides[0]!.notes.push(line);
+
+      expectValidationIssue(
+        candidate,
+        "positive run claims require evidenceState verified-run",
+      );
+    },
+  );
+
+  it.each([
+    "This deck does not say we measured a 41% quality improvement.",
+    "No verified run exists, so no result is claimed.",
+    "Nothing here is a benchmark.",
+  ])("still accepts a genuine denial: %s", (line) => {
+    const candidate = copyPresentation();
+    candidate.slides[0]!.notes.push(line);
+
+    expect(() => validatePresentationContent(candidate)).not.toThrow();
+  });
+
   it("does not refuse honest contract copy on the widened surfaces", () => {
     const candidate = copyPresentation();
     const slide = candidate.slides[0]!;

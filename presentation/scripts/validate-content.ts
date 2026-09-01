@@ -28,7 +28,13 @@ const DISCLAIMED_FIELDS = new Set(["notProven", "doesNotProve"]);
 const CLAIM_NEGATORS =
   /\b(?:no|not|never|without|cannot|can't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|none|nothing|neither|nor|un(?:proven|verified)|absent)\b/i;
 
-const SENTENCE_BOUNDARY = /[.!?\n]/;
+// Clause boundaries count, not only sentence boundaries. A negator only
+// disclaims what it governs, and it stops governing at the comma: "No customer
+// data leaves the laptop, and we measured a 41% quality improvement" is a real
+// claim wearing a denial's opening. Those are the phrasings a local-only deck
+// reaches for, so treating the whole sentence as disclaimed exempted exactly
+// the sentences most likely to overclaim.
+const SENTENCE_BOUNDARY = /[.!?;,:\n]/;
 
 export class ContentValidationError extends Error {
   readonly issues: readonly string[];
