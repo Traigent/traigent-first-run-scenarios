@@ -6,12 +6,11 @@ opening run. It does not authorize a credentialed optimization.
 In this guide, **captain** means the human test operator who prepares the run,
 controls the worker handoff and stop point, and retains evidence.
 
-The repository currently publishes one reference scenario and its expected
-opening contract (**published** means checked into this public repository as
-reviewed, versioned files). It does not publish a recorded worker result.
+The repository currently ships one reference scenario and its expected
+opening contract as reviewed, versioned files — not a recorded worker result.
 Until a fresh run is captured and verified, describe the opening as
 **expected**, not **verified**. Every step below works the same way for any
-published scenario; case `46` is the one published today.
+scenario in the catalog; case `46` is the one released today.
 
 ## 1. Create two clean checkouts
 

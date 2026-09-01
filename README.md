@@ -19,11 +19,6 @@ optimization, and results.
   toward; licensed separately and not included here (see
   [Content origin and licensing](#content-origin-and-licensing)).
 
-Throughout this repository, **public** and **published** mean the same
-concrete thing: checked into this public repository as reviewed, versioned
-files. A published scenario or contract is a fact you can read and pin to a
-Git revision — never a recorded run or a measured outcome.
-
 The subject of this repository is the whole bank of starting points, not one
 case. Every scenario — published and planned — is a realistic starting state
 that the guide takes toward the same finish line: baseline, managed
@@ -71,11 +66,13 @@ optimization, not a promise that every project can optimize immediately or
 earn an Excellent opening; the full claims model is in
 [docs/methodology.md](docs/methodology.md).
 
-## Published scenario catalog
+## Scenarios in this repository
 
-The catalog currently contains one released scenario. Other starting
-conditions may be described as coverage targets, but they are not published
-scenarios until their complete directory and validated manifest exist here.
+**Released today: one scenario — `incident-severity-triage` (case 46).** Six
+more families are planned and listed further down; a family becomes a released
+scenario only when its complete directory and validated manifest are checked
+in here. A release is files you can read and pin to a Git revision — never a
+recorded run or a measured outcome.
 
 | Scenario                        | Starting condition            | Components                                                       | Expected route                                     | Evidence scope                                                                 |
 | ------------------------------- | ----------------------------- | ---------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |

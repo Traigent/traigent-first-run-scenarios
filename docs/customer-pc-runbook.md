@@ -1,12 +1,12 @@
 # Customer PC Runbook
 
-This runbook is for a Traigent presales engineer or customer representative
-reproducing the public Phase A opening scenario on a customer-controlled
-computer.
+This runbook is for whoever operates a scenario test on a customer-controlled
+computer. It explains, step by step, how to validate a scenario package,
+prepare a context-isolated copy, run the Phase A opening with a fresh coding
+agent, and verify the result. Every step works the same way for every
+scenario in the catalog.
 
-It covers package validation, preparation, a context-isolated worker run, and
-semantic verification. It does not authorize the later credentialed
-optimization path.
+It does not authorize the later credentialed optimization path.
 
 ## Roles
 
@@ -59,7 +59,12 @@ git -C ../traigent-first-run rev-parse HEAD
 Record both revisions. Do not copy credentials or customer files into either
 checkout.
 
-## 3. Validate the published package
+## 3. Validate the scenario package
+
+The commands below use case `46`, today's released scenario. Substitute any
+case number shown by `scenario.py list` — the steps are identical for every
+scenario, and the output path in step 4 is yours to name after the scenario
+you run.
 
 ```bash
 python scenario.py list
