@@ -34,7 +34,7 @@ const CLAIM_NEGATORS =
 // claim wearing a denial's opening. Those are the phrasings a local-only deck
 // reaches for, so treating the whole sentence as disclaimed exempted exactly
 // the sentences most likely to overclaim.
-const SENTENCE_BOUNDARY = /[.!?;,:\n]/;
+const CLAUSE_BOUNDARY = /[.!?;,:\n]/;
 
 export class ContentValidationError extends Error {
   readonly issues: readonly string[];
@@ -105,12 +105,12 @@ function visibleClaimText(...values: readonly unknown[]): string {
   return collected.join("\n");
 }
 
-/** The text preceding a match, back to the start of its own sentence. */
-function sentenceLeadIn(claimText: string, matchStart: number): string {
+/** The text preceding a match, back to the start of its own clause. */
+function clauseLeadIn(claimText: string, matchStart: number): string {
   const window = claimText.slice(Math.max(0, matchStart - 160), matchStart);
   let boundary = -1;
   for (let index = window.length - 1; index >= 0; index -= 1) {
-    if (SENTENCE_BOUNDARY.test(window[index]!)) {
+    if (CLAUSE_BOUNDARY.test(window[index]!)) {
       boundary = index;
       break;
     }
@@ -126,7 +126,7 @@ function hasPositiveRunClaim(claimText: string): boolean {
       match !== null;
       match = scan.exec(claimText)
     ) {
-      if (!CLAIM_NEGATORS.test(sentenceLeadIn(claimText, match.index))) {
+      if (!CLAIM_NEGATORS.test(clauseLeadIn(claimText, match.index))) {
         return true;
       }
     }

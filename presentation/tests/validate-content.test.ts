@@ -474,7 +474,7 @@ describe("presentation content validation", () => {
   it.each([
     "This deck does not say we measured a 41% quality improvement.",
     "No verified run exists, so no result is claimed.",
-    "Nothing here is a benchmark.",
+    "Nothing here is a benchmark and no verified run exists.",
   ])("still accepts a genuine denial: %s", (line) => {
     const candidate = copyPresentation();
     candidate.slides[0]!.notes.push(line);
