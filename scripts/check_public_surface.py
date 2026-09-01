@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Reject private-only references from files that could be published."""
+"""Reject private-only references from files that could be published.
+
+The rule set is a denylist backstop, not a completeness claim: it catches the
+reference classes that have actually leaked from sibling repositories, and a
+clean run means only that none of those classes matched. Publication review
+still owns the judgment call.
+"""
 
 from __future__ import annotations
 

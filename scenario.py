@@ -2210,6 +2210,14 @@ def _tracked_scenario_files(
         for record in completed.stdout.split(b"\0")
         if record
     }
+    if not tracked:
+        # A successful listing with no entries means git resolved to a work
+        # tree that does not track this scenario at all -- a bank unpacked
+        # inside some other repository. Trackedness cannot be established, so
+        # keep every regular file, the same conservative direction as the
+        # no-work-tree case above; an empty sweep here would silently disable
+        # every shipped-file check.
+        return list(regular_files)
     return [path for path in regular_files if path in tracked]
 
 

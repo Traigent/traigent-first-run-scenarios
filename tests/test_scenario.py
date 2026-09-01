@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1662,6 +1663,52 @@ class ScenarioBankTests(unittest.TestCase):
             "sweep that was right to ignore them must now refuse them",
         )
         self.assertIn("project/scratch.jsonl", error)
+
+    def test_a_bank_inside_a_foreign_work_tree_keeps_its_sweeps(self) -> None:
+        """Unpacking the bank inside someone else's repository must not
+        silently disable the shipped-file sweeps.
+
+        There `git ls-files` succeeds with no output; reading that as "nothing
+        ships" would make every sweep vacuously green, so trackedness falls
+        back to keeping every regular file instead.
+        """
+
+        root = self.create_scenario("foreign-tree", 136)
+        planted = root / "project" / "rows.jsonl"
+        planted.write_text(
+            "".join(
+                json.dumps({"input": f"example-{index}", "output": "SEV1"}) + "\n"
+                for index in range(2)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(planted, message="Ship undeclared rows")
+
+        status, _, error = self.run_cli("check", "foreign-tree")
+        self.assertNotEqual(0, status, "sanity: refused in its own repository")
+        self.assertIn("ships files the catalog does not name", error)
+
+        with tempfile.TemporaryDirectory() as outer_name:
+            outer = Path(outer_name)
+            subprocess.run(["git", "init", "-q", os.fspath(outer)], check=True)
+            foreign_root = outer / "unpacked-bank"
+            shutil.copytree(
+                self.repository_root,
+                foreign_root,
+                ignore=shutil.ignore_patterns(".git"),
+            )
+            output = io.StringIO()
+            foreign_error = io.StringIO()
+            status = scenario.main(
+                ["check", "foreign-tree"],
+                scenarios_dir=foreign_root / "scenarios",
+                repository_root=foreign_root,
+                output=output,
+                error=foreign_error,
+            )
+
+        self.assertNotEqual(0, status, output.getvalue())
+        self.assertIn("ships files the catalog does not name", foreign_error.getvalue())
 
     def test_a_declared_record_may_not_be_a_labelled_row_stream(self) -> None:
         """Naming a dataset a record is not a way to ship it undeclared."""
