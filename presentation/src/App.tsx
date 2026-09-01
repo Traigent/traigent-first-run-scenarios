@@ -1,8 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { brandName, traigentLogoPngDataUri } from "./brand";
-import { presentation } from "./content";
-import { evidenceLabel, type CatalogEntry, type SlideSpec } from "./model";
+import { coreSlideCount, presentation } from "./content";
+import {
+  coverageLabel,
+  displayEyebrow,
+  evidenceLabel,
+  type CatalogEntry,
+  type SlideSpec,
+} from "./model";
 
 function initialSlideIndex(): number {
   const slideId = window.location.hash.replace(/^#\/?/, "");
@@ -106,15 +119,15 @@ function ScenarioCoverageMatrix({ slide }: { slide: SlideSpec }) {
       </span>
       <table className="starting-matrix scenario-coverage-matrix">
         <caption>
-          Scenario family, material under test, expected route, and release
-          status
+          Scenario family, material under test, expected route, and public
+          test-case status
         </caption>
         <thead>
           <tr>
             <th scope="col">Scenario family</th>
             <th scope="col">Material and dataset archetype</th>
             <th scope="col">Behavior the scenario should exercise</th>
-            <th scope="col">Release status</th>
+            <th scope="col">Public test case</th>
           </tr>
         </thead>
         <tbody>
@@ -125,9 +138,7 @@ function ScenarioCoverageMatrix({ slide }: { slide: SlideSpec }) {
               <td>{row.expectedRoute}</td>
               <td>
                 <span className={`coverage coverage-${row.coverage}`}>
-                  {row.coverage === "published"
-                    ? "Available here: case 46"
-                    : "Planned; not released or passed"}
+                  {coverageLabel(row.coverage)}
                 </span>
               </td>
             </tr>
@@ -165,9 +176,7 @@ function StartingPointMatrix({ slide }: { slide: SlideSpec }) {
               <td>{row.safestNextStep}</td>
               <td>
                 <span className={`coverage coverage-${row.coverage}`}>
-                  {row.coverage === "published"
-                    ? "Available here: case 46"
-                    : "Planned; not released or passed"}
+                  {coverageLabel(row.coverage)}
                 </span>
               </td>
             </tr>
@@ -256,16 +265,83 @@ function ScenarioCatalog({
 
 function Slide({ slide }: { slide: SlideSpec }) {
   const isHero = slide.kind === "hero";
+  const slideRef = useRef<HTMLElement>(null);
+  const eyebrow = displayEyebrow(slide);
+
+  useLayoutEffect(() => {
+    const fitParameters = new URLSearchParams(window.location.search);
+    if (!fitParameters.has("fit-check")) {
+      return;
+    }
+    const element = slideRef.current;
+    if (element === null) {
+      return;
+    }
+    const slideBounds = element.getBoundingClientRect();
+    const selectors = [
+      ".slide-heading",
+      ".prompt-card",
+      ".bullet-grid",
+      ".metric-grid",
+      ".journey",
+      ".matrix-wrap",
+      ".catalog-grid",
+      ".slide-footer",
+      ".slide-brand",
+    ].join(",");
+    const clipped = Array.from(element.querySelectorAll<HTMLElement>(selectors))
+      .filter((child) => {
+        const bounds = child.getBoundingClientRect();
+        return (
+          bounds.top < slideBounds.top - 1 ||
+          bounds.left < slideBounds.left - 1 ||
+          bounds.right > slideBounds.right + 1 ||
+          bounds.bottom > slideBounds.bottom + 1
+        );
+      })
+      .map((child) =>
+        Array.from(child.classList)
+          .map((name) => `.${name}`)
+          .join(""),
+      );
+    const reasons = [
+      Number(fitParameters.get("fit-width")) !== window.innerWidth ||
+      Number(fitParameters.get("fit-height")) !== window.innerHeight
+        ? `viewport mismatch ${window.innerWidth}x${window.innerHeight}`
+        : "",
+      element.scrollHeight > element.clientHeight + 1
+        ? `slide vertical overflow ${element.scrollHeight}/${element.clientHeight}`
+        : "",
+      document.documentElement.scrollHeight > window.innerHeight + 1
+        ? `page vertical overflow ${document.documentElement.scrollHeight}/${window.innerHeight}`
+        : "",
+      document.documentElement.scrollWidth > window.innerWidth + 1
+        ? `page horizontal overflow ${document.documentElement.scrollWidth}/${window.innerWidth}`
+        : "",
+      ...clipped.map((className) => `clipped .${className}`),
+    ].filter(Boolean);
+    document.documentElement.dataset.fitStatus =
+      reasons.length === 0 ? "pass" : "fail";
+    document.documentElement.dataset.fitDetail = reasons.join("; ");
+    document.documentElement.dataset.fitSlide = slide.id;
+  }, [slide]);
+
   return (
     <article
       className={`slide slide-${slide.kind}`}
       aria-labelledby={`${slide.id}-title`}
+      data-evidence-source-revision={slide.sourceRevision}
+      ref={slideRef}
     >
       <div className="slide-glow" aria-hidden="true" />
+      <div className="slide-brand" aria-hidden="true">
+        <img src={traigentLogoPngDataUri} alt="" />
+        <span>{brandName}</span>
+      </div>
       <header className="slide-heading">
         <p className="eyebrow">
           <span aria-hidden="true" />
-          {slide.eyebrow}
+          {eyebrow}
         </p>
         <h1
           id={`${slide.id}-title`}
@@ -380,10 +456,14 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goNext, goPrevious, goTo]);
 
-  const progressLabel = useMemo(
-    () => `Slide ${slideIndex + 1} of ${presentation.slides.length}`,
-    [slideIndex],
-  );
+  const progressLabel = useMemo(() => {
+    if (slideIndex < coreSlideCount) {
+      return `Core ${slideIndex + 1} of ${coreSlideCount}`;
+    }
+    return `Appendix ${slideIndex + 1 - coreSlideCount} of ${
+      presentation.slides.length - coreSlideCount
+    }`;
+  }, [slideIndex]);
 
   return (
     <div className="presentation-shell">
@@ -398,7 +478,11 @@ export function App() {
         <div className="deck-context">
           <span>First Run Scenarios</span>
           <span className="context-divider" aria-hidden="true" />
-          <span>Case {presentation.scenario.legacyId}</span>
+          <span>
+            {slide.section === "appendix"
+              ? "Technical appendix"
+              : "Presales core"}
+          </span>
         </div>
       </header>
 

@@ -1,15 +1,13 @@
-import { lstatSync, readFileSync } from "node:fs";
-import path from "node:path";
-
 import { ZodError } from "zod";
 
 import { presentation } from "../src/content";
 import {
   parsePresentation,
+  type CatalogEntry,
   type PresentationSpec,
   type SlideSpec,
 } from "../src/model";
-import { isMainModule, repositoryRoot } from "./runtime";
+import { isMainModule } from "./runtime";
 
 const POSITIVE_RUN_CLAIMS = [
   /\bwe (?:achieved|measured|observed|reduced|improved|increased)\b/i,
@@ -19,7 +17,24 @@ const POSITIVE_RUN_CLAIMS = [
   /\bverified (?:live )?(?:run|result|optimization|improvement)\b/i,
 ] as const;
 
-const RUN_ARTIFACT_REFERENCE = /(?:^|\/)runs?\/.+\.json$/i;
+// Fields the deck renders beneath "Not proven" and "Does not prove". Naming a
+// result there is the opposite of claiming it.
+const DISCLAIMED_FIELDS = new Set(["notProven", "doesNotProve"]);
+
+// A claim phrase inside a sentence that denies it is not a claim. Speaker
+// notes and evidence lines are where the deck says what it is not asserting,
+// so refusing those sentences would push authors away from the plain wording
+// the deck exists to use.
+const CLAIM_NEGATORS =
+  /\b(?:no|not|never|without|cannot|can't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|none|nothing|neither|nor|un(?:proven|verified)|absent)\b/i;
+
+// Clause boundaries count, not only sentence boundaries. A negator only
+// disclaims what it governs, and it stops governing at the comma: "No customer
+// data leaves the laptop, and we measured a 41% quality improvement" is a real
+// claim wearing a denial's opening. Those are the phrasings a local-only deck
+// reaches for, so treating the whole sentence as disclaimed exempted exactly
+// the sentences most likely to overclaim.
+const CLAUSE_BOUNDARY = /[.!?;,:\n]/;
 
 export class ContentValidationError extends Error {
   readonly issues: readonly string[];
@@ -49,40 +64,83 @@ function uniqueIssues(values: readonly string[], label: string): string[] {
   return issues;
 }
 
-function visibleClaimText(slide: SlideSpec): string {
-  return [
-    slide.eyebrow,
-    slide.title,
-    slide.body,
-    slide.quote ?? "",
-    ...slide.bullets,
-    ...slide.metrics.flatMap((metric) => [
-      metric.label,
-      metric.value,
-      metric.detail,
-    ]),
-    ...slide.steps.flatMap((step) => [
-      step.label,
-      step.detail,
-      step.executor,
-      step.humanGate ?? "",
-    ]),
-    ...(slide.matrix ?? []).flatMap((row) => [
-      row.startingPoint,
-      row.safestNextStep,
-    ]),
-    ...(slide.testMatrix ?? []).flatMap((row) => [
-      row.layer,
-      row.action,
-      row.passSupports,
-      row.doesNotProve,
-    ]),
-    ...(slide.scenarioMatrix ?? []).flatMap((row) => [
-      row.family,
-      row.setup,
-      row.expectedRoute,
-    ]),
-  ].join("\n");
+/**
+ * Collect every string the content model carries, at any depth.
+ *
+ * The honesty rule has to hold on every surface a reader sees, and the deck
+ * renders far more than a slide's body: the footer prints `evidence`, the
+ * speaker-note pane and the PowerPoint notes page print `notes`, catalog
+ * slides print the catalog entry, and the deck subtitle becomes the
+ * PowerPoint subject. Enumerating fields by hand left four of those surfaces
+ * unchecked, so the scan walks the parsed model instead. A field added to the
+ * schema is covered the day it is added, without editing a list here.
+ */
+function collectRenderedStrings(value: unknown, collected: string[]): void {
+  if (typeof value === "string") {
+    collected.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectRenderedStrings(item, collected);
+    }
+    return;
+  }
+  if (typeof value === "object" && value !== null) {
+    for (const [key, item] of Object.entries(value)) {
+      // These fields render under a heading that states the deck does not
+      // claim what they contain, so a result named there is a disclaimer.
+      if (!DISCLAIMED_FIELDS.has(key)) {
+        collectRenderedStrings(item, collected);
+      }
+    }
+  }
+}
+
+function visibleClaimText(...values: readonly unknown[]): string {
+  const collected: string[] = [];
+  for (const value of values) {
+    collectRenderedStrings(value, collected);
+  }
+  return collected.join("\n");
+}
+
+/** The text preceding a match, back to the start of its own clause. */
+function clauseLeadIn(claimText: string, matchStart: number): string {
+  const window = claimText.slice(Math.max(0, matchStart - 160), matchStart);
+  let boundary = -1;
+  for (let index = window.length - 1; index >= 0; index -= 1) {
+    if (CLAUSE_BOUNDARY.test(window[index]!)) {
+      boundary = index;
+      break;
+    }
+  }
+  return window.slice(boundary + 1);
+}
+
+function hasPositiveRunClaim(claimText: string): boolean {
+  for (const pattern of POSITIVE_RUN_CLAIMS) {
+    const scan = new RegExp(pattern.source, `${pattern.flags}g`);
+    for (
+      let match = scan.exec(claimText);
+      match !== null;
+      match = scan.exec(claimText)
+    ) {
+      if (!CLAIM_NEGATORS.test(clauseLeadIn(claimText, match.index))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function renderedCatalogEntry(
+  slide: SlideSpec,
+  catalog: readonly CatalogEntry[],
+): CatalogEntry | undefined {
+  return slide.catalogSlug === undefined
+    ? undefined
+    : catalog.find((entry) => entry.slug === slide.catalogSlug);
 }
 
 function validateTemplateContract(slide: SlideSpec): string[] {
@@ -139,73 +197,26 @@ function validateTemplateContract(slide: SlideSpec): string[] {
   return issues;
 }
 
-function validateRunArtifactReference(
-  reference: string,
-  repositoryDirectory: string,
-): string | null {
-  if (!RUN_ARTIFACT_REFERENCE.test(reference)) {
-    return "is not a runs/*.json reference";
-  }
-  if (
-    reference.includes("\\") ||
-    path.posix.normalize(reference) !== reference ||
-    reference.startsWith("/") ||
-    reference.startsWith("../")
-  ) {
-    return "must be a normalized repository-relative POSIX path";
-  }
-  const resolvedRepository = path.resolve(repositoryDirectory);
-  const artifactPath = path.resolve(resolvedRepository, reference);
-  const relative = path.relative(resolvedRepository, artifactPath);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return "resolves outside the repository";
-  }
-  try {
-    const metadata = lstatSync(artifactPath);
-    if (metadata.isSymbolicLink() || !metadata.isFile()) {
-      return "must resolve to a regular non-symbolic-link file";
-    }
-    JSON.parse(readFileSync(artifactPath, "utf8"));
-  } catch (error: unknown) {
-    return error instanceof SyntaxError
-      ? "must contain valid JSON"
-      : "does not resolve to a readable file";
-  }
-  return null;
-}
-
 function validateEvidenceContract(
   slide: SlideSpec,
-  repositoryDirectory: string,
+  catalog: readonly CatalogEntry[],
 ): string[] {
   const issues: string[] = [];
-  const claimText = visibleClaimText(slide);
-  const hasPositiveRunClaim = POSITIVE_RUN_CLAIMS.some((pattern) =>
-    pattern.test(claimText),
-  );
-  const runArtifactReferences = slide.evidence.filter((reference) =>
-    RUN_ARTIFACT_REFERENCE.test(reference),
+  const claimText = visibleClaimText(
+    slide,
+    renderedCatalogEntry(slide, catalog),
   );
 
-  if (hasPositiveRunClaim && slide.evidenceState !== "verified-run") {
+  if (
+    hasPositiveRunClaim(claimText) &&
+    slide.evidenceState !== "verified-run"
+  ) {
     issues.push("positive run claims require evidenceState verified-run");
   }
-  if (
-    slide.evidenceState === "verified-run" &&
-    runArtifactReferences.length === 0
-  ) {
-    issues.push("verified-run slides require a JSON run artifact reference");
-  }
   if (slide.evidenceState === "verified-run") {
-    for (const reference of runArtifactReferences) {
-      const artifactIssue = validateRunArtifactReference(
-        reference,
-        repositoryDirectory,
-      );
-      if (artifactIssue !== null) {
-        issues.push(`verified-run artifact ${reference} ${artifactIssue}`);
-      }
-    }
+    issues.push(
+      "verified-run slides are disabled until retained evidence validates revisions, worker and session identity, environment and isolation boundary, exact handoff and response, captured JSON, complete commands and final statuses, verifier output, and stop point",
+    );
   }
   if (
     slide.evidenceState !== "verified-run" &&
@@ -222,11 +233,11 @@ function validateEvidenceContract(
 
 function validateSlide(
   slide: SlideSpec,
-  repositoryDirectory: string,
+  catalog: readonly CatalogEntry[],
 ): string[] {
   const issues = [
     ...validateTemplateContract(slide),
-    ...validateEvidenceContract(slide, repositoryDirectory),
+    ...validateEvidenceContract(slide, catalog),
     ...uniqueIssues(slide.bullets, "bullets"),
     ...uniqueIssues(slide.evidence, "evidence"),
     ...uniqueIssues(slide.notes, "notes"),
@@ -251,10 +262,20 @@ function schemaIssues(error: ZodError): string[] {
   });
 }
 
-export function validatePresentationContent(
-  value: unknown,
-  options: { repositoryDirectory?: string } = {},
-): PresentationSpec {
+function validateDeckContract(spec: PresentationSpec): string[] {
+  // Deck-level text renders on every slide and in the PowerPoint document
+  // properties, and carries no evidence state of its own, so it can never
+  // reach the verified-run state a positive run claim would require.
+  return hasPositiveRunClaim(
+    visibleClaimText(spec.title, spec.subtitle, spec.scenario),
+  )
+    ? [
+        "deck: positive run claims require evidenceState verified-run, which deck-level text cannot carry",
+      ]
+    : [];
+}
+
+export function validatePresentationContent(value: unknown): PresentationSpec {
   let parsed: PresentationSpec;
   try {
     parsed = parsePresentation(value);
@@ -265,10 +286,10 @@ export function validatePresentationContent(
     throw error;
   }
 
-  const repositoryDirectory = options.repositoryDirectory ?? repositoryRoot;
-  const issues = parsed.slides.flatMap((slide) =>
-    validateSlide(slide, repositoryDirectory),
-  );
+  const issues = [
+    ...validateDeckContract(parsed),
+    ...parsed.slides.flatMap((slide) => validateSlide(slide, parsed.catalog)),
+  ];
   if (issues.length > 0) {
     throw new ContentValidationError(issues);
   }

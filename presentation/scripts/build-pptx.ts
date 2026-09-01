@@ -8,6 +8,8 @@ import PptxGenJS from "pptxgenjs";
 import { brandBlue, brandName } from "../src/brand";
 import { presentation } from "../src/content";
 import {
+  coverageLabel,
+  displayEyebrow,
   evidenceLabel,
   type CatalogEntry,
   type PresentationSpec,
@@ -33,6 +35,7 @@ const TITLE_PLACEHOLDER_NAME = "slide-title";
 const EARLIEST_ZIP_EPOCH_SECONDS = 315_532_800;
 
 const EVIDENCE_COLORS = {
+  "guide-contract": theme.colors.violet,
   "scenario-contract": theme.colors.blueBright,
   "verified-run": theme.colors.green,
   "not-demonstrated": theme.colors.amber,
@@ -136,8 +139,9 @@ function addBrand(pptx: PptxGenJS, slide: PptxGenJS.Slide): void {
 
 function addHeading(slide: PptxGenJS.Slide, slideSpec: SlideSpec): void {
   const titleFontSize = slideSpec.kind === "hero" ? 34 : 28;
+  const eyebrow = displayEyebrow(slideSpec);
 
-  slide.addText(slideSpec.eyebrow, {
+  slide.addText(eyebrow, {
     x: CONTENT_X,
     y: CONTENT_TOP,
     w: CONTENT_WIDTH,
@@ -173,7 +177,7 @@ function addHeading(slide: PptxGenJS.Slide, slideSpec: SlideSpec): void {
     margin: 0,
     color: theme.colors.textSoft,
     fontFace: theme.fonts.sans,
-    fontSize: 13.5,
+    fontSize: 14.5,
     breakLine: false,
     valign: "top",
   });
@@ -226,13 +230,13 @@ function addBullets(
 ): void {
   const columns = bullets.length === 1 ? 1 : 2;
   const cardWidth = columns === 1 ? 11.7 : 5.7;
-  const rowHeight = 0.68;
+  const rowHeight = 0.78;
 
   bullets.forEach((bullet, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
     const x = CONTENT_X + column * 6;
-    const y = DETAIL_TOP + row * 0.82;
+    const y = DETAIL_TOP + row * 0.92;
 
     slide.addShape(pptx.ShapeType.roundRect, {
       x,
@@ -258,7 +262,7 @@ function addBullets(
       margin: 0,
       color: theme.colors.textSoft,
       fontFace: theme.fonts.sans,
-      fontSize: 10.5,
+      fontSize: 12.5,
       valign: "middle",
     });
   });
@@ -300,7 +304,7 @@ function addMetrics(
       margin: 0,
       color: theme.colors.muted,
       fontFace: theme.fonts.sans,
-      fontSize: 7.5,
+      fontSize: 9,
       bold: true,
       charSpacing: 1,
     });
@@ -324,7 +328,7 @@ function addMetrics(
       margin: 0,
       color: theme.colors.textSoft,
       fontFace: theme.fonts.sans,
-      fontSize: 8.5,
+      fontSize: 10,
       valign: "middle",
     });
   });
@@ -394,7 +398,7 @@ function addJourney(
       h: 0.25,
       margin: 0,
       fontFace: theme.fonts.sans,
-      fontSize: 7,
+      fontSize: 9,
       charSpacing: 0.8,
     });
     slide.addText(step.label, {
@@ -416,7 +420,7 @@ function addJourney(
       margin: 0,
       color: theme.colors.textSoft,
       fontFace: theme.fonts.sans,
-      fontSize: 8.5,
+      fontSize: 10.5,
       valign: "top",
     });
   });
@@ -456,7 +460,7 @@ function addTableCell(
         ? theme.colors.muted
         : theme.colors.textSoft,
     fontFace: theme.fonts.sans,
-    fontSize: header ? 7.2 : 9,
+    fontSize: header ? 8.5 : 10.3,
     bold: header || accent,
     charSpacing: header ? 0.45 : 0,
     valign: "middle",
@@ -495,9 +499,7 @@ function addStartingPointMatrix(
     const values = [
       row.startingPoint,
       row.safestNextStep,
-      row.coverage === "published"
-        ? "Available here: case 46"
-        : "Planned; not released or passed",
+      coverageLabel(row.coverage),
     ];
     let cellX = CONTENT_X;
     values.forEach((value, columnIndex) => {
@@ -566,12 +568,12 @@ function addScenarioCoverageMatrix(
   slideSpec: SlideSpec,
 ): void {
   if (slideSpec.scenarioMatrix === undefined) return;
-  const widths = [1.85, 3.55, 4.55, 1.75];
+  const widths = [1.7, 3.4, 4.3, 2.29];
   const headers = [
     "SCENARIO FAMILY",
     "MATERIAL AND DATASET ARCHETYPE",
     "BEHAVIOR THE SCENARIO SHOULD EXERCISE",
-    "RELEASE STATUS",
+    "PUBLIC TEST CASE",
   ];
   let x = CONTENT_X;
   headers.forEach((header, index) => {
@@ -588,14 +590,12 @@ function addScenarioCoverageMatrix(
     x += widths[index]!;
   });
   slideSpec.scenarioMatrix.forEach((row, rowIndex) => {
-    const y = DETAIL_TOP + 0.43 + rowIndex * 0.55;
+    const y = DETAIL_TOP + 0.43 + rowIndex * 0.62;
     const values = [
       row.family,
       row.setup,
       row.expectedRoute,
-      row.coverage === "published"
-        ? "Available here: case 46"
-        : "Planned; not released or passed",
+      coverageLabel(row.coverage),
     ];
     let cellX = CONTENT_X;
     values.forEach((value, columnIndex) => {
@@ -755,7 +755,7 @@ function addFooter(
   slide.addShape(pptx.ShapeType.roundRect, {
     x: CONTENT_X,
     y: FOOTER_TOP,
-    w: 2.18,
+    w: 3.15,
     h: 0.3,
     rectRadius: 0.03,
     line: { color: badgeColor, transparency: 55, width: 0.7 },
@@ -764,39 +764,42 @@ function addFooter(
   slide.addText(evidenceLabel(slideSpec.evidenceState), {
     x: CONTENT_X + 0.08,
     y: FOOTER_TOP + 0.03,
-    w: 2.02,
+    w: 2.99,
     h: 0.24,
     margin: 0,
     color: badgeColor,
     fontFace: theme.fonts.sans,
-    fontSize: 7.5,
+    fontSize: 9,
     bold: true,
     align: "center",
     valign: "middle",
   });
   slide.addText(slideSpec.evidence.join(" | "), {
-    x: CONTENT_X + 2.38,
+    x: CONTENT_X + 3.35,
     y: FOOTER_TOP,
-    w: 8.35,
+    w: 7.38,
     h: 0.3,
     margin: 0,
     color: theme.colors.muted,
     fontFace: theme.fonts.sans,
-    fontSize: 7.5,
+    fontSize: 9,
     valign: "middle",
   });
-  slide.addText(`${slideNumber} / ${slideCount}`, {
-    x: 11.75,
-    y: FOOTER_TOP,
-    w: 0.75,
-    h: 0.3,
-    margin: 0,
-    color: theme.colors.muted,
-    fontFace: theme.fonts.mono,
-    fontSize: 7.5,
-    align: "right",
-    valign: "middle",
-  });
+  slide.addText(
+    `${slideSpec.section === "appendix" ? "APPENDIX" : "CORE"} · ${slideNumber} / ${slideCount}`,
+    {
+      x: 11.3,
+      y: FOOTER_TOP,
+      w: 1.8,
+      h: 0.3,
+      margin: 0,
+      color: theme.colors.muted,
+      fontFace: theme.fonts.mono,
+      fontSize: 9,
+      align: "right",
+      valign: "middle",
+    },
+  );
 }
 
 function addSlideContent(

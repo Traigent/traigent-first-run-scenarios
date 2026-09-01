@@ -1,7 +1,8 @@
 # Customer PC Runbook
 
-This runbook is for a presales engineer or customer representative reproducing
-the public Phase A opening scenario on a customer-controlled computer.
+This runbook is for a Traigent presales engineer or customer representative
+reproducing the public Phase A opening scenario on a customer-controlled
+computer.
 
 It covers package validation, preparation, a context-isolated worker run, and
 semantic verification. It does not authorize the later credentialed
@@ -11,8 +12,8 @@ optimization path.
 
 - The **customer owner** approves the machine, coding-agent service, evidence
   retention, and any later live boundaries.
-- The **captain** prepares the project, gives the worker the exact handoff,
-  enforces the stop point, and retains evidence.
+- The **captain (test operator)** prepares the project, gives the worker the
+  exact handoff, enforces the stop point, and retains evidence.
 - The **worker** is a fresh coding-agent conversation that receives only the
   prepared project and printed handoff.
 - The **verifier** is the local data-only comparison performed after the worker
@@ -33,9 +34,10 @@ Before touching the machine, confirm:
 - which directories, repositories, services, and data are out of scope; and
 - who can authorize a separate Phase B exercise.
 
-Phase A requires no Traigent access code, model-provider key, customer dataset,
-paid service, or product account. The coding-agent service itself may be remote
-or billed, so approve that service separately.
+Phase A requires no Traigent access code, project model-provider key, customer
+dataset, Traigent paid service, or product account. The coding-agent service
+itself may be remote or billed and receives the context supplied to it, so
+approve that service and context boundary separately.
 
 If local policy does not permit any required step, stop and use an approved
 environment.
@@ -154,7 +156,7 @@ calibration only when the first-run guide admits the exact path through its
 safety gate. During Phase A, do not:
 
 - provide a Traigent or provider credential;
-- approve a paid or remote Traigent/provider request;
+- approve a paid or remote Traigent or model-provider request;
 - install packages without a separate approved procedure;
 - expose customer data;
 - change production files or services; or
@@ -181,9 +183,12 @@ caps are condition slugs; full captured cap objects are compared by their
 `condition` fields. It reports every mismatch and does not execute the verifier.
 
 A matching result may be labeled **Verified run evidence** only when the report
-also identifies the captured result, both repository revisions, `run.json`, the
-worker, environment, handoff, and stop point. Without that evidence, the public
-values remain an **Expected scenario contract**.
+also retains the captured result, both repository revisions, `run.json`, worker
+and session identity, environment and isolation boundary, exact handoff and
+worker response, complete commands, output and final statuses, verifier output,
+and stop point. A run record, result JSON, and `PASS` alone are insufficient.
+Without the complete evidence package, the public values remain a **Scenario
+contract · no recorded run**.
 
 ## 8. Retain and remove evidence deliberately
 
@@ -192,7 +197,7 @@ Retain only what the customer approved:
 - scenario and guide revisions;
 - scenario slug and legacy identifier;
 - `run.json`;
-- environment and worker description;
+- worker, session, environment, and isolation-boundary description;
 - complete commands, output, and final statuses;
 - exact handoff and worker response;
 - opening-result JSON and verifier output; and
@@ -207,15 +212,15 @@ the machine.
 Phase B exercises a live value path. Before it begins, write down and obtain
 approval for every applicable item:
 
-| Boundary | Required decision |
-| --- | --- |
-| Credentials | Which account and secret may be used, and how it is supplied without entering chat or logs |
-| Network | Which hosts and services may be contacted |
-| Installation | Which packages or tools may modify the environment |
-| Data | Which files may be read, transformed, or sent off the machine |
-| Cost | Which provider or platform charges are allowed and their limit |
-| Mutation | Which files, repositories, services, or records may change |
-| Optimization | The candidate space, evaluation, trial, and stopping boundaries |
+| Boundary     | Required decision                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| Credentials  | Which account and secret may be used, and how it is supplied without entering chat or logs |
+| Network      | Which hosts and services may be contacted                                                  |
+| Installation | Which packages or tools may modify the environment                                         |
+| Data         | Which files may be read, transformed, or sent off the machine                              |
+| Cost         | Which provider or platform charges are allowed and their limit                             |
+| Mutation     | Which files, repositories, services, or records may change                                 |
+| Optimization | The candidate space, evaluation, trial, and stopping boundaries                            |
 
 An approval for Phase A is not approval for Phase B. If any boundary is unclear,
 stop and ask the authorized human. Report Phase B evidence separately; never use

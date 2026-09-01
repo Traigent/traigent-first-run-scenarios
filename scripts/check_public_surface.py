@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Reject private-only references from files that could be published."""
+"""Reject private-only references from files that could be published.
+
+The rule set is a denylist backstop, not a completeness claim: it catches the
+reference classes that have actually leaked from sibling repositories, and a
+clean run means only that none of those classes matched. Publication review
+still owns the judgment call.
+"""
 
 from __future__ import annotations
 
 import argparse
+import codecs
 import os
 import re
 import stat
@@ -101,6 +108,88 @@ _RULES = (
         ),
     ),
 )
+
+# Conservative offline allowlist, verified against the public Traigent GitHub
+# organization on 2026-09-01. Explicit references to any other repository in
+# that organization fail by default. Private repository names therefore never
+# need to live in this public source tree.
+_PUBLIC_TRAIGENT_REPOSITORIES = frozenset(
+    {
+        "traigent",
+        "traigent-first-run",
+        "traigent-first-run-scenarios",
+        "traigentschema",
+        "traigent-skills",
+        "tvl",
+    }
+)
+_TRAIGENT_REPOSITORY_REFERENCE_PATTERNS = (
+    re.compile(
+        r"\bhttps?://github\.com/(?P<owner>Traigent)/"
+        r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*?)"
+        r"(?:\.git)?(?=$|[/?#\s\"'<>()\[\],.;:@!*`])",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bgit@github\.com:(?P<owner>Traigent)/"
+        r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*?)"
+        r"(?:\.git)?(?=$|[/?#\s\"'<>()\[\],.;:@!*`])",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?<![@A-Za-z0-9_.-])(?P<owner>Traigent)/"
+        r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*)"
+        r"(?=$|[/?#\s\"'<>()\[\],.;:@!*`])",
+        re.IGNORECASE,
+    ),
+)
+
+# A repo-shaped slug immediately followed by `#<number>` is unambiguously a
+# work-item reference, and the owner-qualified patterns above never see it:
+# a bare `<repo>#<number>` carries no `Traigent/` prefix and no URL. That form
+# is the one that actually accumulates -- 42 of them had to be scrubbed by hand
+# from a sibling repository's public-bound files -- so it is worth its own
+# pattern.
+#
+# It reuses `_PUBLIC_TRAIGENT_REPOSITORIES` deliberately: the allowlist is what
+# lets this be fail-closed WITHOUT naming a private repository in this public
+# file, which is the property the earlier denylist gave up.
+#
+# Three repository-name shapes count, and the reason is the shape of the
+# sibling repositories this exists to keep out of a public file. Requiring a
+# hyphen was a stated limit, but it happened to exclude the commonest private
+# spelling here: the siblings are overwhelmingly CamelCase with no separator at
+# all, so a CamelCase sibling sailed straight through while a hyphenated one
+# was caught. A limit that misses the actual exposure is not worth keeping.
+#
+# The `#` is spaced out below so this comment does not trip the rule it
+# documents -- a real reference has the slug directly against the `#`:
+#
+#   hyphenated    some-service  #12
+#   CamelCase     SomeService   #4821   (an internal capital is required)
+#   underscored   Some_Service  #12
+#
+# A lowercase single word is still not a repository reference, and that is what
+# keeps the false positives out: an invoice number in customer support text,
+# and a same-file markdown anchor to a numbered heading, both stay clean.
+# `PR #1` and
+# `issue #244` never matched anyway -- the slug has to sit directly against the
+# `#`. The trailing lookahead stops a digit-then-hyphen tail, so an anchor to a
+# numbered heading (`page#2-setup`) is not read as a work item.
+_REPOSITORY_NAME_SHAPES = (
+    r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+"  # hyphenated
+    # The inner class deliberately excludes uppercase. Allowing it there makes
+    # the split points ambiguous, and a long run of capitals then backtracks
+    # exponentially -- measured at 4x per two characters, so a 40-character
+    # token hangs the guard rather than failing it.
+    r"|[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+"  # CamelCase
+    r"|[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+"  # underscored
+)
+_BARE_WORK_ITEM_REFERENCE = re.compile(
+    r"(?<![A-Za-z0-9_./-])(?P<repository>" + _REPOSITORY_NAME_SHAPES + r")"
+    r"#\d+(?![A-Za-z0-9-])"
+)
+
 
 _GITLINK_MODE = "160000"
 
@@ -258,29 +347,128 @@ def _display(path: str) -> str:
     return path.encode("unicode_escape", errors="backslashreplace").decode("ascii")
 
 
-def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
+def _decoded_variants(content: bytes) -> tuple[tuple[str, ...], bool]:
+    """Return useful text views and whether the file declares a safe encoding.
+
+    The denylist patterns are ASCII. Strict UTF-8 and BOM-declared UTF-16/32 are
+    accepted text encodings. NUL-normalized and replacement views are still
+    scanned so an unsupported encoding cannot hide a match, but unsupported or
+    ambiguous bytes also produce a finding for explicit publication review.
+    """
+    variants: list[str] = []
+    supported_encoding = False
+    try:
+        variants.append(content.decode("utf-8"))
+        supported_encoding = b"\x00" not in content
+    except UnicodeDecodeError:
+        pass
+
+    wide_encoding: str | None = None
+    if content.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+        wide_encoding = "utf-32"
+    elif content.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        wide_encoding = "utf-16"
+    if wide_encoding is not None:
+        try:
+            variants.append(content.decode(wide_encoding))
+            supported_encoding = True
+        except UnicodeDecodeError:
+            supported_encoding = False
+
+    if b"\x00" in content:
+        for encoding in (
+            "utf-16-le",
+            "utf-16-be",
+            "utf-32-le",
+            "utf-32-be",
+        ):
+            try:
+                variants.append(content.decode(encoding))
+            except UnicodeDecodeError:
+                continue
+    variants.append(content.replace(b"\x00", b"").decode("utf-8", errors="replace"))
+    return tuple(dict.fromkeys(variants)), supported_encoding
+
+
+def _repository_reference_findings(
+    surface: str, relative_path: str, line_number: int, line: str
+) -> list[Finding]:
     findings: list[Finding] = []
-    text = content.decode("utf-8", errors="replace")
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        for rule in _RULES:
-            if rule.pattern.search(line):
+    for pattern in _TRAIGENT_REPOSITORY_REFERENCE_PATTERNS:
+        for match in pattern.finditer(line):
+            if match.group("owner").casefold() != "traigent":
+                continue
+            repository = (
+                match.group("repository").casefold().rstrip(".,;:").removesuffix(".git")
+            )
+            if repository not in _PUBLIC_TRAIGENT_REPOSITORIES:
                 findings.append(
                     Finding(
                         surface=surface,
                         path=relative_path,
                         line=line_number,
-                        rule=rule.name,
+                        rule="repository reference outside the public allowlist",
                     )
                 )
+    for match in _BARE_WORK_ITEM_REFERENCE.finditer(line):
+        if match.group("repository").casefold() not in _PUBLIC_TRAIGENT_REPOSITORIES:
+            findings.append(
+                Finding(
+                    surface=surface,
+                    path=relative_path,
+                    line=line_number,
+                    rule="work-item reference to a repository outside the public allowlist",
+                )
+            )
     return findings
 
 
+def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
+    findings: list[Finding] = []
+    variants, supported_encoding = _decoded_variants(content)
+    for text in variants:
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for rule in _RULES:
+                if rule.pattern.search(line):
+                    findings.append(
+                        Finding(
+                            surface=surface,
+                            path=relative_path,
+                            line=line_number,
+                            rule=rule.name,
+                        )
+                    )
+            findings.extend(
+                _repository_reference_findings(
+                    surface, relative_path, line_number, line
+                )
+            )
+    if not supported_encoding:
+        findings.append(
+            Finding(
+                surface=surface,
+                path=relative_path,
+                line=0,
+                rule="unsupported or ambiguous text encoding requires review",
+            )
+        )
+    # Identical findings can arise from overlapping reference patterns and
+    # near-duplicate decoded variants; report each one once.
+    return list(dict.fromkeys(findings))
+
+
 def _scan_path(relative_path: str) -> list[Finding]:
-    return [
+    findings = [
         Finding(surface="path", path=relative_path, line=1, rule=rule.name)
         for rule in _RULES
         if rule.pattern.search(relative_path)
     ]
+    findings.extend(
+        _repository_reference_findings("path", relative_path, 1, relative_path)
+    )
+    # Identical findings can arise from overlapping reference patterns and
+    # near-duplicate decoded variants; report each one once.
+    return list(dict.fromkeys(findings))
 
 
 def check_repository(repo_root: Path) -> ScanResult:

@@ -9,15 +9,16 @@ withheld from the worker during an individual run.
 
 The current release publishes one scenario and its expected Phase A opening
 contract. It does not include a captured, verified worker run. Its values may be
-presented as **Expected scenario contract**, never as a completed result.
+presented as **Scenario contract · no recorded run**, never as a completed
+result.
 
 ## Three evidence layers
 
-| Layer | Subject | Required evidence | Limit |
-| --- | --- | --- | --- |
-| Catalog check | Public package | Successful `list`, `show`, and `check` output | No worker behavior was observed |
-| Phase A opening | Fresh worker in the prepared project | Exact revisions, `run.json`, transcript, opening JSON, and successful semantic verification | No baseline, managed service, or optimization claim |
-| Phase B live optimization | Human-approved real value path | Explicit approvals plus the complete credentialed run record | Supports only the path and outcomes actually measured |
+| Layer                     | Subject                              | Required evidence                                                                           | Limit                                                 |
+| ------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Catalog check             | Public package                       | Successful `list`, `show`, and `check` output                                               | No worker behavior was observed                       |
+| Phase A opening           | Fresh worker in the prepared project | Complete Phase A report defined below plus successful semantic verification                 | No baseline, managed service, or optimization claim   |
+| Phase B live optimization | Human-approved real value path       | Explicit approvals plus the complete credentialed run record                                | Supports only the path and outcomes actually measured |
 
 Evidence does not flow upward automatically. A structurally valid package is
 not a Phase A pass, and a Phase A match is not proof of a Phase B optimization.
@@ -29,7 +30,8 @@ stable facts rather than slide prose:
 
 - the starting-condition identifier;
 - agent, data, and evaluator states and local paths;
-- the agent controls visible at the starting point;
+- the agent's tunable settings (`controls` in `scenario.json`) visible at the
+  starting point;
 - each dataset's task, format, fields, row and unique-input counts, available
   split and difficulty dimensions, output shape, and limitations;
 - evaluator method and calibration-file count;
@@ -37,8 +39,8 @@ stable facts rather than slide prose:
 - what the scenario contract demonstrates and explicitly does not demonstrate.
 
 Unavailable facts remain explicit. A missing component uses a null path, an
-agent with no usable controls uses an empty control list, and an unavailable
-split or difficulty dimension uses a null field with empty counts. Output
+agent with no usable tunable settings uses an empty `controls` list, and an
+unavailable split or difficulty dimension uses a null field with empty counts. Output
 profiles distinguish mapped labels, unmapped labels, free text, numeric values,
 structured values, and absent labels. This allows later scenarios to describe
 gaps without inventing replacement data or forcing every task into a
@@ -62,8 +64,8 @@ Each Phase A run has four logical roles:
 
 - The **customer owner** approves the machine, agent service, and evidence
   policy.
-- The **captain** selects the scenario, prepares the run root, controls the
-  worker handoff, enforces the stop point, and retains evidence.
+- The **captain (test operator)** selects the scenario, prepares the run root,
+  controls the worker handoff, enforces the stop point, and retains evidence.
 - The **worker** is a fresh coding-agent context that receives only the
   prepared customer project and exact handoff.
 - The **verifier** performs a data-only semantic comparison after the worker
@@ -150,17 +152,28 @@ governed choice without being coached toward the expected result.
 The worker may use the first-run guide's static local checks. It may run the
 exact deterministic evaluator calibration only after the guide's safety gate
 admits that specific local path. This narrow allowance does not authorize
-arbitrary project code, dependencies, remote services, credentials, paid calls,
-customer-data egress, production mutation, a baseline, or an optimization.
+arbitrary project code, dependencies, additional project-originated remote
+services, credentials, project-provider or Traigent paid calls, customer-data
+egress, production mutation, a baseline, or an optimization. The separately
+approved coding-agent service may itself be remote or billed and receives the
+context supplied to it.
 
-A Phase A match supports only this claim:
+A successful semantic comparison supports only this claim:
 
-> Under the recorded scenario, guide, worker, and isolation conditions, the
-> captured opening fields matched the published semantic contract.
+> The four supplied opening fields matched the published semantic contract at
+> the scenario revision recorded in `run.json`, and the recorded scenario
+> project and contract inventories matched that revision.
 
-It does not establish general coding-agent quality, readiness of another
-project, a live Traigent connection, or an improvement in quality, cost, speed,
-or any business metric.
+It does not establish that a worker produced the result or used the recorded
+guide, environment, handoff, or isolation boundary. A complete Phase A report
+may make a bounded execution claim only when it also retains the worker and
+session identity, environment and isolation boundary, exact handoff and worker
+response, captured JSON bytes, complete commands, output and final statuses,
+verifier output, both repository revisions, and stop point.
+
+Neither the semantic match nor a complete Phase A report establishes general
+coding-agent quality, readiness of another project, a live Traigent connection,
+or an improvement in quality, cost, speed, or any business metric.
 
 ## Semantic verification
 
@@ -193,7 +206,7 @@ provider, cost, mutation, and optimization boundary.
 Phase A never transitions into Phase B automatically. Phase B evidence must
 identify the approvals, exact configuration, data boundary, services, spend,
 trials, stop condition, and measured outcome. Behavior not exercised remains
-**Not demonstrated**.
+**Not demonstrated in this deck**.
 
 ## Materialization and deterministic identity
 
@@ -203,9 +216,10 @@ expectations and guidance. A run never selects fragments from a shared hidden
 dataset or falls back to generated, random, downloaded, or default content.
 
 The same checked-out scenario and guide revisions produce the same prepared
-inventories and aggregate hashes. A report identifies both revisions,
-`run.json`, the worker and environment, exact handoff, captured opening JSON,
-verifier output, complete command output, final statuses, and stop point.
+inventories and aggregate hashes. A complete Phase A report identifies both
+revisions, `run.json`, the worker and session, environment and isolation
+boundary, exact handoff and worker response, captured opening JSON, verifier
+output, complete command output, final statuses, and stop point.
 
 ## Content origin and in-world provenance
 
@@ -218,10 +232,10 @@ That in-world value represents what the fictional user declares about a row. A
 row with `provenance: real` is still a Traigent-authored test double; it is not a
 claim that the repository copied customer or third-party data.
 
-| Contract | Meaning |
-| --- | --- |
-| Manifest `content.origin` and `content.license` | Authorship and terms for published files |
-| In-world row `provenance` | Simulated user declaration used by readiness scoring |
+| Contract                                        | Meaning                                              |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| Manifest `content.origin` and `content.license` | Authorship and terms for published files             |
+| In-world row `provenance`                       | Simulated user declaration used by readiness scoring |
 
 ## History-free publication
 
@@ -234,13 +248,16 @@ reproducible identity of the published scenario.
 ## Presentation evidence labels
 
 The browser presentation and editable PowerPoint use the same semantic content
-and one of three labels on every slide:
+and one of four labels on every slide:
 
-- **Expected scenario contract**: published facts or expectations, without a
-  referenced captured run.
-- **Verified run evidence**: a claim directly supported by a retained run
-  artifact and successful verification.
-- **Not demonstrated**: a path or outcome that was not exercised.
+- **Guide contract · no recorded run**: guide behavior pinned to an exact
+  40-character public guide revision, without a referenced captured run.
+- **Scenario contract · no recorded run**: published scenario facts or
+  expectations, without a referenced captured run.
+- **Verified run evidence**: a claim supported by the complete retained Phase A
+  report described above and successful semantic verification. A run record,
+  result JSON, and `PASS` alone are insufficient.
+- **Not demonstrated in this deck**: a path or outcome that was not exercised.
 
 Presentation rendering never changes verification semantics. Missing evidence
 must remain visibly unverified rather than becoming an implied green result.
