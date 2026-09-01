@@ -504,7 +504,6 @@ describe("customer bundle", () => {
     });
     expect(manifest.deck.evidence_states).toEqual([
       "guide-contract",
-      "not-demonstrated",
       "scenario-contract",
     ]);
     expect(manifest.deck.guide_contract_source_revisions).toEqual([

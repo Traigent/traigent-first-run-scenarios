@@ -573,7 +573,7 @@ function addScenarioCoverageMatrix(
     "SCENARIO FAMILY",
     "MATERIAL AND DATASET ARCHETYPE",
     "BEHAVIOR THE SCENARIO SHOULD EXERCISE",
-    "PUBLIC TEST CASE",
+    "TEST SCENARIO STATUS",
   ];
   let x = CONTENT_X;
   headers.forEach((header, index) => {
