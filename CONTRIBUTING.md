@@ -109,7 +109,12 @@ A declaration that switches a check off is itself checked against the bytes:
   The walk goes at most `4` object levels deep, and it fails closed at the
   edge: a row nesting objects deeper is refused as unenumerable rather than
   waved through, and a declared field path deeper than the walk can reach is
-  refused when the manifest is read.
+  refused when the manifest is read. A dataset column whose own name spells a
+  literal `.` is refused as ambiguous, because the walk cannot tell it apart
+  from the nested path it spells -- and it would inherit that path's
+  declaration. A missing dataset ships no rows, so its `passthrough_fields`
+  must be empty: the schema and the validator both refuse a declaration that
+  would describe nothing.
 - Under an `absent` shape, any column whose values across the rows are a small
   repeating set of short strings is a label surface whatever the catalog calls
   it -- including a column nested inside a described object. Only the input
@@ -129,7 +134,10 @@ A declaration that switches a check off is itself checked against the bytes:
   reading it parses under, and the two answers are joined -- counting the rows
   each reading finds rather than letting the first line it cannot parse, a
   stray row of the other spelling, or a note above the table's header answer
-  for the file.
+  for the file. A JSON array of objects on one line is read as the rows it
+  holds, because `json.dumps` of a dataset is still that dataset. The
+  categories are exclusive: a `non_dataset_files` entry may not also be a
+  component, data, or calibration path.
 - A component slot names bytes that read as Python source. `agent.path` and
   `evaluator.path` used to be checked only for naming a regular file under
   `project/`, which a byte-identical copy of the labelled dataset satisfied.
@@ -144,7 +152,13 @@ A declaration that switches a check off is itself checked against the bytes:
   what the check reads: with a component declared missing, the only file whose
   bytes read as Python source is the source a component that is present names.
   The file's suffix decides nothing -- renaming `evaluator.py` to
-  `evaluator.txt` does not make the evaluator absent.
+  `evaluator.txt` does not make the evaluator absent. Two dressings are
+  refused by name: a file opening with a `#!` interpreter line is an
+  executable script whatever language follows, and a file whose every
+  non-empty line wears a uniform `# ` prefix over Python source is that
+  source, one editor command away. Declared data paths and the calibration
+  record are exempt from this sweep -- each is already read and validated as
+  what it claims to be.
 - The sweeps read the Git index rather than the directory, because `prepare`
   copies recorded blobs: an untracked scratch file never reaches a worker.
   Outside a Git work tree -- and inside a foreign one, where the listing comes
@@ -169,10 +183,21 @@ the limits are worth stating rather than leaving to be discovered:
   A record that is neither -- free-form prose carrying `INC-001: SEV1` on every
   line, say -- is reported as carrying no closed label surface. That is the one
   place left where "I could not establish this is a label surface" is answered
-  as "it is not one", and it is stated here rather than implied.
-- "Reads as Python source" means the bytes parse and are not purely literals.
-  It does not mean the file is a working agent or evaluator; nothing here runs
-  one.
+  as "it is not one", and it is stated here rather than implied. The scan's
+  floor is also relative: a column carried by fewer than one row in ten reads
+  as telemetry, so burying a labelled dataset under more than ten junk lines
+  per labelled row dilutes it below the floor -- at ten lines of authoring
+  cost per row hidden. The floor exists so a sparse status enum in an honest
+  run log is not read as an answer key.
+- "Reads as Python source" means the bytes parse and carry an import, a
+  definition, a lambda, or a call. It does not mean the file is a working
+  agent or evaluator; nothing here runs one. A file of bare assignments reads
+  as data on purpose -- every `.env` file and flat YAML mapping is one -- so a
+  component written as pure assignments is not detected. A denied component
+  whose bytes neither parse as Python, open with an interpreter line, nor wear
+  a uniform `# ` prefix over Python -- a scoring table in JSON, an evaluator
+  in a language with no shebang -- ships undetected under a record name; the
+  record scans still read its rows for a label surface.
 
 The current schema admits only that origin and license pair. Adding another
 origin, license, or third-party work requires a schema and licensing review

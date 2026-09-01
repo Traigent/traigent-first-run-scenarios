@@ -101,6 +101,16 @@ CALIBRATION_PROBE_NAMES = ("good", "equivalent_good", "partial", "bad")
 # fails it because nothing repeats.
 CLOSED_SURFACE_MINIMUM_ROWS = 4
 CLOSED_SURFACE_MINIMUM_REPEAT = 2
+# The most junk rows this module lets stand between a label column and the
+# scan that names it: a column carried by fewer than one row in this many is
+# telemetry, not a label surface. A sparse status enum in a 200-row run log --
+# six rows carrying ok/error -- is the artifact class non_dataset_files exists
+# for, and reading it as an answer key would make the honest record
+# unshippable. The trade runs the other way too and is stated in
+# CONTRIBUTING.md: burying a labelled dataset under more than this many junk
+# lines per labelled row dilutes the column below this floor, at ten junk
+# lines of authoring cost per row hidden.
+CLOSED_SURFACE_MAXIMUM_DILUTION = 10
 LABEL_SHAPES = {
     "absent",
     "free-text",
@@ -254,6 +264,21 @@ class _TooManyColumns(Exception):
 
 class _TooDeeplyNested(Exception):
     """Internal signal that a row nests objects deeper than can be walked."""
+
+
+class _DottedColumnName(Exception):
+    """Internal signal that a row spells a literal ``.`` inside a column name.
+
+    The path walk spells nesting with ``.``, so a literal dotted key is
+    indistinguishable from the nested path it spells -- and it would inherit
+    that path's declaration, skip entry and exemption. Where row paths are
+    compared against declared paths, that ambiguity is refused rather than
+    resolved.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.name = name
 
 
 @dataclass(frozen=True)
@@ -771,6 +796,7 @@ def _row_cells(
     row: Any,
     *,
     skip: frozenset[str] = frozenset(),
+    refuse_dotted: bool = False,
     prefix: str = "",
     depth: int = 0,
 ) -> Iterator[tuple[str, Any]]:
@@ -795,12 +821,24 @@ def _row_cells(
     the very defeat-by-nesting this walk exists to close, one constant down.
     Depth overflow is the same kind of answer as column overflow: "I cannot
     enumerate this" is a refusal, not a clean bill.
+
+    With ``refuse_dotted``, a key that spells a literal ``.`` raises
+    ``_DottedColumnName`` before anything else is decided about it. The walk
+    spells nesting with ``.``, so a top-level key literally named
+    ``metadata.split`` produces the same path as the nested field the catalog
+    declared -- and used to inherit that declaration's exemption, which let a
+    label ship inside the collision. Callers that compare paths against
+    declared fields ask for the refusal; the record scans do not, because a
+    delimited table's flat header conventionally spells dots and has no
+    nesting to collide with.
     """
 
     columns = _row_columns(row)
     if columns is None:
         return
     for name, value in columns.items():
+        if refuse_dotted and "." in name:
+            raise _DottedColumnName(f"{prefix}{name}")
         path = f"{prefix}{name}"
         if path in skip:
             continue
@@ -810,6 +848,7 @@ def _row_cells(
             yield from _row_cells(
                 value,
                 skip=skip,
+                refuse_dotted=refuse_dotted,
                 prefix=f"{path}.",
                 depth=depth + 1,
             )
@@ -821,6 +860,7 @@ def _closed_label_columns(
     rows: Iterable[Any],
     *,
     skip: frozenset[str] = frozenset(),
+    refuse_dotted: bool = False,
 ) -> list[str]:
     """Name the columns whose values across these rows form a closed label set.
 
@@ -850,13 +890,23 @@ def _closed_label_columns(
     the length of the file. A record carrying more column paths than can be
     named raises ``_TooManyColumns``, because a file whose columns cannot be
     enumerated is a file whose label surface cannot be ruled out.
+
+    The floor is both absolute and relative. A column must be carried by
+    ``CLOSED_SURFACE_MINIMUM_ROWS`` rows, and by at least one row in
+    ``CLOSED_SURFACE_MAXIMUM_DILUTION``: a status enum on six rows of a
+    200-row run log is telemetry in an honest record, not an answer key, and
+    counting only the carriers would refuse the very artifact class the
+    record key exists for. The constant's comment states the trade this
+    accepts in the adversarial direction.
     """
 
     label_like: Counter[str] = Counter()
     spellings: dict[str, set[str]] = {}
     unbounded: set[str] = set()
+    total = 0
     for row in rows:
-        for path, value in _row_cells(row, skip=skip):
+        total += 1
+        for path, value in _row_cells(row, skip=skip, refuse_dotted=refuse_dotted):
             if path in unbounded:
                 continue
             if (
@@ -882,41 +932,44 @@ def _closed_label_columns(
         for path, seen in spellings.items()
         if len(seen) >= 2
         and label_like[path] >= CLOSED_SURFACE_MINIMUM_ROWS
+        and label_like[path] * CLOSED_SURFACE_MAXIMUM_DILUTION >= total
         and len(seen) * CLOSED_SURFACE_MINIMUM_REPEAT <= label_like[path]
     )
 
 
-def _is_literal_data_expression(node: ast.AST) -> bool:
-    """True when this expression is a literal carrying no code of its own."""
-
-    if isinstance(node, ast.Constant):
-        return True
-    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
-        return all(_is_literal_data_expression(element) for element in node.elts)
-    if isinstance(node, ast.Dict):
-        return all(
-            key is not None and _is_literal_data_expression(key) for key in node.keys
-        ) and all(_is_literal_data_expression(value) for value in node.values)
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-        return _is_literal_data_expression(node.operand)
-    if isinstance(node, ast.Name):
-        # A bare word is data: it is what a JSON document spells for ``true``,
-        # ``false`` and ``null``, and what a CSV header cell reads as. A name on
-        # its own also defines nothing, so nothing an evaluator needs can be
-        # built out of one.
-        return True
-    return False
+# What a program has and data does not: something defined, imported, called,
+# or deferred. A lambda is in the set because ``score = lambda a, b: 1.0`` is a
+# function definition wearing an assignment.
+_ACTIVE_SYNTAX_NODES: tuple[type[ast.AST], ...] = (
+    ast.Import,
+    ast.ImportFrom,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Lambda,
+    ast.Call,
+)
 
 
 def _reads_as_python_source(source: bytes) -> bool:
     """True when these bytes read as Python that does something.
 
-    Data parses as Python: a JSONL row is a dict literal, a JSON document is a
-    list literal, and a CSV line is a tuple. What separates source from data is
-    that source carries something other than literals -- an import, a
-    definition, an assignment, a call. Deciding a component slot from that
-    rather than from the file's suffix is the point of asking at all: an author
-    renames a file freely, and cannot make an evaluator out of literals.
+    Data parses as Python: a JSONL row is a dict literal, a flat YAML mapping
+    is an annotated assignment, a ``.env`` line is an assignment, and a
+    requirements pin is a comparison. What separates source from data is not
+    parsing -- it is carrying something only a program has: an import, a
+    function or class definition, a lambda, or a call. Deciding a component
+    slot from that rather than from the file's suffix is the point of asking
+    at all: an author renames a file freely, and cannot make an evaluator
+    without defining or calling anything.
+
+    The Assign-only trade is deliberate. A file of bare assignments is legal
+    Python, but so is every ``.env`` file and every flat YAML mapping, and an
+    earlier version that called any non-literal statement "source" refused
+    honest customer-shaped config as smuggled components. An evaluator built
+    purely of assignments -- no call, no definition, no import, no lambda --
+    cannot score anything, so nothing that acts is waved through by the
+    narrower question.
 
     The read is ``ast.parse``, which reads the file without importing or
     running it. Bytes that do not parse are not Python source; nothing here
@@ -927,12 +980,36 @@ def _reads_as_python_source(source: bytes) -> bool:
         tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return False
-    if not tree.body:
-        return False
-    return not all(
-        isinstance(statement, ast.Expr) and _is_literal_data_expression(statement.value)
-        for statement in tree.body
-    )
+    return any(isinstance(node, _ACTIVE_SYNTAX_NODES) for node in ast.walk(tree))
+
+
+def _wears_executable_dressing(source: bytes) -> str | None:
+    """Name the dressing on bytes that hide executable content, if any.
+
+    Two dressings are cheap to apply, trivially reversible, and detectable
+    from the bytes, so the missing-component sweep refuses them by name. An
+    interpreter line -- ``#!`` names the program that runs the file, whatever
+    language follows -- marks the file as an executable script whether or not
+    the rest reads as Python. A uniform ``# `` prefix over every non-empty
+    line is one editor command away from the source underneath, so the prefix
+    is stripped once and the bytes are asked again. Deeper obfuscations are
+    out of scope and stated in CONTRIBUTING.md rather than left to be
+    discovered.
+    """
+
+    if source.startswith(b"#!"):
+        return "an interpreter line"
+    lines = source.splitlines()
+    commented = [line for line in lines if line.strip()]
+    if commented and all(
+        line.startswith(b"# ") or line.strip() == b"#" for line in commented
+    ):
+        undressed = b"\n".join(
+            line[2:] if line.startswith(b"# ") else b"" for line in lines
+        )
+        if _reads_as_python_source(undressed):
+            return "a uniform '# ' prefix over Python source"
+    return None
 
 
 def _validate_label_shape(
@@ -1348,6 +1425,14 @@ def _validate_dataset_profile(
                 f"{field}.label_shape",
                 "missing datasets require label_field null and label shape absent",
             )
+        if passthrough_fields:
+            raise _manifest_error(
+                manifest_path,
+                f"{field}.passthrough_fields",
+                "must be empty when state is missing; a dataset that ships no "
+                "rows has no columns for a declaration to describe, and an "
+                "entry no row carries is refused everywhere else",
+            )
     else:
         if path is None or dataset_format is None:
             raise _manifest_error(
@@ -1500,6 +1585,29 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
             manifest_path,
             "catalog.non_dataset_files",
             f"also declared as dataset paths: {', '.join(declared_as_dataset)}",
+        )
+    # The categories the error contract presents as exclusive are exclusive:
+    # a file is a component, a data path, the calibration record, or a
+    # non-dataset file -- never two at once. The dataset intersection above
+    # used to be the only one checked, so the same file could be an evaluator
+    # and a "non-dataset file" in one catalog.
+    component_paths = {
+        path
+        for path in (
+            components["agent"]["path"],
+            components["evaluator"]["path"],
+            components["evaluator"]["calibration"]["path"],
+            *components["data"]["paths"],
+        )
+        if path is not None
+    }
+    declared_as_component = sorted(set(non_dataset_files) & component_paths)
+    if declared_as_component:
+        raise _manifest_error(
+            manifest_path,
+            "catalog.non_dataset_files",
+            "also declared as component, data, or calibration paths: "
+            f"{', '.join(declared_as_component)}",
         )
     expected_route_value = _require_object_keys(
         manifest_path,
@@ -2059,7 +2167,9 @@ def _validate_materialized_dataset(
         try:
             carried = {
                 path
-                for path, value in _row_cells(row, skip=declared_fields)
+                for path, value in _row_cells(
+                    row, skip=declared_fields, refuse_dotted=True
+                )
                 if not (
                     path in declared_prefixes and isinstance(value, dict) and not value
                 )
@@ -2071,6 +2181,16 @@ def _validate_materialized_dataset(
                 f"{dataset_path.name}:{line_number} nests objects deeper than "
                 f"{MAX_ROW_NESTING_DEPTH} levels, which this check cannot "
                 "enumerate",
+            ) from exc
+        except _DottedColumnName as exc:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"{dataset_path.name}:{line_number} carries a column named "
+                f"{exc.name!r} with a literal '.' in it, which this check "
+                "cannot tell apart from the nested path it spells -- and which "
+                "would inherit that path's declaration. Rename the column or "
+                "nest it",
             ) from exc
         observed_fields.update(carried)
         observed_fields.update(
@@ -2236,7 +2356,7 @@ def _validate_materialized_dataset(
             if declared is not None
         )
         try:
-            disguised = _closed_label_columns(rows, skip=described)
+            disguised = _closed_label_columns(rows, skip=described, refuse_dotted=True)
         except _TooManyColumns as exc:
             raise _catalog_materialized_error(
                 scenario,
@@ -2252,6 +2372,15 @@ def _validate_materialized_dataset(
                 f"{MAX_ROW_NESTING_DEPTH} levels, which this check cannot "
                 "enumerate; a dataset whose columns cannot be named is one "
                 "whose label surface cannot be ruled out",
+            ) from exc
+        except _DottedColumnName as exc:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"{dataset_path.name} carries a column named {exc.name!r} with "
+                "a literal '.' in it, which this check cannot tell apart from "
+                "the nested path it spells -- and which would inherit that "
+                "path's declaration. Rename the column or nest it",
             ) from exc
         if disguised:
             raise _catalog_materialized_error(
@@ -2274,6 +2403,12 @@ def _iter_file_lines(path: Path) -> Iterator[bytes]:
     verdict: a line this reader cannot hold is a line it cannot classify, and a
     classifier that answers "not a dataset" when it means "I could not tell" is
     a classifier an author can feed a long line to.
+
+    Each extracted line is length-checked, not only the tail still waiting for
+    its newline. An earlier version checked only the tail, whose length is a
+    multiple of the read block away from the cap, so a line up to 64KiB past
+    the cap was yielded instead of refused -- a window exactly one chunk wide
+    between what the docstring promised and what the loop did.
     """
 
     with path.open("rb") as handle:
@@ -2282,7 +2417,10 @@ def _iter_file_lines(path: Path) -> Iterator[bytes]:
             pending += chunk
             start = 0
             while (index := pending.find(b"\n", start)) >= 0:
-                yield pending[start:index]
+                line = pending[start:index]
+                if len(line) > MAX_DATASET_ROW_BYTES:
+                    raise _OversizedLine
+                yield line
                 start = index + 1
             pending = pending[start:]
             if len(pending) > MAX_DATASET_ROW_BYTES:
@@ -2340,6 +2478,21 @@ def _iter_record_rows(scenario: Scenario, path: Path, field: str) -> Iterator[An
             except ValueError:
                 continue
             if not isinstance(value, (dict, list)):
+                continue
+            if (
+                isinstance(value, list)
+                and value
+                and all(isinstance(element, dict) for element in value)
+            ):
+                # A JSON array of objects on one line is a dataset wearing
+                # ``json.dumps`` rather than one opaque row: it is the most
+                # common serialization of a labelled dataset, and reading it
+                # as a single list-row gave every column one carrier and let
+                # the whole answer key past the scan. A row spelled as an
+                # array of scalars is still one row.
+                for element in value:
+                    rows += 1
+                    yield element
                 continue
             rows += 1
             yield value
@@ -2579,19 +2732,34 @@ def _validate_component_inventory(
         for name in ("agent", "evaluator")
         if components[name]["path"] is not None
     }
+    # A declared data path or calibration record is already read and validated
+    # as what it claims to be, so the sweep does not re-classify it: a legal
+    # dataset can be far larger than the classify cap, and refusing the
+    # catalog's own dataset here would make an honest partially-prepared
+    # bundle unshippable.
+    named.update(components["data"]["paths"])
+    calibration_path = components["evaluator"]["calibration"]["path"]
+    if calibration_path is not None:
+        named.add(calibration_path)
     field = "catalog.components"
-    stray = sorted(
-        relative
-        for relative, path in (
-            (path.relative_to(scenario.root).as_posix(), path)
-            for path in shipped_files
-            if _is_within(path, scenario.project_dir)
-        )
-        if relative not in named
-        and _reads_as_python_source(_classifiable_source(scenario, path, field))
-    )
+    stray: list[str] = []
+    dressed: list[str] = []
+    for relative, path in sorted(
+        (path.relative_to(scenario.root).as_posix(), path)
+        for path in shipped_files
+        if _is_within(path, scenario.project_dir)
+    ):
+        if relative in named:
+            continue
+        source = _classifiable_source(scenario, path, field)
+        if _reads_as_python_source(source):
+            stray.append(relative)
+            continue
+        dressing = _wears_executable_dressing(source)
+        if dressing is not None:
+            dressed.append(f"{relative} wears {dressing}")
+    declared = ", ".join(f"catalog.components.{name}.state" for name in missing)
     if stray:
-        declared = ", ".join(f"catalog.components.{name}.state" for name in missing)
         raise _catalog_materialized_error(
             scenario,
             field,
@@ -2601,6 +2769,16 @@ def _validate_component_inventory(
             "under project/, so a component whose source ships is not one a "
             "worker finds missing. The file's name is not what decides this; "
             "its bytes are",
+        )
+    if dressed:
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"{declared} declares this component missing, but "
+            f"{PROJECT_DIRECTORY}/ ships executable dressing no present "
+            f"component names: {', '.join(dressed)}. An interpreter line or a "
+            "uniform comment prefix is dressing over a component, not the "
+            "absence of one",
         )
 
 

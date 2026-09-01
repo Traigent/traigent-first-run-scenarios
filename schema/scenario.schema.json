@@ -347,6 +347,9 @@
                     "const": "absent"
                   }
                 }
+              },
+              "passthrough_fields": {
+                "maxItems": 0
               }
             }
           },
