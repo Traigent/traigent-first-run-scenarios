@@ -704,6 +704,18 @@ class ScenarioBankTests(unittest.TestCase):
         missing_dataset_with_rows["catalog"]["datasets"][0]["rows"] = 1
         cases.append(("missing dataset with rows", missing_dataset_with_rows, False))
 
+        missing_dataset_with_passthrough = json.loads(json.dumps(missing_dataset))
+        missing_dataset_with_passthrough["catalog"]["datasets"][0][
+            "passthrough_fields"
+        ] = ["ghost_column"]
+        cases.append(
+            (
+                "missing dataset with a passthrough declaration",
+                missing_dataset_with_passthrough,
+                False,
+            )
+        )
+
         present_dataset_without_rows = clone()
         present_dataset_without_rows["catalog"]["datasets"][0]["rows"] = 0
         cases.append(
@@ -838,6 +850,9 @@ class ScenarioBankTests(unittest.TestCase):
                     "surface_label_count": 0,
                     "label_counts": {},
                 },
+                # A missing dataset ships no rows, so a passthrough describing
+                # its columns would describe nothing and is refused.
+                "passthrough_fields": [],
             }
         )
         (root / "scenario.json").write_text(
@@ -2826,6 +2841,494 @@ class ScenarioBankTests(unittest.TestCase):
         )
         self.assertEqual("", output)
         self.assertIn("carries extra, which the catalog does not describe", error)
+
+    def test_a_missing_dataset_refuses_a_passthrough_declaration(self) -> None:
+        """A dataset that ships no rows has no columns for a declaration to describe.
+
+        ``state: missing`` skipped all materialized dataset validation, so a
+        ``passthrough_fields`` entry describing nothing -- against
+        CONTRIBUTING's "an entry no row carries is refused" -- was accepted.
+        """
+
+        root = self.create_scenario("ghost-passthrough", 318)
+        manifest = valid_manifest("ghost-passthrough", 318)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["starting_condition"] = "gaps-present"
+        catalog["components"]["data"] = {"state": "missing", "paths": []}
+        catalog["datasets"][0].update(
+            {
+                "state": "missing",
+                "path": None,
+                "format": None,
+                "label_field": None,
+                "rows": 0,
+                "unique_inputs": 0,
+                "splits": {"field": None, "counts": {}},
+                "difficulty_strata": {"field": None, "counts": {}},
+                "label_shape": {
+                    "kind": "absent",
+                    "surface_label_count": 0,
+                    "label_counts": {},
+                },
+                "passthrough_fields": ["ghost_column"],
+            }
+        )
+        self.write_manifest(root, manifest)
+        self.remove_repository_paths(
+            root / "project" / "input.txt", message="Stop shipping the dataset"
+        )
+
+        status, output, error = self.run_cli("check", "ghost-passthrough")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a declaration describing nothing outlives what it described",
+        )
+        self.assertEqual("", output)
+        self.assertIn("must be empty when state is missing", error)
+
+        catalog["datasets"][0]["passthrough_fields"] = []
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "ghost-passthrough")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: ghost-passthrough", output)
+
+    def test_a_non_dataset_file_may_not_also_be_a_component_path(self) -> None:
+        """The catalog's file categories are exclusive, as the error contract says.
+
+        The exclusivity check compared ``non_dataset_files`` against dataset
+        paths only, so the same file could be the evaluator and a "non-dataset
+        file" in one catalog.
+        """
+
+        root = self.create_scenario("double-declared", 319)
+        manifest = valid_manifest("double-declared", 319)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/evaluator.py"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "double-declared")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "one file may not be a component and a non-dataset file at once",
+        )
+        self.assertEqual("", output)
+        self.assertIn("also declared as component, data, or calibration paths", error)
+        self.assertIn("project/evaluator.py", error)
+
+        catalog["non_dataset_files"] = []
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "double-declared")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: double-declared", output)
+
+    def test_a_line_just_past_the_cap_is_refused_not_read(self) -> None:
+        """The oversized-line refusal starts at the cap, not one read block later.
+
+        The line reader length-checked only the tail still waiting for its
+        newline, so a line up to 64KiB past ``MAX_DATASET_ROW_BYTES`` was
+        yielded and parsed instead of refused -- a window one read chunk wide
+        between the docstring and the loop.
+        """
+
+        root = self.create_scenario("window-line", 320)
+        record = root / "project" / "traigent-runs" / "events.jsonl"
+        record.parent.mkdir()
+        manifest = valid_manifest("window-line", 320)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+        framing = len(b'{"pad": ""}')
+        record.write_bytes(
+            b'{"pad": "'
+            + b"x" * (scenario.MAX_DATASET_ROW_BYTES + 1 - framing)
+            + b'"}\n'
+        )
+        self.commit_repository_paths(root, message="Ship a line one byte too long")
+
+        status, output, error = self.run_cli("check", "window-line")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "one byte past the cap is past the cap, not inside a 64KiB grace",
+        )
+        self.assertEqual("", output)
+        self.assertIn("carries a line longer than", error)
+
+        record.write_bytes(
+            b'{"pad": "' + b"x" * (scenario.MAX_DATASET_ROW_BYTES - framing) + b'"}\n'
+        )
+        self.commit_repository_paths(root, message="Ship a line exactly at the cap")
+
+        status, output, error = self.run_cli("check", "window-line")
+
+        self.assertEqual(
+            0,
+            status,
+            f"a line exactly at the cap is a line the bank accepts: {error}",
+        )
+        self.assertIn("OK: window-line", output)
+
+    def test_a_denied_component_may_not_ship_as_an_interpreter_script(self) -> None:
+        """A #! line marks an executable script whatever language follows.
+
+        The byte sweep asked only whether shipped bytes parse as Python, so an
+        evaluator rewritten as a shell script -- which no ``ast.parse`` will
+        ever read -- shipped past a catalog declaring the evaluator missing.
+        """
+
+        root = self.create_scenario("shell-evaluator", 321)
+        source = root / "project" / "evaluator.py"
+        shell = root / "project" / "evaluator.sh"
+        shell.write_text(
+            '#!/bin/sh\nexec python3 -c "print(1.0)" "$@"\n', encoding="utf-8"
+        )
+        manifest = valid_manifest("shell-evaluator", 321)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["starting_condition"] = "gaps-present"
+        catalog["components"]["evaluator"].update(
+            {"state": "missing", "path": None, "method": None}
+        )
+        catalog["non_dataset_files"] = ["project/evaluator.sh"]
+        self.write_manifest(root, manifest)
+        self.remove_repository_paths(source, message="Drop the Python evaluator")
+        self.commit_repository_paths(root, message="Ship a shell evaluator")
+
+        status, output, error = self.run_cli("check", "shell-evaluator")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "an interpreter line is dressing over a component, not absence",
+        )
+        self.assertEqual("", output)
+        self.assertIn("executable dressing", error)
+        self.assertIn("an interpreter line", error)
+        self.assertIn("project/evaluator.sh", error)
+
+        shell.write_text('exec python3 -c "print(1.0)" "$@"\n', encoding="utf-8")
+        self.commit_repository_paths(root, message="Ship a fragment instead")
+
+        status, output, error = self.run_cli("check", "shell-evaluator")
+
+        self.assertEqual(
+            0,
+            status,
+            f"bytes that name no interpreter and read as no source pass: {error}",
+        )
+        self.assertIn("OK: shell-evaluator", output)
+
+    def test_a_denied_component_may_not_ship_under_a_comment_prefix(self) -> None:
+        """A uniform '# ' prefix is one editor command away from the source.
+
+        Prefixing every line of the evaluator with ``# `` gave the sweep bytes
+        with an empty parse -- data, it said -- while the worker received the
+        component recoverable with a one-line strip.
+        """
+
+        root = self.create_scenario("commented-evaluator", 322)
+        source = root / "project" / "evaluator.py"
+        dressed = root / "project" / "evaluator-notes.txt"
+        dressed.write_text(
+            "".join(
+                f"# {line}\n" if line else "#\n"
+                for line in EVALUATOR_SOURCE.splitlines()
+            ),
+            encoding="utf-8",
+        )
+        manifest = valid_manifest("commented-evaluator", 322)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["starting_condition"] = "gaps-present"
+        catalog["components"]["evaluator"].update(
+            {"state": "missing", "path": None, "method": None}
+        )
+        catalog["non_dataset_files"] = ["project/evaluator-notes.txt"]
+        self.write_manifest(root, manifest)
+        self.remove_repository_paths(source, message="Drop the Python evaluator")
+        self.commit_repository_paths(root, message="Ship the evaluator as comments")
+
+        status, output, error = self.run_cli("check", "commented-evaluator")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a comment prefix over Python source is dressing, not absence",
+        )
+        self.assertEqual("", output)
+        self.assertIn("executable dressing", error)
+        self.assertIn("uniform '# ' prefix", error)
+        self.assertIn("project/evaluator-notes.txt", error)
+
+        dressed.write_text(
+            "# The evaluator is still being written.\n"
+            "# Nothing here scores anything yet.\n",
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship real notes instead")
+
+        status, output, error = self.run_cli("check", "commented-evaluator")
+
+        self.assertEqual(
+            0,
+            status,
+            f"commented prose is notes, and notes are records: {error}",
+        )
+        self.assertIn("OK: commented-evaluator", output)
+
+    def test_a_single_line_json_array_is_read_as_its_rows(self) -> None:
+        """json.dumps of a labelled dataset is still that labelled dataset.
+
+        A one-line JSON array used to be yielded as a single list-row, so
+        every column had exactly one carrier and the scan found nothing -- the
+        most common serialization of a dataset shipped the answer key.
+        """
+
+        root = self.create_scenario("array-record", 323)
+        record = root / "project" / "traigent-runs" / "events.json"
+        record.parent.mkdir()
+        manifest = valid_manifest("array-record", 323)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.json"]
+        self.write_manifest(root, manifest)
+        record.write_text(json.dumps(self.labelled_rows(8)), encoding="utf-8")
+        self.commit_repository_paths(root, message="Ship the dataset as one array")
+
+        status, output, error = self.run_cli("check", "array-record")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "an array of labelled rows on one line is those rows, not one row",
+        )
+        self.assertEqual("", output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("output", error)
+
+        record.write_text(
+            json.dumps(
+                [{"event": f"step-{index}", "sequence": index} for index in range(8)]
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship a real run record array")
+
+        status, output, error = self.run_cli("check", "array-record")
+
+        self.assertEqual(
+            0,
+            status,
+            f"expanding an array must not refuse the run records this key "
+            f"exists for: {error}",
+        )
+        self.assertIn("OK: array-record", output)
+
+    def test_a_column_name_spelling_a_dot_is_refused_as_ambiguous(self) -> None:
+        """A literal dotted key would inherit a declared nested path's exemption.
+
+        The walk spells nesting with ``.``, so a top-level key literally named
+        ``metadata.split`` produced the declared dimension field's path and
+        was skipped by every check keyed on it -- a hidden column, and under
+        an ``absent`` shape a hidden label surface.
+        """
+
+        root = self.create_scenario("dotted-column", 324)
+        manifest = valid_manifest("dotted-column", 324)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "label_field": None,
+                "label_shape": {
+                    "kind": "absent",
+                    "surface_label_count": 0,
+                    "label_counts": {},
+                },
+                "rows": 8,
+                "unique_inputs": 8,
+                "splits": {"field": "metadata.split", "counts": {"tuning": 8}},
+                "difficulty_strata": {
+                    "field": "metadata.difficulty",
+                    "counts": {"easy": 8},
+                },
+            }
+        )
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                    "metadata.split": "SEV1" if index % 2 else "SEV2",
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "dotted-column")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a literal dotted key is ambiguous with the path it spells, and "
+            "the collision is where a label hides",
+        )
+        self.assertEqual("", output)
+        self.assertIn("literal '.'", error)
+        self.assertIn("'metadata.split'", error)
+
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "dotted-column")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: dotted-column", output)
+
+    def test_the_missing_sweep_leaves_declared_data_and_config_alone(self) -> None:
+        """An honest partially-prepared bundle ships datasets and config files.
+
+        The sweep used to feed every unnamed shipped file through the source
+        classifier, so a legal dataset past the 4MiB classify cap hard-failed
+        with no possible declaration, and a flat YAML mapping or ``.env`` file
+        -- both legal Python assignments -- read as smuggled component source.
+        """
+
+        root = self.create_scenario("prepared-bundle", 325)
+        manifest = self.labelled_manifest(
+            "prepared-bundle", 325, rows=8, label_counts={"A": 4, "B": 4}
+        )
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["starting_condition"] = "gaps-present"
+        catalog["components"]["evaluator"].update(
+            {"state": "missing", "path": None, "method": None}
+        )
+        catalog["non_dataset_files"] = [
+            "project/config.yml",
+            "project/settings.env",
+        ]
+        self.write_manifest(root, manifest)
+        padding = "x" * 550_000
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}-{padding}",
+                    "output": "A" if index % 2 else "B",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+                for index in range(8)
+            ],
+        )
+        (root / "project" / "config.yml").write_text(
+            "retries: 3\ntimeout_seconds: 30\nregion: eu-west-1\n",
+            encoding="utf-8",
+        )
+        (root / "project" / "settings.env").write_text(
+            "TRAIGENT_MODE=mock\nRETRIES=3\n", encoding="utf-8"
+        )
+        self.remove_repository_paths(
+            root / "project" / "evaluator.py", message="Drop the evaluator"
+        )
+        self.commit_repository_paths(root, message="Ship a prepared bundle")
+
+        dataset_size = (root / "project" / "input.txt").stat().st_size
+        self.assertGreater(
+            dataset_size,
+            scenario.MAX_SOURCE_CLASSIFY_BYTES,
+            "the fixture dataset must exceed the classify cap to pin the " "exemption",
+        )
+
+        status, output, error = self.run_cli("check", "prepared-bundle")
+
+        self.assertEqual(
+            0,
+            status,
+            f"a declared dataset and declared config are the honest bundle "
+            f"this bank exists to ship: {error}",
+        )
+        self.assertIn("OK: prepared-bundle", output)
+
+    def test_a_sparse_enum_in_a_run_log_is_telemetry_not_a_label(self) -> None:
+        """A status field on six rows of two hundred is an honest record's shape.
+
+        Counting only the carriers made the closed-label floor absolute, so
+        the canonical run log -- most rows without a status, a few with
+        ok/error -- read as a refused label surface with no way to declare it.
+        The floor is relative now, and the dilution trade is stated in
+        CONTRIBUTING.md.
+        """
+
+        root = self.create_scenario("sparse-enum", 326)
+        record = root / "project" / "traigent-runs" / "events.jsonl"
+        record.parent.mkdir()
+        manifest = valid_manifest("sparse-enum", 326)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+
+        def event_rows(total: int, carriers: int) -> str:
+            rows: list[dict[str, object]] = []
+            for index in range(total):
+                row: dict[str, object] = {
+                    "event": f"step-{index}",
+                    "sequence": index,
+                }
+                if index < carriers:
+                    row["status"] = "ok" if index % 2 else "error"
+                rows.append(row)
+            return "".join(json.dumps(row) + "\n" for row in rows)
+
+        record.write_text(event_rows(200, 6), encoding="utf-8")
+        self.commit_repository_paths(root, message="Ship a sparse run log")
+
+        status, output, error = self.run_cli("check", "sparse-enum")
+
+        self.assertEqual(
+            0,
+            status,
+            f"six status cells in two hundred rows are telemetry: {error}",
+        )
+        self.assertIn("OK: sparse-enum", output)
+
+        record.write_text(event_rows(200, 20), encoding="utf-8")
+        self.commit_repository_paths(root, message="Thicken the enum to the floor")
+
+        status, output, error = self.run_cli("check", "sparse-enum")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "one carrier in ten is the floor, and the floor still refuses",
+        )
+        self.assertEqual("", output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("status", error)
 
     def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
         root = self.create_scenario("unparsable-code", 122)
