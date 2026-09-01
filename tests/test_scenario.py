@@ -28,6 +28,24 @@ TEST_DATASET_ROW = (
     + "\n"
 )
 
+# The shipped evaluator's own lookup table is what `check` reads to establish
+# which labels it can tell apart, so a fixture scenario has to ship one.
+TEST_EVALUATOR_TABLE: dict[str, object] = {"a": "class-a"}
+CALIBRATION_TABLE: dict[str, object] = {"sev1": 1, "p1": 1, "sev2": 2}
+
+
+def evaluator_source(table: dict[str, object]) -> str:
+    return (
+        "# SPDX-License-Identifier: Apache-2.0\n"
+        '"""A deterministic label evaluator for fixture scenarios."""\n'
+        "\n"
+        f"LABEL_LEVELS = {table!r}\n"
+        "\n"
+        "\n"
+        "def score(output, expected, input_data=None, metadata=None):\n"
+        "    return 1.0 if output == expected else 0.0\n"
+    )
+
 
 def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
     return {
@@ -56,7 +74,7 @@ def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
                 },
                 "evaluator": {
                     "state": "ready",
-                    "path": "project/input.txt",
+                    "path": "project/evaluator.py",
                     "method": "normalized-exact-match",
                     "calibration": {"path": None, "case_count": 0},
                 },
@@ -169,6 +187,7 @@ class ScenarioBankTests(unittest.TestCase):
         *,
         manifest: dict[str, object] | None = None,
         materialized: bool = True,
+        evaluator_table: dict[str, object] | None = None,
     ) -> Path:
         root = self.scenarios_dir / slug
         root.mkdir()
@@ -183,6 +202,12 @@ class ScenarioBankTests(unittest.TestCase):
         if materialized:
             (root / "project" / "input.txt").write_text(
                 TEST_DATASET_ROW,
+                encoding="utf-8",
+            )
+            (root / "project" / "evaluator.py").write_text(
+                evaluator_source(
+                    TEST_EVALUATOR_TABLE if evaluator_table is None else evaluator_table
+                ),
                 encoding="utf-8",
             )
             (root / "verifier" / "expected-opening.json").write_text(
@@ -506,6 +531,16 @@ class ScenarioBankTests(unittest.TestCase):
             set(definitions["labelShape"]["properties"]["kind"]["enum"]),
         )
         self.assertEqual(
+            scenario.EVALUATOR_METHODS,
+            set(definitions["evaluatorMethod"]["enum"]),
+            "the evaluator method decides how many labels a catalog may claim, "
+            "so the schema and the runtime must offer the same closed set",
+        )
+        self.assertEqual(
+            scenario.MAPPED_LABEL_SHAPE,
+            "mapped-labels",
+        )
+        self.assertEqual(
             scenario.DATASET_FORMATS,
             {
                 value
@@ -807,6 +842,12 @@ class ScenarioBankTests(unittest.TestCase):
         )
         return manifest
 
+    def write_evaluator(self, root: Path, table: dict[str, object]) -> None:
+        """Reship the fixture's evaluator with the table these labels need."""
+        (root / "project" / "evaluator.py").write_text(
+            evaluator_source(table), encoding="utf-8"
+        )
+
     def write_manifest(self, root: Path, manifest: dict[str, object]) -> None:
         (root / "scenario.json").write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -833,6 +874,7 @@ class ScenarioBankTests(unittest.TestCase):
 
     def test_label_identity_follows_the_declared_evaluator_method(self) -> None:
         root = self.create_scenario("byte-exact-labels", 91)
+        self.write_evaluator(root, {"SEV1": 1, "sev1": 2})
         self.write_dataset(root, "SEV1", "sev1")
         manifest = self.labelled_manifest(
             "byte-exact-labels",
@@ -844,7 +886,7 @@ class ScenarioBankTests(unittest.TestCase):
         )
         catalog = manifest["catalog"]
         assert isinstance(catalog, dict)
-        catalog["components"]["evaluator"]["method"] = "byte-exact-match"
+        catalog["components"]["evaluator"]["method"] = "exact-match"
         self.write_manifest(root, manifest)
 
         status, output, error = self.run_cli("check", "byte-exact-labels")
@@ -852,8 +894,220 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(0, status, error)
         self.assertIn("OK: byte-exact-labels", output)
 
+    def label_table_scenario(
+        self,
+        slug: str,
+        legacy_id: int,
+        *,
+        table: dict[str, object],
+        labels: tuple[str, ...],
+        normalization_map: dict[str, str],
+        method: str = "normalized-exact-match",
+    ) -> Path:
+        root = self.create_scenario(slug, legacy_id)
+        self.write_evaluator(root, table)
+        self.write_dataset(root, *labels)
+        manifest = self.labelled_manifest(
+            slug,
+            legacy_id,
+            rows=len(labels),
+            normalization_map=normalization_map,
+            surface_label_count=len(set(normalization_map)),
+            normalized_class_count=len(set(normalization_map.values())),
+        )
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["components"]["evaluator"]["method"] = method
+        self.write_manifest(root, manifest)
+        return root
+
+    def test_the_shipped_evaluator_settles_label_identity_not_the_declaration(
+        self,
+    ) -> None:
+        """Changing one declared word must not switch the label gate off."""
+
+        colliding = ("SEV1", "P1", "S1", "Critical")
+        normalizing_table: dict[str, object] = {
+            "sev1": 1,
+            "p1": 1,
+            "s1": 1,
+            "critical": 1,
+        }
+        overstated = {
+            label: f"severity-{index + 1}" for index, label in enumerate(colliding)
+        }
+
+        self.label_table_scenario(
+            "declared-byte-exact",
+            140,
+            table=normalizing_table,
+            labels=colliding,
+            normalization_map=overstated,
+            method="exact-match",
+        )
+
+        status, output, error = self.run_cli("check", "declared-byte-exact")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "the table the evaluator ships is keyed in resolved form, so a "
+            "manifest declaring byte-exact comparison is contradicted by the "
+            "source rather than believed",
+        )
+        self.assertEqual("", output)
+        self.assertIn(
+            "is the table of a 'normalized-exact-match' evaluator",
+            error,
+        )
+
+    def test_declared_classes_the_shipped_evaluator_merges_are_refused(self) -> None:
+        """Four spellings that all score alike are not four classes."""
+
+        merged = ("sev1", "p1", "s1", "critical")
+        one_class_table: dict[str, object] = {label: 1 for label in merged}
+        four_classes = {
+            label: f"severity-{index + 1}" for index, label in enumerate(merged)
+        }
+
+        self.label_table_scenario(
+            "merged-classes",
+            141,
+            table=one_class_table,
+            labels=merged,
+            normalization_map=four_classes,
+        )
+
+        status, output, error = self.run_cli("check", "merged-classes")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("but the shipped evaluator scores them alike", error)
+
+        four_class_table: dict[str, object] = {
+            label: index + 1 for index, label in enumerate(merged)
+        }
+        self.write_evaluator(self.scenarios_dir / "merged-classes", four_class_table)
+
+        status, output, error = self.run_cli("check", "merged-classes")
+
+        self.assertEqual(
+            0,
+            status,
+            "the same manifest over a table that really does split the four "
+            "spellings describes the dataset it has, and must be accepted",
+        )
+        self.assertIn("OK: merged-classes", output)
+
+    def test_a_class_the_shipped_evaluator_splits_is_refused(self) -> None:
+        """Two spellings the evaluator scores differently are not one class."""
+
+        self.label_table_scenario(
+            "merged-declaration",
+            142,
+            table={"sev1": 1, "p1": 2},
+            labels=("SEV1", "P1"),
+            normalization_map={"SEV1": "severity-1", "P1": "severity-1"},
+        )
+
+        status, output, error = self.run_cli("check", "merged-declaration")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("but the shipped evaluator scores them as different", error)
+
+    def test_a_label_the_shipped_evaluator_cannot_score_is_refused(self) -> None:
+        """A row the evaluator would raise on is not a row the catalog may claim."""
+
+        self.label_table_scenario(
+            "unscoreable-label",
+            143,
+            table={"sev1": 1},
+            labels=("SEV1", "SEV9"),
+            normalization_map={"SEV1": "severity-1", "SEV9": "severity-9"},
+        )
+
+        status, output, error = self.run_cli("check", "unscoreable-label")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("the shipped evaluator's table does not contain", error)
+
+    def test_an_unreadable_label_table_fails_loud_rather_than_falling_back(
+        self,
+    ) -> None:
+        """Falling back to the declaration would restore the trust this withdraws."""
+
+        unreadable: tuple[tuple[str, str, str, str], ...] = (
+            (
+                "no table",
+                "project/evaluator.py",
+                "def score(output, expected):\n    return 0.0\n",
+                "carries no module-level label table",
+            ),
+            (
+                "two tables",
+                "project/evaluator.py",
+                'FIRST = {"sev1": 1}\nSECOND = {"sev1": 2}\n',
+                "carries more than one module-level label table",
+            ),
+            (
+                "not Python",
+                "project/evaluator.txt",
+                "not: python: at all!\n",
+                "does not parse as Python",
+            ),
+        )
+        for index, (name, relative, source, expected) in enumerate(unreadable):
+            with self.subTest(case=name):
+                slug = f"unreadable-table-{index}"
+                root = self.create_scenario(slug, 150 + index)
+                (root / Path(relative)).write_text(source, encoding="utf-8")
+                manifest = valid_manifest(slug, 150 + index)
+                catalog = manifest["catalog"]
+                assert isinstance(catalog, dict)
+                catalog["components"]["evaluator"]["path"] = relative
+                self.write_manifest(root, manifest)
+                self.commit_repository_paths(root, message=f"Ship {relative}")
+
+                status, output, error = self.run_cli("check", slug)
+
+                self.assertNotEqual(0, status, output)
+                self.assertEqual("", output)
+                self.assertIn(expected, error)
+
+    def test_label_resolution_drops_punctuation_as_well_as_case(self) -> None:
+        """'SEV1' and 'Sev-1' are one label, which is what the evaluator does."""
+
+        root = self.create_scenario("punctuated-labels", 160)
+        self.write_evaluator(root, {"sev1": 1})
+        self.write_dataset(root, "SEV1", "Sev-1")
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "punctuated-labels",
+                160,
+                rows=2,
+                normalization_map={"SEV1": "severity-1"},
+                surface_label_count=1,
+                normalized_class_count=1,
+            ),
+        )
+
+        status, output, error = self.run_cli("check", "punctuated-labels")
+
+        self.assertEqual(
+            0,
+            status,
+            "the evaluator drops the punctuation that separates a code from "
+            "its number, so the catalog has to count the two spellings as one "
+            f"label: {error}",
+        )
+        self.assertIn("OK: punctuated-labels", output)
+
     def test_a_label_the_evaluator_resolves_to_a_declared_one_is_accepted(self) -> None:
         root = self.create_scenario("resolved-labels", 92)
+        self.write_evaluator(root, {"sev1": 1, "p1": 1})
         self.write_dataset(root, "SEV1", "sev1", "P1")
         self.write_manifest(
             root,
@@ -933,6 +1187,7 @@ class ScenarioBankTests(unittest.TestCase):
             with self.subTest(contradiction=name):
                 slug = f"calibration-{index}"
                 root = self.create_scenario(slug, 100 + index)
+                self.write_evaluator(root, CALIBRATION_TABLE)
                 self.write_dataset(root, "SEV1", "P1", "SEV2")
                 self.write_calibration(root, case)
                 self.write_manifest(
@@ -949,6 +1204,7 @@ class ScenarioBankTests(unittest.TestCase):
         self,
     ) -> None:
         root = self.create_scenario("calibration-ok", 110)
+        self.write_evaluator(root, CALIBRATION_TABLE)
         self.write_dataset(root, "SEV1", "P1", "SEV2")
         self.write_calibration(
             root,
@@ -1207,7 +1463,9 @@ class ScenarioBankTests(unittest.TestCase):
     def test_catalog_rejects_declared_dataset_facts_that_do_not_match_rows(
         self,
     ) -> None:
-        root = self.create_scenario("fact-mismatch", 82)
+        root = self.create_scenario(
+            "fact-mismatch", 82, evaluator_table={"a": "class-a", "b": "class-b"}
+        )
         manifest_path = root / "scenario.json"
 
         mismatches: tuple[tuple[str, object, str], ...] = (
@@ -1761,8 +2019,11 @@ class ScenarioBankTests(unittest.TestCase):
             },
             first_manifest["worker"],
         )
-        project_file = first_manifest["inputs"]["scenario_project"]["files"][0]
-        self.assertEqual("input.txt", project_file["path"])
+        project_file = next(
+            item
+            for item in first_manifest["inputs"]["scenario_project"]["files"]
+            if item["path"] == "input.txt"
+        )
         expected_project_bytes = TEST_DATASET_ROW.encode("utf-8")
         self.assertEqual(
             hashlib.sha256(expected_project_bytes).hexdigest(),

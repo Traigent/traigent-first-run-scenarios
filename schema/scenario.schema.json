@@ -407,6 +407,13 @@
         }
       ],
       "additionalProperties": false
+    },
+    "evaluatorMethod": {
+      "type": "string",
+      "enum": [
+        "exact-match",
+        "normalized-exact-match"
+      ]
     }
   },
   "type": "object",
@@ -666,7 +673,7 @@
                 "method": {
                   "oneOf": [
                     {
-                      "$ref": "#/$defs/catalogIdentifier"
+                      "$ref": "#/$defs/evaluatorMethod"
                     },
                     {
                       "type": "null"
@@ -758,7 +765,7 @@
                         "$ref": "#/$defs/relativePath"
                       },
                       "method": {
-                        "$ref": "#/$defs/catalogIdentifier"
+                        "$ref": "#/$defs/evaluatorMethod"
                       }
                     }
                   }

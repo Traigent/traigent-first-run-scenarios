@@ -58,6 +58,14 @@ COMPONENT_STATES = {
 }
 DATASET_FORMATS = {"jsonl"}
 NORMALIZED_EXACT_MATCH_METHOD = "normalized-exact-match"
+EXACT_MATCH_METHOD = "exact-match"
+# Both published methods score a label by looking it up in a table the shipped
+# evaluator carries, which is why the table can be read from the source and
+# compared with what the catalog declares. A method that scores some other way
+# -- a model-graded judge, say -- is not one of these and would need its own
+# way to establish what the evaluator can tell apart before it is added here.
+EVALUATOR_METHODS = {EXACT_MATCH_METHOD, NORMALIZED_EXACT_MATCH_METHOD}
+MAPPED_LABEL_SHAPE = "mapped-labels"
 CALIBRATION_PROBES_KEY = "probes"
 CALIBRATION_EXPECTED_KEY = "expected"
 SAME_CLASS_PROBES = ("good", "equivalent_good")
@@ -708,6 +716,207 @@ def _verbatim_label(label: str) -> str:
     return label
 
 
+def _table_label_identity(table: dict[str, Any]) -> tuple[Callable[[str], str], str]:
+    """Derive the label identity a shipped lookup table implies, and its method.
+
+    A table keyed entirely in resolved form is the table of an evaluator that
+    resolves before it looks up: a key that survives folding and punctuation
+    stripping is exactly the key such an evaluator can reach. One key that does
+    not survive would be unreachable that way, so the table belongs to an
+    evaluator that compares bytes.
+
+    The ambiguous case -- every key already lower-case and alphanumeric -- is
+    read as resolving, which is the stricter reading: it merges more spellings,
+    and a byte-exact evaluator with such a table could not score the spellings
+    it merges anyway, because they are not keys.
+    """
+
+    if all(_resolved_label(key) == key for key in table):
+        return _resolved_label, NORMALIZED_EXACT_MATCH_METHOD
+    return _verbatim_label, EXACT_MATCH_METHOD
+
+
+def _evaluator_class_identity(value: Any) -> tuple[str, Any]:
+    """A comparable identity for a table entry, keeping True and 1 apart."""
+
+    return (type(value).__name__, value)
+
+
+def _read_evaluator_label_table(
+    scenario: Scenario,
+    evaluator_path: Path,
+) -> dict[str, Any]:
+    """Read the table the shipped evaluator scores labels with, without running it.
+
+    The catalog's ``method`` says how the evaluator compares labels, but the
+    author of that declaration is the author of the dataset it describes, so a
+    gate keyed on it is a gate the audited party can switch off by editing one
+    word. The table is read from the evaluator's own source instead.
+
+    ``ast.literal_eval`` evaluates one literal node, not the module, so the
+    standing promise that scenario files are never imported or executed is
+    unchanged -- the same way ``_validate_python_sources`` already parses them.
+
+    A source this cannot read is an error, never a fall back to the
+    declaration: falling back would restore exactly the trust this reading
+    exists to withdraw.
+    """
+
+    field = "catalog.components.evaluator.path"
+    relative = evaluator_path.relative_to(scenario.root).as_posix()
+    try:
+        source = evaluator_path.read_bytes()
+    except OSError as exc:
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"cannot read {relative}: {exc}",
+        ) from exc
+    try:
+        module = ast.parse(source, filename=relative)
+    except (SyntaxError, ValueError) as exc:
+        detail = getattr(exc, "msg", None) or str(exc)
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"{relative} does not parse as Python, so the label table the "
+            f"declared method scores with cannot be read: {detail}",
+        ) from exc
+
+    tables: list[tuple[str, dict[str, Any]]] = []
+    for node in module.body:
+        if isinstance(node, ast.Assign):
+            names = [
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            ]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+        else:
+            continue
+        if not names or not isinstance(node.value, ast.Dict):
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (MemoryError, RecursionError, SyntaxError, TypeError, ValueError):
+            continue
+        if not isinstance(value, dict) or not value:
+            continue
+        if not all(isinstance(key, str) for key in value):
+            continue
+        tables.append((names[0], value))
+
+    if not tables:
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"{relative} carries no module-level label table this check can "
+            f"read, so what the {', '.join(sorted(EVALUATOR_METHODS))} methods "
+            "can tell apart cannot be established from the shipped source",
+        )
+    if len(tables) > 1:
+        named = ", ".join(sorted(name for name, _ in tables))
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"{relative} carries more than one module-level label table "
+            f"({named}), so which one scores a label is ambiguous",
+        )
+
+    name, table = tables[0]
+    for key, value in sorted(table.items()):
+        if not _resolved_label(key):
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"{relative}: {name} is keyed on {key!r}, which carries nothing "
+                "an evaluator could compare",
+            )
+        if not isinstance(value, (bool, int, float, str)) and value is not None:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"{relative}: {name}[{key!r}] is a {type(value).__name__}, which "
+                "this check cannot compare with another entry",
+            )
+    return table
+
+
+def _validate_declared_evaluator_method(
+    scenario: Scenario,
+    evaluator: dict[str, Any],
+    table: dict[str, Any],
+    evaluator_path: Path,
+) -> Callable[[str], str]:
+    """Refuse a declared method the shipped evaluator's own table contradicts."""
+
+    resolve, implied_method = _table_label_identity(table)
+    declared_method = evaluator["method"]
+    if declared_method != implied_method:
+        relative = evaluator_path.relative_to(scenario.root).as_posix()
+        raise _catalog_materialized_error(
+            scenario,
+            "catalog.components.evaluator.method",
+            f"declares {declared_method!r}, but the table {relative} ships is "
+            f"the table of a {implied_method!r} evaluator; the method decides "
+            "how many labels the catalog may claim, so it is read from the "
+            "shipped source rather than taken on the manifest's word",
+        )
+    return resolve
+
+
+def _validate_label_table_agreement(
+    scenario: Scenario,
+    field: str,
+    label_shape: dict[str, Any],
+    table: dict[str, Any],
+    resolve: Callable[[str], str],
+) -> None:
+    """Reject a declared class partition the shipped evaluator does not have.
+
+    ``normalization_map`` claims which spellings are one class. The shipped
+    table says which spellings score alike. A manifest that splits what the
+    table merges advertises classes a worker cannot be graded on -- and a
+    constant answer then scores far above the accuracy the split implies.
+    """
+
+    normalization_map = label_shape["normalization_map"]
+    first_of_class: dict[str, tuple[tuple[str, Any], str]] = {}
+    first_of_entry: dict[tuple[str, Any], tuple[str, str]] = {}
+    for label in sorted(normalization_map):
+        declared_class = normalization_map[label]
+        key = resolve(label)
+        if key not in table:
+            raise _catalog_materialized_error(
+                scenario,
+                f"{field}.label_shape.normalization_map",
+                f"declares label {label!r}, which the shipped evaluator's table "
+                "does not contain; the evaluator cannot score a row carrying it",
+            )
+        entry = _evaluator_class_identity(table[key])
+        seen_entry, seen_label = first_of_class.setdefault(
+            declared_class, (entry, label)
+        )
+        if seen_entry != entry:
+            raise _catalog_materialized_error(
+                scenario,
+                f"{field}.label_shape.normalization_map",
+                f"puts {seen_label!r} and {label!r} in class {declared_class!r}, "
+                "but the shipped evaluator scores them as different classes",
+            )
+        seen_class, other_label = first_of_entry.setdefault(
+            entry, (declared_class, label)
+        )
+        if seen_class != declared_class:
+            raise _catalog_materialized_error(
+                scenario,
+                f"{field}.label_shape.normalization_map",
+                f"splits {other_label!r} and {label!r} into classes "
+                f"{seen_class!r} and {declared_class!r}, but the shipped "
+                "evaluator scores them alike, so the declared class count "
+                "overstates what this dataset shows",
+            )
+
+
 def _uses_resolved_labels(components: dict[str, Any]) -> bool:
     """Report whether the declared evaluator resolves labels instead of comparing bytes."""
 
@@ -716,12 +925,6 @@ def _uses_resolved_labels(components: dict[str, Any]) -> bool:
         evaluator["state"] != "missing"
         and evaluator["method"] == NORMALIZED_EXACT_MATCH_METHOD
     )
-
-
-def _catalog_label_resolver(components: dict[str, Any]) -> Callable[[str], str]:
-    """Return the label identity the catalog's declared evaluator method implies."""
-
-    return _resolved_label if _uses_resolved_labels(components) else _verbatim_label
 
 
 def _validate_label_resolution(
@@ -736,6 +939,10 @@ def _validate_label_resolution(
     spellings that resolve alike are one label to it, so counting both inflates
     the declared surface and can hide a dataset that carries fewer classes than
     the manifest advertises.
+
+    This reads the manifest alone, before any file is opened, so it reports a
+    contradiction inside the manifest early. What the shipped evaluator can
+    actually tell apart is settled later, against its source.
     """
 
     if not _uses_resolved_labels(components):
@@ -991,10 +1198,11 @@ def _validate_evaluator_component(
     method = (
         None
         if raw_method is None
-        else _require_catalog_identifier(
+        else _require_enum_string(
             manifest_path,
             f"{field}.method",
             raw_method,
+            EVALUATOR_METHODS,
         )
     )
 
@@ -2230,7 +2438,6 @@ def _validate_calibration_labels(
 def _validate_catalog_materialized(scenario: Scenario) -> None:
     catalog = scenario.manifest["catalog"]
     components = catalog["components"]
-    resolve = _catalog_label_resolver(components)
 
     agent_path = components["agent"]["path"]
     if agent_path is not None:
@@ -2251,12 +2458,21 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
 
     evaluator = components["evaluator"]
     evaluator_path = evaluator["path"]
+    label_table: dict[str, Any] | None = None
+    resolve: Callable[[str], str] = _verbatim_label
     if evaluator_path is not None:
-        _catalog_regular_file(
+        evaluator_file = _catalog_regular_file(
             scenario,
             evaluator_path,
             "catalog.components.evaluator.path",
             scenario.project_dir,
+        )
+        label_table = _read_evaluator_label_table(scenario, evaluator_file)
+        resolve = _validate_declared_evaluator_method(
+            scenario,
+            evaluator,
+            label_table,
+            evaluator_file,
         )
     calibration = evaluator["calibration"]
     calibration_path = calibration["path"]
@@ -2293,6 +2509,16 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
         _validate_calibration_labels(scenario, calibration_cases, resolve)
 
     for index, dataset in enumerate(catalog["datasets"]):
+        if label_table is not None and dataset["label_shape"]["kind"] == (
+            MAPPED_LABEL_SHAPE
+        ):
+            _validate_label_table_agreement(
+                scenario,
+                f"catalog.datasets[{index}]",
+                dataset["label_shape"],
+                label_table,
+                resolve,
+            )
         _validate_materialized_dataset(scenario, dataset, index, resolve)
 
     expected_contract = catalog["expected_route"]["verifier_contract"]
