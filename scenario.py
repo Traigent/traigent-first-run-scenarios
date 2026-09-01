@@ -2,12 +2,14 @@
 """Inspect and validate public Traigent first-run scenarios.
 
 This module deliberately treats scenario contents as data. It never imports or
-executes files from a scenario's project or verifier directories.
+executes files from a scenario's project or verifier directories. Shipped
+Python is parsed for syntax only, which reads the file without running it.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import math
@@ -53,6 +55,11 @@ COMPONENT_STATES = {
     "unsafe",
 }
 DATASET_FORMATS = {"jsonl"}
+NORMALIZED_EXACT_MATCH_METHOD = "normalized-exact-match"
+CALIBRATION_PROBES_KEY = "probes"
+CALIBRATION_EXPECTED_KEY = "expected"
+SAME_CLASS_PROBES = ("good", "equivalent_good")
+OTHER_CLASS_PROBES = ("partial", "bad")
 LABEL_SHAPES = {
     "absent",
     "free-text",
@@ -676,6 +683,84 @@ def _validate_count_dimension(
     return {"field": field_path, "counts": counts}
 
 
+def _resolved_label(label: str) -> str:
+    """Resolve a surface label the way a normalized-exact-match consumer does.
+
+    A ``normalized-exact-match`` evaluator compares labels after folding case
+    and dropping the punctuation that separates a code from its number, so
+    ``SEV1``, ``sev1`` and ``Sev-1`` are one label to it. The catalog has to
+    count and map labels the same way, or it describes a dataset the shipped
+    evaluator does not see.
+    """
+
+    return "".join(character for character in label.casefold() if character.isalnum())
+
+
+def _verbatim_label(label: str) -> str:
+    """Resolve a surface label for an evaluator that compares bytes exactly."""
+
+    return label
+
+
+def _uses_resolved_labels(components: dict[str, Any]) -> bool:
+    """Report whether the declared evaluator resolves labels instead of comparing bytes."""
+
+    evaluator = components["evaluator"]
+    return bool(
+        evaluator["state"] != "missing"
+        and evaluator["method"] == NORMALIZED_EXACT_MATCH_METHOD
+    )
+
+
+def _catalog_label_resolver(components: dict[str, Any]) -> Callable[[str], str]:
+    """Return the label identity the catalog's declared evaluator method implies."""
+
+    return _resolved_label if _uses_resolved_labels(components) else _verbatim_label
+
+
+def _validate_label_resolution(
+    manifest_path: Path,
+    components: dict[str, Any],
+    datasets: Sequence[dict[str, Any]],
+) -> None:
+    """Reject declared labels the scenario's own evaluator cannot tell apart.
+
+    ``surface_label_count`` claims how many distinct labels a dataset shows.
+    When the evaluator resolves labels rather than comparing bytes, two
+    spellings that resolve alike are one label to it, so counting both inflates
+    the declared surface and can hide a dataset that carries fewer classes than
+    the manifest advertises.
+    """
+
+    if not _uses_resolved_labels(components):
+        return
+    for index, dataset in enumerate(datasets):
+        label_shape = dataset["label_shape"]
+        if label_shape["kind"] != "mapped-labels":
+            continue
+        field = f"catalog.datasets[{index}].label_shape.normalization_map"
+        first_spelling: dict[str, str] = {}
+        for label in label_shape["normalization_map"]:
+            resolved = _resolved_label(label)
+            if not resolved:
+                raise _manifest_error(
+                    manifest_path,
+                    field,
+                    f"label {label!r} carries nothing the "
+                    f"{NORMALIZED_EXACT_MATCH_METHOD!r} evaluator can compare",
+                )
+            previous = first_spelling.get(resolved)
+            if previous is not None:
+                raise _manifest_error(
+                    manifest_path,
+                    field,
+                    f"labels {previous!r} and {label!r} are one label to the "
+                    f"{NORMALIZED_EXACT_MATCH_METHOD!r} evaluator, so the declared "
+                    "surface and class counts overstate what this dataset shows",
+                )
+            first_spelling[resolved] = label
+
+
 def _validate_label_shape(
     manifest_path: Path,
     field: str,
@@ -1230,6 +1315,7 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
             "catalog.components.data.state",
             "can be ready only when every dataset profile is ready",
         )
+    _validate_label_resolution(manifest_path, components, datasets)
 
     expected_route_value = _require_object_keys(
         manifest_path,
@@ -1637,6 +1723,7 @@ def _validate_materialized_dataset(
     scenario: Scenario,
     dataset: dict[str, Any],
     index: int,
+    resolve: Callable[[str], str],
 ) -> None:
     field = f"catalog.datasets[{index}]"
     if dataset["state"] == "missing":
@@ -1674,7 +1761,33 @@ def _validate_materialized_dataset(
     split_field = dataset["splits"]["field"]
     difficulty_field = dataset["difficulty_strata"]["field"]
     label_field = dataset["label_field"]
+    resolved_map: dict[str, str] = {
+        resolve(label): normalized_class
+        for label, normalized_class in normalization_map.items()
+    }
+    declared_roots = {
+        declared.split(".", 1)[0]
+        for declared in (
+            dataset["input_field"],
+            label_field,
+            split_field,
+            difficulty_field,
+        )
+        if declared is not None
+    }
     for line_number, row in enumerate(rows, start=1):
+        if label_kind == "absent":
+            undeclared_fields = sorted(set(row) - declared_roots)
+            if undeclared_fields:
+                raise _catalog_materialized_error(
+                    scenario,
+                    f"{field}.label_shape.kind",
+                    f"claims this dataset carries no labels, but "
+                    f"{dataset_path.name}:{line_number} also carries "
+                    f"{', '.join(undeclared_fields)}, which the catalog does not "
+                    "describe. An unlabeled dataset has to account for every "
+                    "field a worker receives",
+                )
         input_value = _row_field(
             scenario,
             row,
@@ -1752,7 +1865,7 @@ def _validate_materialized_dataset(
                 f"{dataset_path.name}:{line_number} structured output must be an object or array",
             )
 
-        if label_kind == "mapped-labels" and label not in normalization_map:
+        if label_kind == "mapped-labels" and resolve(label) not in resolved_map:
             raise _catalog_materialized_error(
                 scenario,
                 f"{field}.label_shape.normalization_map",
@@ -1779,26 +1892,35 @@ def _validate_materialized_dataset(
             dataset["difficulty_strata"]["counts"],
             difficulty_counts,
         )
+    observed_resolved = {resolve(label) for label in observed_labels}
     if label_kind == "mapped-labels":
-        declared_labels = set(normalization_map)
-        if declared_labels != observed_labels:
-            missing = sorted(observed_labels - declared_labels)
-            extra = sorted(declared_labels - observed_labels)
+        declared_resolved = set(resolved_map)
+        if declared_resolved != observed_resolved:
+            missing = sorted(
+                label
+                for label in observed_labels
+                if resolve(label) not in declared_resolved
+            )
+            extra = sorted(
+                label
+                for label in normalization_map
+                if resolve(label) not in observed_resolved
+            )
             raise _catalog_materialized_error(
                 scenario,
                 f"{field}.label_shape.normalization_map",
                 f"must exactly match observed labels; missing={missing!r}, extra={extra!r}",
             )
     if label_kind in {"mapped-labels", "unmapped-labels"} and (
-        len(observed_labels) != label_shape["surface_label_count"]
+        len(observed_resolved) != label_shape["surface_label_count"]
     ):
         raise _catalog_materialized_error(
             scenario,
             f"{field}.label_shape.surface_label_count",
-            "does not match the observed surface labels",
+            "does not match the labels the evaluator can tell apart in this file",
         )
     observed_classes = {
-        normalization_map[label]
+        resolved_map[resolve(label)]
         for label in observed_labels
         if label_kind == "mapped-labels"
     }
@@ -1812,9 +1934,217 @@ def _validate_materialized_dataset(
         )
 
 
+def _ships_dataset_rows(path: Path) -> bool:
+    """Report whether a file's bytes are rows of a dataset in a known format.
+
+    Shape decides first, so renaming a dataset does not put it beyond the
+    catalog's reach. A file that is itself one JSON document is not rows, which
+    keeps ordinary JSON content out of this check; a single row still counts
+    when the file is named for a supported dataset format.
+    """
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    lines = text.splitlines()
+    if not lines:
+        return False
+    for line in lines:
+        if not line.strip():
+            return False
+        try:
+            value = json.loads(line)
+        except ValueError:
+            return False
+        if not isinstance(value, dict):
+            return False
+    if path.suffix.lstrip(".") in DATASET_FORMATS:
+        return True
+    try:
+        json.loads(text)
+    except ValueError:
+        return True
+    return False
+
+
+def _validate_dataset_inventory(
+    scenario: Scenario,
+    regular_files: Sequence[Path],
+) -> None:
+    """Reject dataset rows the catalog does not admit are there.
+
+    ``prepare`` copies every tracked file under ``project/`` into the worker's
+    checkout. A catalog is free to declare a dataset missing or limited, but the
+    declaration is what a captain blinds a worker against, so the bytes have to
+    agree: rows that ship must be declared, or the worker finds data the catalog
+    says does not exist.
+    """
+
+    declared_paths = {
+        dataset["path"]
+        for dataset in scenario.manifest["catalog"]["datasets"]
+        if dataset["path"] is not None
+    }
+    undeclared = sorted(
+        relative
+        for relative, path in (
+            (path.relative_to(scenario.root).as_posix(), path)
+            for path in regular_files
+            if _is_within(path, scenario.project_dir)
+        )
+        if relative not in declared_paths and _ships_dataset_rows(path)
+    )
+    if undeclared:
+        raise _catalog_materialized_error(
+            scenario,
+            "catalog.datasets",
+            f"{PROJECT_DIRECTORY}/ ships dataset rows no dataset profile "
+            f"declares: {', '.join(undeclared)}. A worker receives them, so the "
+            "catalog must declare them or the scenario must stop shipping them",
+        )
+
+
+def _validate_python_sources(
+    scenario: Scenario,
+    regular_files: Sequence[Path],
+) -> None:
+    """Reject shipped Python that does not parse.
+
+    ``prepare`` hands these files to a worker verbatim. Parsing them here reads
+    the source without importing or running it, so a scenario cannot ship an
+    agent or evaluator that fails at the worker's first import.
+    """
+
+    for path in sorted(regular_files):
+        if path.suffix != ".py":
+            continue
+        relative = path.relative_to(scenario.root).as_posix()
+        try:
+            source = path.read_bytes()
+        except OSError as exc:
+            raise BankError(
+                f"scenario {scenario.slug!r} cannot read {relative}: {exc}"
+            ) from exc
+        try:
+            ast.parse(source, filename=relative)
+        except (SyntaxError, ValueError) as exc:
+            detail = getattr(exc, "msg", None) or str(exc)
+            line = getattr(exc, "lineno", None)
+            location = relative if line is None else f"{relative}:{line}"
+            raise BankError(
+                f"scenario {scenario.slug!r} ships Python that does not parse: "
+                f"{location}: {detail}"
+            ) from exc
+
+
+def _validate_calibration_labels(
+    scenario: Scenario,
+    calibration_cases: Sequence[Any],
+    resolve: Callable[[str], str],
+) -> None:
+    """Cross-check declared calibration probes against the declared label map.
+
+    A calibration probe states a fact about the evaluator: ``equivalent_good``
+    scores like the recorded label and ``bad`` does not. Those facts and the
+    dataset's ``normalization_map`` describe the same partition, so a manifest
+    that splits or merges classes the probes contradict is caught here.
+    """
+
+    catalog = scenario.manifest["catalog"]
+    mapped_datasets = [
+        (index, dataset["label_shape"]["normalization_map"])
+        for index, dataset in enumerate(catalog["datasets"])
+        if dataset["label_shape"]["kind"] == "mapped-labels"
+    ]
+    if not mapped_datasets:
+        return
+
+    field = "catalog.components.evaluator.calibration.path"
+    probe_expectations = tuple((name, True) for name in SAME_CLASS_PROBES) + tuple(
+        (name, False) for name in OTHER_CLASS_PROBES
+    )
+
+    for case_index, case in enumerate(calibration_cases):
+        probes = case.get(CALIBRATION_PROBES_KEY)
+        if probes is None:
+            continue
+        if not isinstance(probes, dict):
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"case {case_index} {CALIBRATION_PROBES_KEY!r} must be a JSON object",
+            )
+        expected = case.get(CALIBRATION_EXPECTED_KEY)
+        if not isinstance(expected, str) or not expected.strip():
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"case {case_index} needs a non-empty "
+                f"{CALIBRATION_EXPECTED_KEY!r} label before its probes mean anything",
+            )
+
+        covered = False
+        for dataset_index, normalization_map in mapped_datasets:
+            resolved_map = {
+                resolve(label): normalized_class
+                for label, normalized_class in normalization_map.items()
+            }
+            expected_class = resolved_map.get(resolve(expected))
+            if expected_class is None:
+                continue
+            covered = True
+            declared_by = (
+                f"catalog.datasets[{dataset_index}].label_shape.normalization_map"
+            )
+            for probe_name, same_class in probe_expectations:
+                probe_value = probes.get(probe_name)
+                if probe_value is None:
+                    continue
+                if not isinstance(probe_value, str) or not probe_value.strip():
+                    raise _catalog_materialized_error(
+                        scenario,
+                        field,
+                        f"case {case_index} probe {probe_name!r} must be a "
+                        "non-empty string",
+                    )
+                probe_class = resolved_map.get(resolve(probe_value))
+                if probe_class is None:
+                    raise _catalog_materialized_error(
+                        scenario,
+                        field,
+                        f"case {case_index} probe {probe_name!r} uses label "
+                        f"{probe_value!r}, which {declared_by} does not cover",
+                    )
+                if same_class and probe_class != expected_class:
+                    raise _catalog_materialized_error(
+                        scenario,
+                        field,
+                        f"case {case_index} probe {probe_name!r} ({probe_value!r}) "
+                        f"scores like {expected!r}, but {declared_by} puts them in "
+                        f"{probe_class!r} and {expected_class!r}",
+                    )
+                if not same_class and probe_class == expected_class:
+                    raise _catalog_materialized_error(
+                        scenario,
+                        field,
+                        f"case {case_index} probe {probe_name!r} ({probe_value!r}) "
+                        f"must not score like {expected!r}, but {declared_by} puts "
+                        f"both in {expected_class!r}",
+                    )
+        if not covered:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"case {case_index} grades against label {expected!r}, which no "
+                "mapped-labels dataset in this catalog covers",
+            )
+
+
 def _validate_catalog_materialized(scenario: Scenario) -> None:
     catalog = scenario.manifest["catalog"]
     components = catalog["components"]
+    resolve = _catalog_label_resolver(components)
 
     agent_path = components["agent"]["path"]
     if agent_path is not None:
@@ -1874,9 +2204,10 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
                 "catalog.components.evaluator.calibration.case_count",
                 f"declares {calibration['case_count']} but observed {len(calibration_cases)}",
             )
+        _validate_calibration_labels(scenario, calibration_cases, resolve)
 
     for index, dataset in enumerate(catalog["datasets"]):
-        _validate_materialized_dataset(scenario, dataset, index)
+        _validate_materialized_dataset(scenario, dataset, index, resolve)
 
     expected_contract = catalog["expected_route"]["verifier_contract"]
     _catalog_regular_file(
@@ -1899,6 +2230,8 @@ def validate_materialized(scenario: Scenario) -> dict[str, Any]:
             raise BankError(
                 f"scenario {scenario.slug!r} has no regular files under {label}/"
             )
+    _validate_python_sources(scenario, regular_files)
+    _validate_dataset_inventory(scenario, regular_files)
     _validate_catalog_materialized(scenario)
     return validate_expected_opening(scenario)
 

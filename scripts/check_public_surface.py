@@ -36,6 +36,7 @@ class Finding:
     surface: str
     path: str
     line: int
+    column: int
     rule: str
 
 
@@ -103,6 +104,16 @@ _RULES = (
 )
 
 _GITLINK_MODE = "160000"
+
+# A guard that scans nothing must never report success, so the inventory has a
+# floor. It sits far below the current inventory (53 tracked files) and still
+# below the files this repository cannot lose while remaining itself: the
+# license, notice, readme, security policy, contributing guide, walkthrough,
+# ignore rules, CI workflow, pinned development requirements, the scenario
+# tool, its schema, this guard, and the two test modules. Normal growth, and
+# even removing whole optional areas, stays above it; an empty checkout, a
+# fully ignored tree, or a scan aimed at one subdirectory falls far below it.
+_DEFAULT_MINIMUM_FILES = 12
 
 
 def _run_git(
@@ -263,12 +274,13 @@ def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding
     text = content.decode("utf-8", errors="replace")
     for line_number, line in enumerate(text.splitlines(), start=1):
         for rule in _RULES:
-            if rule.pattern.search(line):
+            for match in rule.pattern.finditer(line):
                 findings.append(
                     Finding(
                         surface=surface,
                         path=relative_path,
                         line=line_number,
+                        column=match.start() + 1,
                         rule=rule.name,
                     )
                 )
@@ -277,19 +289,58 @@ def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding
 
 def _scan_path(relative_path: str) -> list[Finding]:
     return [
-        Finding(surface="path", path=relative_path, line=1, rule=rule.name)
+        Finding(
+            surface="path",
+            path=relative_path,
+            line=1,
+            column=match.start() + 1,
+            rule=rule.name,
+        )
         for rule in _RULES
-        if rule.pattern.search(relative_path)
+        for match in rule.pattern.finditer(relative_path)
     ]
 
 
-def check_repository(repo_root: Path) -> ScanResult:
+def _resolve_repository_root(repo_root: Path) -> Path:
+    """Return the root only when it is the top level of a Git work tree."""
     root = repo_root.resolve()
     if not root.is_dir():
         raise InventoryError("Repository root is not a readable directory")
 
+    inside_work_tree = os.fsdecode(
+        _run_git(root, "rev-parse", "--is-inside-work-tree")
+    ).strip()
+    if inside_work_tree != "true":
+        raise InventoryError("Repository root is not inside a Git work tree")
+
+    reported_top_level = os.fsdecode(
+        _run_git(root, "rev-parse", "--show-toplevel")
+    ).rstrip("\r\n")
+    if not reported_top_level:
+        raise InventoryError("Git did not report a work-tree top level")
+    if Path(reported_top_level).resolve() != root:
+        raise InventoryError(
+            "Repository root is a subdirectory of a Git work tree, not its top level"
+        )
+    return root
+
+
+def check_repository(
+    repo_root: Path, minimum_files: int = _DEFAULT_MINIMUM_FILES
+) -> ScanResult:
+    if minimum_files < 1:
+        raise InventoryError("Minimum inventory size must be at least one file")
+
+    root = _resolve_repository_root(repo_root)
     indexed_files = _read_index(root)
     untracked_files = _read_untracked(root)
+    file_count = len(indexed_files) + len(untracked_files)
+    if file_count < minimum_files:
+        raise InventoryError(
+            f"Git inventory covered {file_count} file(s), fewer than the required "
+            f"minimum of {minimum_files}"
+        )
+
     index_blobs = _read_index_blobs(root, indexed_files)
     findings: list[Finding] = []
 
@@ -313,13 +364,28 @@ def check_repository(repo_root: Path) -> ScanResult:
     unique_findings = tuple(
         sorted(
             set(findings),
-            key=lambda item: (item.path, item.line, item.rule, item.surface),
+            key=lambda item: (
+                item.path,
+                item.line,
+                item.column,
+                item.rule,
+                item.surface,
+            ),
         )
     )
-    return ScanResult(
-        file_count=len(indexed_files) + len(untracked_files),
-        findings=unique_findings,
-    )
+    return ScanResult(file_count=file_count, findings=unique_findings)
+
+
+def _minimum_files(value: str) -> int:
+    try:
+        count = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "minimum file count must be an integer"
+        ) from error
+    if count < 1:
+        raise argparse.ArgumentTypeError("minimum file count must be at least 1")
+    return count
 
 
 def _parse_args(arguments: list[str] | None) -> argparse.Namespace:
@@ -332,13 +398,22 @@ def _parse_args(arguments: list[str] | None) -> argparse.Namespace:
         default=Path(__file__).resolve().parents[1],
         help="repository root (defaults to the parent of scripts/)",
     )
+    parser.add_argument(
+        "--minimum-files",
+        type=_minimum_files,
+        default=_DEFAULT_MINIMUM_FILES,
+        help=(
+            "smallest inventory that may be reported as passing "
+            f"(defaults to {_DEFAULT_MINIMUM_FILES}, never below 1)"
+        ),
+    )
     return parser.parse_args(arguments)
 
 
 def main(arguments: list[str] | None = None) -> int:
     args = _parse_args(arguments)
     try:
-        result = check_repository(args.repo_root)
+        result = check_repository(args.repo_root, args.minimum_files)
     except InventoryError as error:
         print(
             f"ERROR: public-surface inventory could not be evaluated: {error}",
@@ -353,8 +428,8 @@ def main(arguments: list[str] | None = None) -> int:
         )
         for finding in result.findings:
             print(
-                f"  {finding.surface}:{_display(finding.path)}:{finding.line}: "
-                f"{finding.rule}",
+                f"  {finding.surface}:{_display(finding.path)}:{finding.line}:"
+                f"{finding.column}: {finding.rule}",
                 file=sys.stderr,
             )
         return 1

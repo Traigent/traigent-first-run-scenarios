@@ -61,6 +61,22 @@ free-text, numeric, structured, or unlabeled data into a mapped-label profile.
 For a present JSONL dataset, declared rows, unique inputs, dimensions, surface
 labels, and normalized classes must match the checked-in bytes exactly.
 
+A declaration that switches a check off is itself checked against the bytes:
+
+- Labels are counted and matched the way the declared evaluator `method`
+  resolves them. Under `normalized-exact-match` two spellings that differ only
+  in case or punctuation are one label, so the map may not list both and a row
+  may use either. Under any other method labels are compared exactly.
+- Declared calibration `probes` state facts about that same resolution.
+  `good` and `equivalent_good` must land in the recorded label's normalized
+  class; `partial` and `bad` must land outside it.
+- `label_shape.kind: absent` claims the rows carry no label, so every field a
+  row does carry must be named by `input_field` or a dimension field.
+- Rows that ship must be declared. A file under `project/` whose lines are JSON
+  objects belongs to a dataset profile, whatever it is named, so a dataset
+  cannot be declared missing while its rows stay in the worker's directory.
+- Published Python is parsed for syntax. It is never imported or executed.
+
 The current schema admits only that origin and license pair. Adding another
 origin, license, or third-party work requires a schema and licensing review
 before the content is proposed.

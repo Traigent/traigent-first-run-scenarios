@@ -759,6 +759,329 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(0, status, error)
         self.assertIn("OK: limited-data", output)
 
+    def write_dataset(self, root: Path, *labels: str) -> None:
+        rows = "".join(
+            json.dumps(
+                {
+                    "input": f"example-{index}",
+                    "output": label,
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            )
+            + "\n"
+            for index, label in enumerate(labels)
+        )
+        (root / "project" / "input.txt").write_text(rows, encoding="utf-8")
+
+    def labelled_manifest(
+        self,
+        slug: str,
+        legacy_id: int,
+        *,
+        rows: int,
+        normalization_map: dict[str, str],
+        surface_label_count: int,
+        normalized_class_count: int,
+    ) -> dict[str, object]:
+        manifest = valid_manifest(slug, legacy_id)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "rows": rows,
+                "unique_inputs": rows,
+                "splits": {"field": "metadata.split", "counts": {"tuning": rows}},
+                "difficulty_strata": {
+                    "field": "metadata.difficulty",
+                    "counts": {"easy": rows},
+                },
+                "label_shape": {
+                    "kind": "mapped-labels",
+                    "surface_label_count": surface_label_count,
+                    "normalized_class_count": normalized_class_count,
+                    "normalization_map": normalization_map,
+                },
+            }
+        )
+        return manifest
+
+    def write_manifest(self, root: Path, manifest: dict[str, object]) -> None:
+        (root / "scenario.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    def test_declared_labels_must_be_ones_the_evaluator_can_tell_apart(self) -> None:
+        root = self.create_scenario("collapsing-labels", 90)
+        self.write_dataset(root, "SEV1", "sev1")
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "collapsing-labels",
+                90,
+                rows=2,
+                normalization_map={"SEV1": "class-a", "sev1": "class-b"},
+                surface_label_count=2,
+                normalized_class_count=2,
+            ),
+        )
+
+        status, output, error = self.run_cli("check", "collapsing-labels")
+
+        self.assertNotEqual(0, status)
+        self.assertEqual("", output)
+        self.assertIn("are one label to the 'normalized-exact-match' evaluator", error)
+
+    def test_label_identity_follows_the_declared_evaluator_method(self) -> None:
+        root = self.create_scenario("byte-exact-labels", 91)
+        self.write_dataset(root, "SEV1", "sev1")
+        manifest = self.labelled_manifest(
+            "byte-exact-labels",
+            91,
+            rows=2,
+            normalization_map={"SEV1": "class-a", "sev1": "class-b"},
+            surface_label_count=2,
+            normalized_class_count=2,
+        )
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["components"]["evaluator"]["method"] = "byte-exact-match"
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "byte-exact-labels")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: byte-exact-labels", output)
+
+    def test_a_label_the_evaluator_resolves_to_a_declared_one_is_accepted(self) -> None:
+        root = self.create_scenario("resolved-labels", 92)
+        self.write_dataset(root, "SEV1", "sev1", "P1")
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "resolved-labels",
+                92,
+                rows=3,
+                normalization_map={"SEV1": "severity-1", "P1": "severity-1"},
+                surface_label_count=2,
+                normalized_class_count=1,
+            ),
+        )
+
+        status, output, error = self.run_cli("check", "resolved-labels")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: resolved-labels", output)
+
+    def write_calibration(self, root: Path, *cases: dict[str, object]) -> None:
+        (root / "project" / "calibration.json").write_text(
+            json.dumps(list(cases), indent=2) + "\n", encoding="utf-8"
+        )
+
+    def calibrated_manifest(
+        self,
+        slug: str,
+        legacy_id: int,
+        *,
+        case_count: int,
+    ) -> dict[str, object]:
+        manifest = self.labelled_manifest(
+            slug,
+            legacy_id,
+            rows=3,
+            normalization_map={
+                "SEV1": "severity-1",
+                "P1": "severity-1",
+                "SEV2": "severity-2",
+            },
+            surface_label_count=3,
+            normalized_class_count=2,
+        )
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["components"]["evaluator"]["calibration"] = {
+            "path": "project/calibration.json",
+            "case_count": case_count,
+        }
+        return manifest
+
+    def test_calibration_probes_must_agree_with_the_declared_label_classes(
+        self,
+    ) -> None:
+        contradictions: tuple[tuple[str, dict[str, object], str], ...] = (
+            (
+                "equivalent probe in another class",
+                {"expected": "SEV1", "probes": {"equivalent_good": "SEV2"}},
+                "scores like 'SEV1'",
+            ),
+            (
+                "wrong-answer probe in the same class",
+                {"expected": "SEV1", "probes": {"bad": "P1"}},
+                "must not score like 'SEV1'",
+            ),
+            (
+                "probe label outside the map",
+                {"expected": "SEV1", "probes": {"good": "SEV9"}},
+                "does not cover",
+            ),
+            (
+                "recorded label outside every map",
+                {"expected": "SEV9", "probes": {"good": "SEV9"}},
+                "which no mapped-labels dataset in this catalog covers",
+            ),
+        )
+        for index, (name, case, expected_error) in enumerate(contradictions):
+            with self.subTest(contradiction=name):
+                slug = f"calibration-{index}"
+                root = self.create_scenario(slug, 100 + index)
+                self.write_dataset(root, "SEV1", "P1", "SEV2")
+                self.write_calibration(root, case)
+                self.write_manifest(
+                    root, self.calibrated_manifest(slug, 100 + index, case_count=1)
+                )
+
+                status, output, error = self.run_cli("check", slug)
+
+                self.assertNotEqual(0, status)
+                self.assertEqual("", output)
+                self.assertIn(expected_error, error)
+
+    def test_calibration_probes_consistent_with_the_label_map_are_accepted(
+        self,
+    ) -> None:
+        root = self.create_scenario("calibration-ok", 110)
+        self.write_dataset(root, "SEV1", "P1", "SEV2")
+        self.write_calibration(
+            root,
+            {
+                "expected": "SEV1",
+                "probes": {
+                    "good": "SEV1",
+                    "equivalent_good": "sev1",
+                    "partial": "SEV2",
+                    "bad": "SEV2",
+                },
+            },
+        )
+        self.write_manifest(
+            root, self.calibrated_manifest("calibration-ok", 110, case_count=1)
+        )
+
+        status, output, error = self.run_cli("check", "calibration-ok")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: calibration-ok", output)
+
+    def test_absent_label_shape_must_match_the_rows_that_ship(self) -> None:
+        root = self.create_scenario("denied-labels", 120)
+        manifest = valid_manifest("denied-labels", 120)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "label_field": None,
+                "label_shape": {
+                    "kind": "absent",
+                    "surface_label_count": 0,
+                    "normalized_class_count": 0,
+                    "normalization_map": {},
+                },
+            }
+        )
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "denied-labels")
+
+        self.assertNotEqual(0, status)
+        self.assertEqual("", output)
+        self.assertIn("claims this dataset carries no labels", error)
+        self.assertIn("also carries output", error)
+
+        (root / "project" / "input.txt").write_text(
+            json.dumps(
+                {
+                    "input": "example",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        status, output, error = self.run_cli("check", "denied-labels")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: denied-labels", output)
+
+    def test_dataset_rows_that_ship_must_be_declared(self) -> None:
+        root = self.create_scenario("denied-dataset", 121)
+        rows = "".join(
+            json.dumps({"input": f"example-{index}", "output": "A"}) + "\n"
+            for index in range(2)
+        )
+        (root / "project" / "rows.jsonl").write_text(rows, encoding="utf-8")
+
+        status, output, error = self.run_cli("check", "denied-dataset")
+
+        self.assertNotEqual(0, status)
+        self.assertEqual("", output)
+        self.assertIn("ships dataset rows no dataset profile declares", error)
+        self.assertIn("project/rows.jsonl", error)
+
+        (root / "project" / "rows.jsonl").unlink()
+        (root / "project" / "notes.md").write_text("# notes\n", encoding="utf-8")
+
+        status, output, error = self.run_cli("check", "denied-dataset")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: denied-dataset", output)
+
+    def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
+        root = self.create_scenario("unparsable-code", 122)
+        agent = root / "project" / "agent.py"
+        sentinel = Path(self.temporary_directory.name) / "agent-executed"
+        agent.write_text(
+            "from pathlib import Path\n"
+            f"Path({str(sentinel)!r}).write_text('ran', encoding='utf-8')\n"
+            "def broken(:\n",
+            encoding="utf-8",
+        )
+
+        status, output, error = self.run_cli("check", "unparsable-code")
+
+        self.assertNotEqual(0, status)
+        self.assertEqual("", output)
+        self.assertIn("ships Python that does not parse", error)
+        self.assertIn("project/agent.py:3", error)
+        self.assertFalse(sentinel.exists())
+
+        agent.write_text(
+            "from pathlib import Path\n"
+            f"Path({str(sentinel)!r}).write_text('ran', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+
+        status, output, error = self.run_cli("check", "unparsable-code")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: unparsable-code", output)
+        self.assertFalse(sentinel.exists())
+
+    def test_published_scenario_bank_passes_check(self) -> None:
+        output = io.StringIO()
+        error = io.StringIO()
+
+        status = scenario.main(
+            ["check"],
+            scenarios_dir=scenario.DEFAULT_SCENARIOS_DIR,
+            repository_root=scenario.REPOSITORY_ROOT,
+            output=output,
+            error=error,
+        )
+
+        self.assertEqual(0, status, error.getvalue())
+        self.assertEqual("", error.getvalue())
+        self.assertIn("OK: ", output.getvalue())
+
     def test_catalog_rejects_declared_dataset_facts_that_do_not_match_rows(
         self,
     ) -> None:
