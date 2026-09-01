@@ -691,12 +691,12 @@ const rawPresentation = {
       eyebrow: "DATASET ORIGIN - CASE 46",
       title:
         "Synthetic test data is useful when its origin and limits stay visible.",
-      body: `The published case-46 material is ${contentOriginLabel}, licensed under ${scenario.content.license}, and contains no customer or third-party dataset. It is designed to exercise readiness routing reproducibly, not to stand in for production evidence.`,
+      body: `The published case-46 material is ${contentOriginLabel}, licensed under ${scenario.content.license}, and contains no customer or third-party dataset. Its rows were written for this scenario rather than sampled or adapted from a public benchmark, so no upstream dataset licence travels with them and you may run, copy and adapt the material under that licence. It exists to exercise readiness routing reproducibly, not to stand in for production evidence.`,
       bullets: [
         `${dataset.rows} authored incident reports and ${dataset.unique_inputs} unique inputs; the declared pool is ${splitSummary}`,
         `Even difficulty coverage: ${difficultySummary}, so the public pool does not win its score by concentrating only on easy cases`,
         `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison`,
-        "A row value such as provenance: real is part of the scenario's fiction - the simulated user's declaration read by the readiness scorer - not a claim about where the repository file came from",
+        "A row value such as provenance: real is the simulated user's declaration read by the readiness scorer, not a claim about where the repository file came from - the repository's own origin and licence are pinned by `scenario.py check` against its own constants",
         "The scenario and expected result are public for inspection; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
         "The 100/20 split demonstrates separate tuning and holdout pools; a paid run must still record the exact bounded rows it actually uses",
       ],
@@ -1103,6 +1103,7 @@ const rawPresentation = {
         `${dataset.unique_inputs} unique inputs; ${splitSummary}; difficulty: ${difficultySummary}.`,
         `${labelSummary} before deterministic exact/binary scoring.`,
         "Repository origin is Traigent-authored synthetic; provenance: real is simulated row metadata for the readiness scorer.",
+        "Written for this scenario, not sampled or adapted from a public benchmark, so no upstream dataset licence applies. Apache-2.0 with NOTICE: run it, copy it, adapt it.",
       ],
     },
     {
