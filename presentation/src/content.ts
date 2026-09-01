@@ -94,6 +94,10 @@ const scenarioManifestSchema = z
                       .optional(),
                   })
                   .passthrough(),
+                // The catalog names every column a row carries, down to the
+                // leaf; `passthrough_fields` is how it names the ones the task
+                // does not use, so it is absent only when there are none.
+                passthrough_fields: z.array(z.string().min(1)).optional(),
                 limitations: z.array(z.string().min(1)),
               })
               .strict(),

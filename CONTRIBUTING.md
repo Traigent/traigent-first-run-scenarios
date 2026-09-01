@@ -95,35 +95,84 @@ no manifest key claims it.
 
 A declaration that switches a check off is itself checked against the bytes:
 
-- Every column a row carries must be named by the catalog: `input_field`,
-  `label_field`, a dimension field, or `passthrough_fields` for the columns the
-  task does not use. This holds for every label shape, so `label_shape.kind:
-  absent` cannot claim rows carry no label while an undescribed column ships.
-  A `passthrough_fields` entry no row carries is refused, so the declaration
-  cannot outlive what it described -- and a passthrough column whose values are
-  a small repeating set of short strings is a label surface whatever the catalog
-  calls it, so an `absent` shape cannot hide the label column behind it.
+- Every column a row carries must be named by the catalog, down to the leaf:
+  `input_field`, `label_field`, a dimension field, or `passthrough_fields` for
+  the columns the task does not use. A column path is spelled the way the
+  catalog spells one, so a `metadata` object holding `split` is described by
+  `metadata.split`; naming a field describes its whole subtree, so a structured
+  input column is named once rather than one key at a time. An empty object
+  sitting where declared leaves live carries none of them, and no column
+  either, so it needs no naming of its own. This holds for
+  every label shape, so `label_shape.kind: absent` cannot claim rows carry no
+  label while an undescribed column ships. A `passthrough_fields` entry no row
+  carries is refused, so the declaration cannot outlive what it described.
+  The walk goes at most `4` object levels deep, and it fails closed at the
+  edge: a row nesting objects deeper is refused as unenumerable rather than
+  waved through, and a declared field path deeper than the walk can reach is
+  refused when the manifest is read.
+- Under an `absent` shape, any column whose values across the rows are a small
+  repeating set of short strings is a label surface whatever the catalog calls
+  it -- including a column nested inside a described object. Only the input
+  field and the two dimension fields are exempt: the first is what the model
+  reads, and the other two are declared label-shaped columns already. A label
+  at `metadata.severity` is a label, not an invisible key inside a `metadata`
+  root the catalog happened to mention.
 - Every file that ships under `project/` must be named by the catalog: a
   component path, a dataset profile, the calibration record, or
   `catalog.non_dataset_files` for content that is a record rather than task
-  data. Nothing about a file's bytes decides whether it needs naming, because a
-  check that decides from the bytes is a check a file can be dressed to slip
-  past. Each `non_dataset_files` entry must name a file that is there, and a
-  declared record whose rows carry a closed label surface is refused: naming a
-  dataset a record does not stop it being one.
+  data. Nothing about a file's bytes decides whether it needs *naming*, because
+  a check that decides that from the bytes is a check a file can be dressed to
+  slip past. Each `non_dataset_files` entry must name a file that is there, and
+  a declared record whose rows carry a closed label surface is refused: naming
+  a dataset a record does not stop it being one. That scan reads the file both
+  as a JSON row stream and as a delimited table -- each line goes to the
+  reading it parses under, and the two answers are joined -- counting the rows
+  each reading finds rather than letting the first line it cannot parse, a
+  stray row of the other spelling, or a note above the table's header answer
+  for the file.
+- A component slot names bytes that read as Python source. `agent.path` and
+  `evaluator.path` used to be checked only for naming a regular file under
+  `project/`, which a byte-identical copy of the labelled dataset satisfied.
+  The bytes are read with `ast.parse` -- never imported, never executed -- and
+  a document of literals is data, not a component.
+- A calibration case has to be a calibration case: a non-empty `probes` object
+  over a case that records a non-empty `expected` label. A case without probes
+  used to be skipped, which made the slot accept any array of objects, a
+  labelled dataset included.
 - A component declared `missing` may not ship its own source. `missing` forces
-  the component's `path` to null, so the shipped Python under `project/` is
-  what the check reads: with a component declared missing, the only Python that
-  may ship is the source a component that is present names.
-- Calibration `probes` are checked for being named, non-empty labels under a
-  case that records one. What they say about the evaluator -- that
-  `equivalent_good` scores like the recorded label and `bad` does not -- is a
-  run-time property and is not cross-checked against anything.
+  the component's `path` to null, so the shipped files under `project/` are
+  what the check reads: with a component declared missing, the only file whose
+  bytes read as Python source is the source a component that is present names.
+  The file's suffix decides nothing -- renaming `evaluator.py` to
+  `evaluator.txt` does not make the evaluator absent.
 - The sweeps read the Git index rather than the directory, because `prepare`
   copies recorded blobs: an untracked scratch file never reaches a worker.
-  Outside a Git work tree every regular file is swept instead, which covers
-  more rather than fewer.
+  Outside a Git work tree -- and inside a foreign one, where the listing comes
+  back empty -- every regular file is swept instead, which covers more rather
+  than fewer.
 - Published Python is parsed for syntax. It is never imported or executed.
+
+**What these checks do not establish.** Each is a statement about bytes, and
+the limits are worth stating rather than leaving to be discovered:
+
+- Calibration `probes` are checked for being named, non-empty labels under a
+  case that records one, and for nothing else. What they say about the
+  evaluator -- that `equivalent_good` scores like the recorded label and `bad`
+  does not -- is a run-time property, so `bad` equal to `expected`, every probe
+  equal to `expected`, an `equivalent_good` naming the opposite severity, and
+  probes naming labels no row carries are all accepted. The cross-check an
+  earlier version ran here was removed with the forgeable label claim, because
+  it compared the manifest with a partition the manifest declared about itself.
+  Establishing any of it means running the evaluator, which this module does
+  not do.
+- The label-surface scan reads a record as JSON rows and as a delimited table.
+  A record that is neither -- free-form prose carrying `INC-001: SEV1` on every
+  line, say -- is reported as carrying no closed label surface. That is the one
+  place left where "I could not establish this is a label surface" is answered
+  as "it is not one", and it is stated here rather than implied.
+- "Reads as Python source" means the bytes parse and are not purely literals.
+  It does not mean the file is a working agent or evaluator; nothing here runs
+  one.
 
 The current schema admits only that origin and license pair. Adding another
 origin, license, or third-party work requires a schema and licensing review
