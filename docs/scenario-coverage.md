@@ -4,9 +4,9 @@
 
 This repository currently publishes one scenario:
 
-| Public scenario                             | Starting state                                                                | Dataset                                                                                                                                                       | Evaluator                                                                                | Expected Phase A route                                            |
-| ------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `incident-severity-triage` (legacy case 46) | Agent, labeled data, evaluator, and four varying tunable settings are present | 120 Traigent-authored synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 surface labels mapped to four severity classes | Deterministic, non-executing normalized exact match with two supplied calibration probes | Explain the ready state and stop at the human's baseline approval |
+| Public scenario | Starting state | Dataset | Evaluator | Expected Phase A route |
+| --- | --- | --- | --- | --- |
+| `incident-severity-triage` (legacy case 46) | Agent, labeled data, evaluator, and four varying controls are present | 120 Traigent-authored synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 distinct label strings with their row counts | Deterministic table lookup, declared as normalized exact match, with two supplied calibration probes; the catalog describes it and does not verify it | Explain the ready state and stop at the human's baseline approval |
 
 Case 46 is a complete reference for the ready-components route. Its expected
 `EXCELLENT / OK / proceed / no caps` opening is a case-specific contract, not a
@@ -49,6 +49,10 @@ verifier contract are present in this repository.
 | Evaluator quality      | A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, or timing out                                                    | Calibrate it, inspect and repair or replace it, or pause for a bounded timeout decision; do not call a slow evaluator broken                                                       | Planned; not released or passed |
 | Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | End this guide run before candidate output executes; any containment and restart procedure is separate and human-governed                                                          | Planned; not released or passed |
 | Search-space readiness | The agent has no meaningful varying tunable settings, or declared settings are not wired into requests                                             | Establish and verify real variation before requesting approval for paid search                                                                                                     | Planned; not released or passed |
+
+In every family except execution safety, the exercised behavior is a waypoint
+on the same route, not an ending: once the gap is closed and the human
+approves, the run continues toward baseline, optimization, and results.
 
 "Planned" describes a roadmap theme for public, context-isolated scenario
 tests, not the guide behavior itself. A theme can require multiple cases or

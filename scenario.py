@@ -2,12 +2,14 @@
 """Inspect and validate public Traigent first-run scenarios.
 
 This module deliberately treats scenario contents as data. It never imports or
-executes files from a scenario's project or verifier directories.
+executes files from a scenario's project or verifier directories. Shipped
+Python is parsed for syntax only, which reads the file without running it.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import math
@@ -20,7 +22,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Sequence, TextIO
+from typing import Any, Callable, Iterable, Iterator, Sequence, TextIO
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent
 DEFAULT_SCENARIOS_DIR = REPOSITORY_ROOT / "scenarios"
@@ -39,6 +41,8 @@ MAX_TAG_LENGTH = 40
 MAX_CATALOG_ITEMS = 32
 MAX_CATALOG_IDENTIFIER_LENGTH = 80
 MAX_SCENARIO_PATH_LENGTH = 240
+MAX_DATASET_ROW_BYTES = 1 << 20
+_FILE_READ_BLOCK_BYTES = 1 << 16
 
 STARTING_CONDITIONS = {
     "all-components-ready",
@@ -53,6 +57,29 @@ COMPONENT_STATES = {
     "unsafe",
 }
 DATASET_FORMATS = {"jsonl"}
+NORMALIZED_EXACT_MATCH_METHOD = "normalized-exact-match"
+EXACT_MATCH_METHOD = "exact-match"
+# ``method`` names how the shipped evaluator compares a predicted label with a
+# recorded one. That is a statement about what the evaluator does when it runs,
+# and this module never runs it, so nothing here is keyed on the value: no
+# count, no coverage claim, no gate. It is carried because a reader of the
+# catalog should see what the scenario says about itself, and it is checked
+# only for being one of the two published spellings.
+EVALUATOR_METHODS = {EXACT_MATCH_METHOD, NORMALIZED_EXACT_MATCH_METHOD}
+MAPPED_LABEL_SHAPE = "mapped-labels"
+# The shapes whose rows carry a label string. ``mapped-labels`` lists every
+# distinct spelling that ships with the number of rows carrying it;
+# ``unmapped-labels`` counts the distinct spellings without listing them.
+LABEL_BEARING_SHAPES = {MAPPED_LABEL_SHAPE, "unmapped-labels"}
+CALIBRATION_PROBES_KEY = "probes"
+CALIBRATION_EXPECTED_KEY = "expected"
+CALIBRATION_PROBE_NAMES = ("good", "equivalent_good", "partial", "bad")
+# What a column has to look like before this module will call it a label
+# surface: at least this many rows, at least two distinct spellings, and each
+# spelling carried by at least this many rows on average. An identifier column
+# fails it because nothing repeats.
+CLOSED_SURFACE_MINIMUM_ROWS = 4
+CLOSED_SURFACE_MINIMUM_REPEAT = 2
 LABEL_SHAPES = {
     "absent",
     "free-text",
@@ -142,11 +169,12 @@ DATASET_KEYS = {
     "task",
     "unique_inputs",
 }
+OPTIONAL_DATASET_KEYS = {"passthrough_fields"}
+OPTIONAL_CATALOG_KEYS = {"non_dataset_files"}
 COUNT_DIMENSION_KEYS = {"counts", "field"}
 LABEL_SHAPE_KEYS = {
     "kind",
-    "normalization_map",
-    "normalized_class_count",
+    "label_counts",
     "surface_label_count",
 }
 EXPECTED_ROUTE_KEYS = {"rationale", "verifier_contract"}
@@ -189,6 +217,14 @@ class VerificationError(ScenarioError):
 
 class _DuplicateJsonKey(ValueError):
     """Internal signal for duplicate JSON object keys."""
+
+
+class _OversizedLine(Exception):
+    """Internal signal that a file carries a line no dataset row could be."""
+
+
+class _NotRowShaped(Exception):
+    """Internal signal that a file's bytes establish it is not a stream of rows."""
 
 
 @dataclass(frozen=True)
@@ -432,12 +468,13 @@ def _require_object_keys(
     field: str,
     value: Any,
     expected_keys: set[str],
+    optional_keys: set[str] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise _manifest_error(manifest_path, field, "must be an object")
     actual_keys = set(value)
     missing = sorted(expected_keys - actual_keys)
-    unknown = sorted(actual_keys - expected_keys)
+    unknown = sorted(actual_keys - expected_keys - (optional_keys or set()))
     if missing:
         raise _manifest_error(
             manifest_path,
@@ -676,6 +713,75 @@ def _validate_count_dimension(
     return {"field": field_path, "counts": counts}
 
 
+def _row_columns(row: Any) -> dict[str, Any] | None:
+    """Name the values a shipped row carries, whether it is an object or an array.
+
+    A JSONL row is normally an object, and its columns are its keys. A row
+    written as an array carries the same values under positions instead, and a
+    check that only understood objects would let the array spelling of a
+    labelled dataset past.
+    """
+
+    if isinstance(row, dict):
+        return row
+    if isinstance(row, list):
+        return {str(position): value for position, value in enumerate(row)}
+    return None
+
+
+def _closed_label_columns(rows: Iterable[Any]) -> list[str]:
+    """Name the columns whose values across these rows form a closed label set.
+
+    This is what a classification target looks like in the bytes: every row
+    carries the column, every value is a short non-empty string, the distinct
+    spellings are few, and each one repeats. An identifier column fails it
+    because nothing repeats, free text fails it because its values are neither
+    short nor repeated, and a structured column fails it because its values are
+    not strings.
+
+    It is a statement about the shipped rows and nothing else. It does not say
+    what any evaluator does with the column -- only that the column is shaped
+    like a label, so a catalog that says these rows carry none is contradicted
+    by its own bytes.
+
+    Rows are consumed one at a time and a column is dropped the moment it
+    cannot be a label surface, so the cost is the columns of one row rather
+    than the length of the file.
+    """
+
+    candidates: dict[str, set[str]] | None = None
+    total = 0
+    for row in rows:
+        columns = _row_columns(row)
+        if columns is None:
+            return []
+        total += 1
+        if candidates is None:
+            candidates = {name: set() for name in columns}
+        for name in list(candidates):
+            value = columns.get(name)
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or len(value) > MAX_CATALOG_IDENTIFIER_LENGTH
+            ):
+                del candidates[name]
+                continue
+            seen = candidates[name]
+            seen.add(value)
+            if len(seen) > MAX_CATALOG_ITEMS:
+                del candidates[name]
+        if not candidates:
+            return []
+    if candidates is None or total < CLOSED_SURFACE_MINIMUM_ROWS:
+        return []
+    return sorted(
+        name
+        for name, seen in candidates.items()
+        if len(seen) >= 2 and len(seen) * CLOSED_SURFACE_MINIMUM_REPEAT <= total
+    )
+
+
 def _validate_label_shape(
     manifest_path: Path,
     field: str,
@@ -699,59 +805,47 @@ def _validate_label_shape(
         label_shape["surface_label_count"],
         minimum=0,
     )
-    normalized_class_count = _require_json_integer(
-        manifest_path,
-        f"{field}.normalized_class_count",
-        label_shape["normalized_class_count"],
-        minimum=0,
-    )
-    raw_map = label_shape["normalization_map"]
-    if not isinstance(raw_map, dict):
+    raw_counts = label_shape["label_counts"]
+    if not isinstance(raw_counts, dict):
         raise _manifest_error(
             manifest_path,
-            f"{field}.normalization_map",
+            f"{field}.label_counts",
             "must be an object",
         )
-    if len(raw_map) > MAX_CATALOG_ITEMS:
+    if len(raw_counts) > MAX_CATALOG_ITEMS:
         raise _manifest_error(
             manifest_path,
-            f"{field}.normalization_map",
+            f"{field}.label_counts",
             f"must contain at most {MAX_CATALOG_ITEMS} items",
         )
 
-    normalization_map: dict[str, str] = {}
-    for raw_label, raw_class in raw_map.items():
+    label_counts: dict[str, int] = {}
+    for raw_label, raw_count in raw_counts.items():
         label = _require_string(
             manifest_path,
-            f"{field}.normalization_map key",
+            f"{field}.label_counts key",
             raw_label,
             maximum=MAX_CATALOG_IDENTIFIER_LENGTH,
         )
-        normalized_class = _require_catalog_identifier(
+        label_counts[label] = _require_json_integer(
             manifest_path,
-            f"{field}.normalization_map.{label}",
-            raw_class,
+            f"{field}.label_counts.{label}",
+            raw_count,
+            minimum=1,
         )
-        normalization_map[label] = normalized_class
 
-    if kind == "mapped-labels":
-        if not normalization_map:
+    if kind == MAPPED_LABEL_SHAPE:
+        if not label_counts:
             raise _manifest_error(
                 manifest_path,
-                f"{field}.normalization_map",
-                "must contain at least one item for mapped-labels",
+                f"{field}.label_counts",
+                f"must contain at least one item for {MAPPED_LABEL_SHAPE}",
             )
-        if surface_label_count != len(normalization_map):
+        if surface_label_count != len(label_counts):
             raise _manifest_error(
                 manifest_path,
                 f"{field}.surface_label_count",
-                "must equal the number of normalization_map entries",
-            )
-        if normalized_class_count != len(set(normalization_map.values())):
-            raise _manifest_error(
-                manifest_path,
-                f"{field}.normalized_class_count",
-                "must equal the number of distinct normalized classes",
+                "must equal the number of label_counts entries",
             )
     elif kind == "unmapped-labels":
         if surface_label_count < 1:
@@ -760,23 +854,22 @@ def _validate_label_shape(
                 f"{field}.surface_label_count",
                 "must be greater than 0 for unmapped-labels",
             )
-        if normalized_class_count != 0 or normalization_map:
+        if label_counts:
             raise _manifest_error(
                 manifest_path,
                 field,
-                "unmapped-labels requires normalized_class_count 0 and an empty normalization_map",
+                "unmapped-labels requires an empty label_counts",
             )
-    elif surface_label_count != 0 or normalized_class_count != 0 or normalization_map:
+    elif surface_label_count != 0 or label_counts:
         raise _manifest_error(
             manifest_path,
             field,
-            "non-label output shapes require zero label counts and an empty normalization_map",
+            "non-label output shapes require a zero label count and an empty label_counts",
         )
     return {
         "kind": kind,
         "surface_label_count": surface_label_count,
-        "normalized_class_count": normalized_class_count,
-        "normalization_map": normalization_map,
+        "label_counts": label_counts,
     }
 
 
@@ -900,10 +993,11 @@ def _validate_evaluator_component(
     method = (
         None
         if raw_method is None
-        else _require_catalog_identifier(
+        else _require_enum_string(
             manifest_path,
             f"{field}.method",
             raw_method,
+            EVALUATOR_METHODS,
         )
     )
 
@@ -976,6 +1070,7 @@ def _validate_dataset_profile(
         field,
         value,
         DATASET_KEYS,
+        OPTIONAL_DATASET_KEYS,
     )
     state = _require_enum_string(
         manifest_path,
@@ -1061,6 +1156,13 @@ def _validate_dataset_profile(
         minimum_items=1,
         normalizer=_require_catalog_identifier,
     )
+    passthrough_fields = _require_unique_strings(
+        manifest_path,
+        f"{field}.passthrough_fields",
+        dataset.get("passthrough_fields", []),
+        minimum_items=0,
+        normalizer=_require_field_path,
+    )
 
     if is_missing:
         if path is not None or dataset_format is not None:
@@ -1081,10 +1183,10 @@ def _validate_dataset_profile(
                 field,
                 "split and difficulty counts must be empty when state is missing",
             )
-        if label_shape["normalization_map"]:
+        if label_shape["label_counts"]:
             raise _manifest_error(
                 manifest_path,
-                f"{field}.label_shape.normalization_map",
+                f"{field}.label_shape.label_counts",
                 "must be empty when state is missing",
             )
         if label_field is not None or label_shape["kind"] != "absent":
@@ -1137,6 +1239,7 @@ def _validate_dataset_profile(
         "difficulty_strata": difficulty_strata,
         "label_shape": label_shape,
         "limitations": limitations,
+        "passthrough_fields": passthrough_fields,
     }
 
 
@@ -1146,6 +1249,7 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
         "catalog",
         value,
         CATALOG_KEYS,
+        OPTIONAL_CATALOG_KEYS,
     )
     starting_condition = _require_enum_string(
         manifest_path,
@@ -1230,7 +1334,20 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
             "catalog.components.data.state",
             "can be ready only when every dataset profile is ready",
         )
-
+    non_dataset_files = _require_unique_strings(
+        manifest_path,
+        "catalog.non_dataset_files",
+        catalog.get("non_dataset_files", []),
+        minimum_items=0,
+        normalizer=_normalize_scenario_path,
+    )
+    declared_as_dataset = sorted(set(non_dataset_files) & set(dataset_paths))
+    if declared_as_dataset:
+        raise _manifest_error(
+            manifest_path,
+            "catalog.non_dataset_files",
+            f"also declared as dataset paths: {', '.join(declared_as_dataset)}",
+        )
     expected_route_value = _require_object_keys(
         manifest_path,
         "catalog.expected_route",
@@ -1310,6 +1427,7 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
         "starting_condition": starting_condition,
         "components": components,
         "datasets": datasets,
+        "non_dataset_files": non_dataset_files,
         "expected_route": expected_route,
         "evidence": evidence,
     }
@@ -1667,14 +1785,46 @@ def _validate_materialized_dataset(
     input_identities: set[str] = set()
     split_counts: Counter[str] = Counter()
     difficulty_counts: Counter[str] = Counter()
-    observed_labels: set[str] = set()
+    observed_label_counts: Counter[str] = Counter()
     label_shape = dataset["label_shape"]
     label_kind = label_shape["kind"]
-    normalization_map = label_shape["normalization_map"]
+    label_counts = label_shape["label_counts"]
     split_field = dataset["splits"]["field"]
     difficulty_field = dataset["difficulty_strata"]["field"]
     label_field = dataset["label_field"]
+    passthrough_roots = {
+        declared.split(".", 1)[0] for declared in dataset["passthrough_fields"]
+    }
+    declared_roots = passthrough_roots | {
+        declared.split(".", 1)[0]
+        for declared in (
+            dataset["input_field"],
+            label_field,
+            split_field,
+            difficulty_field,
+        )
+        if declared is not None
+    }
+    observed_roots: set[str] = set()
     for line_number, row in enumerate(rows, start=1):
+        observed_roots.update(row)
+        undeclared_fields = sorted(set(row) - declared_roots)
+        if undeclared_fields:
+            named = ", ".join(undeclared_fields)
+            detail = (
+                f"claims this dataset carries no labels, but "
+                f"{dataset_path.name}:{line_number} also carries {named}, which "
+                "the catalog does not describe"
+                if label_kind == "absent"
+                else f"{dataset_path.name}:{line_number} carries {named}, which "
+                "the catalog does not describe"
+            )
+            raise _catalog_materialized_error(
+                scenario,
+                f"{field}.passthrough_fields",
+                f"{detail}. A worker receives every column a row carries, so "
+                "the catalog has to name the ones the task does not use",
+            )
         input_value = _row_field(
             scenario,
             row,
@@ -1721,14 +1871,14 @@ def _validate_materialized_dataset(
             dataset_path,
             line_number,
         )
-        if label_kind in {"mapped-labels", "unmapped-labels"}:
+        if label_kind in LABEL_BEARING_SHAPES:
             if not isinstance(label, str) or not label.strip():
                 raise _catalog_materialized_error(
                     scenario,
                     field,
                     f"{dataset_path.name}:{line_number} label must be a non-empty string",
                 )
-            observed_labels.add(label)
+            observed_label_counts[label] += 1
         elif label_kind == "free-text" and not isinstance(label, str):
             raise _catalog_materialized_error(
                 scenario,
@@ -1752,13 +1902,21 @@ def _validate_materialized_dataset(
                 f"{dataset_path.name}:{line_number} structured output must be an object or array",
             )
 
-        if label_kind == "mapped-labels" and label not in normalization_map:
+        if label_kind == MAPPED_LABEL_SHAPE and label not in label_counts:
             raise _catalog_materialized_error(
                 scenario,
-                f"{field}.label_shape.normalization_map",
+                f"{field}.label_shape.label_counts",
                 f"does not cover observed label {label!r}",
             )
 
+    stale_passthrough = sorted(passthrough_roots - observed_roots)
+    if stale_passthrough:
+        raise _catalog_materialized_error(
+            scenario,
+            f"{field}.passthrough_fields",
+            f"names {', '.join(stale_passthrough)}, which no row carries; a "
+            "declaration that describes nothing outlives what it described",
+        )
     if len(input_identities) != dataset["unique_inputs"]:
         raise _catalog_materialized_error(
             scenario,
@@ -1779,37 +1937,379 @@ def _validate_materialized_dataset(
             dataset["difficulty_strata"]["counts"],
             difficulty_counts,
         )
-    if label_kind == "mapped-labels":
-        declared_labels = set(normalization_map)
-        if declared_labels != observed_labels:
-            missing = sorted(observed_labels - declared_labels)
-            extra = sorted(declared_labels - observed_labels)
-            raise _catalog_materialized_error(
-                scenario,
-                f"{field}.label_shape.normalization_map",
-                f"must exactly match observed labels; missing={missing!r}, extra={extra!r}",
-            )
-    if label_kind in {"mapped-labels", "unmapped-labels"} and (
-        len(observed_labels) != label_shape["surface_label_count"]
+    if label_kind == MAPPED_LABEL_SHAPE and dict(label_counts) != dict(
+        observed_label_counts
+    ):
+        declared = dict(sorted(label_counts.items()))
+        observed = dict(sorted(observed_label_counts.items()))
+        raise _catalog_materialized_error(
+            scenario,
+            f"{field}.label_shape.label_counts",
+            f"declares {declared!r} but this file carries {observed!r}",
+        )
+    if label_kind in LABEL_BEARING_SHAPES and (
+        len(observed_label_counts) != label_shape["surface_label_count"]
     ):
         raise _catalog_materialized_error(
             scenario,
             f"{field}.label_shape.surface_label_count",
-            "does not match the observed surface labels",
+            f"declares {label_shape['surface_label_count']} but this file "
+            f"carries {len(observed_label_counts)} distinct label strings",
         )
-    observed_classes = {
-        normalization_map[label]
-        for label in observed_labels
-        if label_kind == "mapped-labels"
-    }
-    if label_kind == "mapped-labels" and (
-        len(observed_classes) != label_shape["normalized_class_count"]
-    ):
+    if label_kind == "absent":
+        disguised = sorted(set(_closed_label_columns(rows)) & passthrough_roots)
+        if disguised:
+            raise _catalog_materialized_error(
+                scenario,
+                f"{field}.passthrough_fields",
+                f"names {', '.join(disguised)} as content the task does not "
+                "use, but across these rows that column carries a small, "
+                "repeating set of strings -- the shape of a label. A dataset "
+                "whose rows carry a label surface is not an unlabeled dataset, "
+                "so declare it as label_field with the matching label shape, or "
+                "as a split or difficulty dimension if that is what it is",
+            )
+
+
+def _iter_file_lines(path: Path) -> Iterator[bytes]:
+    """Yield a file's lines without holding more than one line in memory.
+
+    A line longer than ``MAX_DATASET_ROW_BYTES`` ends the read with
+    ``_OversizedLine``. The caller turns that into a refusal rather than a
+    verdict: a line this reader cannot hold is a line it cannot classify, and a
+    classifier that answers "not a dataset" when it means "I could not tell" is
+    a classifier an author can feed a long line to.
+    """
+
+    with path.open("rb") as handle:
+        pending = b""
+        while chunk := handle.read(_FILE_READ_BLOCK_BYTES):
+            pending += chunk
+            start = 0
+            while (index := pending.find(b"\n", start)) >= 0:
+                yield pending[start:index]
+                start = index + 1
+            pending = pending[start:]
+            if len(pending) > MAX_DATASET_ROW_BYTES:
+                raise _OversizedLine
+        if pending:
+            yield pending
+
+
+def _iter_record_rows(scenario: Scenario, path: Path, field: str) -> Iterator[Any]:
+    """Yield a file's lines as JSON rows, or stop by declaring it is not rows.
+
+    Blank lines are separators and a ``#`` line is a comment, because both are
+    things an ordinary editor and an ordinary author put in a file; a leading
+    byte-order mark is stripped for the same reason. A row may be a JSON object
+    or a JSON array, because a row written as an array is still a row.
+
+    ``_NotRowShaped`` means the bytes establish that this is not a row stream --
+    a line that is not JSON, a line that is a bare scalar, or a file that
+    decodes as no text at all. A line too long to hold is not an answer either
+    way, so it is an error rather than a verdict.
+    """
+
+    rows = 0
+    try:
+        for position, raw_line in enumerate(_iter_file_lines(path)):
+            if position == 0:
+                raw_line = raw_line.removeprefix(b"\xef\xbb\xbf")
+            try:
+                line = raw_line.decode("utf-8")
+            except UnicodeDecodeError:
+                raise _NotRowShaped from None
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            try:
+                value = json.loads(stripped)
+            except ValueError:
+                raise _NotRowShaped from None
+            if not isinstance(value, (dict, list)):
+                raise _NotRowShaped
+            rows += 1
+            yield value
+    except _OversizedLine as exc:
         raise _catalog_materialized_error(
             scenario,
-            f"{field}.label_shape.normalized_class_count",
-            "does not match the observed normalized classes",
+            field,
+            f"{path.relative_to(scenario.root).as_posix()} carries a line longer "
+            f"than {MAX_DATASET_ROW_BYTES} bytes, which this check cannot read; "
+            "a file it cannot read is a file it cannot vouch for",
+        ) from exc
+    except OSError as exc:
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"cannot read {path.relative_to(scenario.root).as_posix()}: {exc}",
+        ) from exc
+    if rows == 0:
+        raise _NotRowShaped
+
+
+def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[str]:
+    """Name the closed label columns a declared record carries, if it is rows."""
+
+    try:
+        return _closed_label_columns(_iter_record_rows(scenario, path, field))
+    except _NotRowShaped:
+        return []
+
+
+def _validate_project_inventory(
+    scenario: Scenario,
+    shipped_files: Sequence[Path],
+) -> None:
+    """Refuse a file that ships to a worker and that the catalog never names.
+
+    ``prepare`` copies every tracked file under ``project/`` into the worker's
+    checkout, and the catalog is what a captain blinds a worker against. So the
+    obligation is on the manifest, not on the file: every shipped path is named
+    as a component path, a dataset profile, the calibration record, or under
+    ``catalog.non_dataset_files``.
+
+    This asks nothing of a file's contents on purpose. The version of this
+    sweep that decided from the bytes whether a file was "really" a dataset had
+    five branches that read "I could not establish this is rows", answered "so
+    it is not rows", and let the file through -- a leading comment, a
+    byte-order mark, rows written as arrays and one very long line each walked
+    a full labelled dataset past it. There is nothing to dress a file past
+    here, because nothing about the bytes is being asked.
+    """
+
+    catalog = scenario.manifest["catalog"]
+    components = catalog["components"]
+    declared = {
+        path
+        for path in (
+            components["agent"]["path"],
+            components["evaluator"]["path"],
+            components["evaluator"]["calibration"]["path"],
         )
+        if path is not None
+    }
+    declared |= {
+        dataset["path"]
+        for dataset in catalog["datasets"]
+        if dataset["path"] is not None
+    }
+    declared |= set(catalog["non_dataset_files"])
+    undeclared = sorted(
+        relative
+        for relative in (
+            path.relative_to(scenario.root).as_posix()
+            for path in shipped_files
+            if _is_within(path, scenario.project_dir)
+        )
+        if relative not in declared
+    )
+    if undeclared:
+        raise _catalog_materialized_error(
+            scenario,
+            "catalog",
+            f"{PROJECT_DIRECTORY}/ ships files the catalog does not name: "
+            f"{', '.join(undeclared)}. A worker receives every one of them, so "
+            "each has to be named -- as a component path, a dataset profile, "
+            "the calibration record, or under catalog.non_dataset_files -- or "
+            "the scenario must stop shipping it",
+        )
+
+
+def _validate_component_inventory(
+    scenario: Scenario,
+    shipped_files: Sequence[Path],
+) -> None:
+    """Refuse a component declared missing whose source ships anyway.
+
+    ``state: "missing"`` is how a catalog says a worker will not find that
+    component, and it forces the component's ``path`` to null -- so a check
+    keyed on the declared path checks nothing here, which is exactly how the
+    declaration used to switch its own contradiction off. The bytes are asked
+    instead: with a component declared missing, the only Python that may ship
+    under ``project/`` is the source a component that is *present* names.
+    """
+
+    components = scenario.manifest["catalog"]["components"]
+    missing = sorted(
+        name
+        for name in ("agent", "evaluator")
+        if components[name]["state"] == "missing"
+    )
+    if not missing:
+        return
+    named = {
+        components[name]["path"]
+        for name in ("agent", "evaluator")
+        if components[name]["path"] is not None
+    }
+    stray = sorted(
+        relative
+        for relative, path in (
+            (path.relative_to(scenario.root).as_posix(), path)
+            for path in shipped_files
+            if _is_within(path, scenario.project_dir)
+        )
+        if path.suffix == ".py" and relative not in named
+    )
+    if stray:
+        declared = ", ".join(f"catalog.components.{name}.state" for name in missing)
+        raise _catalog_materialized_error(
+            scenario,
+            "catalog.components",
+            f"{declared} declares this component missing, but "
+            f"{PROJECT_DIRECTORY}/ ships Python no present component names: "
+            f"{', '.join(stray)}. prepare hands a worker every tracked file "
+            "under project/, so a component whose source ships is not one a "
+            "worker finds missing",
+        )
+
+
+def _tracked_scenario_files(
+    scenario: Scenario,
+    regular_files: Sequence[Path],
+) -> list[Path]:
+    """Narrow a scenario's files to the ones a worker could actually receive.
+
+    ``prepare`` copies recorded Git blobs, so an untracked scratch file under
+    ``project/`` never reaches a worker however row-shaped it is. The sweeps
+    that reason about what ships read the index rather than the directory, so
+    that they answer the question they are asking.
+
+    When the scenario is not inside a readable Git work tree -- an unpacked
+    archive, say -- trackedness cannot be established. Every regular file is
+    kept in that case, which is the conservative direction: the sweeps then
+    cover more files rather than fewer.
+    """
+
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.fsmonitor=false",
+                "-C",
+                os.fspath(scenario.repository_root),
+                "ls-files",
+                "-z",
+                "--",
+                os.fspath(scenario.root),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False,
+        )
+    except OSError:
+        return list(regular_files)
+    if completed.returncode != 0:
+        return list(regular_files)
+    tracked = {
+        scenario.repository_root / os.fsdecode(record)
+        for record in completed.stdout.split(b"\0")
+        if record
+    }
+    if not tracked:
+        # A successful listing with no entries means git resolved to a work
+        # tree that does not track this scenario at all -- a bank unpacked
+        # inside some other repository. Trackedness cannot be established, so
+        # keep every regular file, the same conservative direction as the
+        # no-work-tree case above; an empty sweep here would silently disable
+        # every shipped-file check.
+        return list(regular_files)
+    return [path for path in regular_files if path in tracked]
+
+
+def _validate_python_sources(
+    scenario: Scenario,
+    regular_files: Sequence[Path],
+) -> None:
+    """Reject shipped Python that does not parse.
+
+    ``prepare`` hands these files to a worker verbatim. Parsing them here reads
+    the source without importing or running it, so a scenario cannot ship an
+    agent or evaluator that fails at the worker's first import.
+    """
+
+    for path in sorted(regular_files):
+        if path.suffix != ".py":
+            continue
+        relative = path.relative_to(scenario.root).as_posix()
+        try:
+            source = path.read_bytes()
+        except OSError as exc:
+            raise BankError(
+                f"scenario {scenario.slug!r} cannot read {relative}: {exc}"
+            ) from exc
+        try:
+            ast.parse(source, filename=relative)
+        except (SyntaxError, ValueError) as exc:
+            detail = getattr(exc, "msg", None) or str(exc)
+            line = getattr(exc, "lineno", None)
+            location = relative if line is None else f"{relative}:{line}"
+            raise BankError(
+                f"scenario {scenario.slug!r} ships Python that does not parse: "
+                f"{location}: {detail}"
+            ) from exc
+
+
+def _validate_calibration_probe_shape(
+    scenario: Scenario,
+    calibration_cases: Sequence[Any],
+) -> None:
+    """Check the calibration file for what its own bytes settle, and no more.
+
+    A probe states a fact about the evaluator at run time: ``good`` and
+    ``equivalent_good`` score like the recorded label, ``partial`` and ``bad``
+    do not. That is a claim about behaviour, and this module never runs the
+    evaluator, so it is not a claim this check can confirm or refute -- an
+    earlier version confirmed it against a class partition the manifest
+    declared about itself, which established only that the manifest agreed with
+    the manifest.
+
+    What the file's bytes do settle is that a probe is a probe: a named,
+    non-empty label sitting under a case that records one.
+    """
+
+    field = "catalog.components.evaluator.calibration.path"
+    for case_index, case in enumerate(calibration_cases):
+        probes = case.get(CALIBRATION_PROBES_KEY)
+        if probes is None:
+            continue
+        if not isinstance(probes, dict):
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"case {case_index} {CALIBRATION_PROBES_KEY!r} must be a JSON object",
+            )
+        expected = case.get(CALIBRATION_EXPECTED_KEY)
+        if not isinstance(expected, str) or not expected.strip():
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"case {case_index} needs a non-empty "
+                f"{CALIBRATION_EXPECTED_KEY!r} label before its probes mean anything",
+            )
+        for probe_name in CALIBRATION_PROBE_NAMES:
+            probe_value = probes.get(probe_name)
+            if probe_value is None:
+                continue
+            if not isinstance(probe_value, str) or not probe_value.strip():
+                raise _catalog_materialized_error(
+                    scenario,
+                    field,
+                    f"case {case_index} probe {probe_name!r} must be a "
+                    "non-empty string",
+                )
+        unknown = sorted(set(probes) - set(CALIBRATION_PROBE_NAMES))
+        if unknown:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"case {case_index} declares probes this contract does not "
+                f"know: {', '.join(unknown)}",
+            )
 
 
 def _validate_catalog_materialized(scenario: Scenario) -> None:
@@ -1832,6 +2332,30 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
             f"catalog.components.data.paths[{index}]",
             scenario.project_dir,
         )
+
+    # A declared non-dataset file has to be a file that is there, for the same
+    # reason the spelling gate's skip list has to match a tracked path: a skip
+    # that names nothing is a blind spot no one can see. And naming a file is
+    # not a way to stop it being task data: the entry says "this ships and is a
+    # record", so the rows are read to see whether they carry a label surface.
+    for index, other_path in enumerate(catalog["non_dataset_files"]):
+        field = f"catalog.non_dataset_files[{index}]"
+        record = _catalog_regular_file(
+            scenario,
+            other_path,
+            field,
+            scenario.project_dir,
+        )
+        disguised = _record_label_columns(scenario, record, field)
+        if disguised:
+            raise _catalog_materialized_error(
+                scenario,
+                field,
+                f"declares {other_path} a record rather than task data, but its "
+                f"rows carry a closed label surface in {', '.join(disguised)}. "
+                "A worker receives it either way, so a labelled row stream is a "
+                "dataset profile, not a non-dataset file",
+            )
 
     evaluator = components["evaluator"]
     evaluator_path = evaluator["path"]
@@ -1874,6 +2398,7 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
                 "catalog.components.evaluator.calibration.case_count",
                 f"declares {calibration['case_count']} but observed {len(calibration_cases)}",
             )
+        _validate_calibration_probe_shape(scenario, calibration_cases)
 
     for index, dataset in enumerate(catalog["datasets"]):
         _validate_materialized_dataset(scenario, dataset, index)
@@ -1899,6 +2424,10 @@ def validate_materialized(scenario: Scenario) -> dict[str, Any]:
             raise BankError(
                 f"scenario {scenario.slug!r} has no regular files under {label}/"
             )
+    shipped_files = _tracked_scenario_files(scenario, regular_files)
+    _validate_python_sources(scenario, shipped_files)
+    _validate_project_inventory(scenario, shipped_files)
+    _validate_component_inventory(scenario, shipped_files)
     _validate_catalog_materialized(scenario)
     return validate_expected_opening(scenario)
 

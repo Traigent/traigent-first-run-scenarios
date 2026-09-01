@@ -12,6 +12,99 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Formatting, linting, typing and spelling run once, in their own job, on a
+  # single declared interpreter. They are deliberately not steps of the version
+  # matrix below. A step condition that no matrix leg satisfies is reported as
+  # a skipped step, and a job whose steps were all skipped is reported as a
+  # successful job, so a condition repeating a matrix value can retire every
+  # gate here without turning a single run red.
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+
+      - name: Install quality tools
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Check Python formatting
+        run: black --check scenario.py scripts tests
+
+      - name: Lint Python
+        run: ruff check scenario.py scripts tests
+
+      - name: Type-check production Python
+        run: mypy --strict scenario.py scripts/check_public_surface.py
+
+      # The spelling scope comes from the git index rather than a written-out
+      # path list. A renamed or newly added file stays covered, where a stale
+      # list entry was skipped without a warning and quietly shrank the gate.
+      # Generated content is skipped by name, and every skip must still match a
+      # tracked file so the list cannot outlive what it describes. Binary files
+      # are skipped by codespell itself and need no entry here.
+      # A derived scope can also derive to nothing, and a gate that spell-checks
+      # nothing must not report success, so the scope has a floor. It is the
+      # same floor the public-surface guard uses and sits far below the tracked
+      # inventory; an empty checkout or a pathspec that matches nothing falls
+      # under it. The number is read out of the guard rather than written again
+      # here: one floor written down twice is a floor that drifts, and the copy
+      # nobody remembers to edit is the one that quietly stops meaning
+      # anything. A guard this step cannot read, or a floor that is not a whole
+      # number of at least one file, fails the step: falling back to no floor
+      # would disable the very check the floor exists to keep honest.
+      # `set -euo pipefail` is load-bearing here rather than habit:
+      # GitHub's default shell is `bash -e` with no `pipefail`, so without it a
+      # failing `git ls-files` at the head of a pipeline leaves the step green.
+      - name: Check spelling
+        run: |
+          set -euo pipefail
+          floor_source="scripts/check_public_surface.py"
+          if [ ! -f "${floor_source}" ]; then
+            echo "spelling floor source is missing: ${floor_source}" >&2
+            exit 1
+          fi
+          minimum_files="$(python -c 'import importlib.util, sys; specification = importlib.util.spec_from_file_location("public_surface_guard", sys.argv[1]); module = importlib.util.module_from_spec(specification); sys.modules[specification.name] = module; specification.loader.exec_module(module); print(module._DEFAULT_MINIMUM_FILES)' "${floor_source}")"
+          case "${minimum_files}" in
+            "" | *[!0-9]*)
+              echo "spelling floor read from ${floor_source} is not a whole number: ${minimum_files}" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${minimum_files}" -lt 1 ]; then
+            echo "spelling floor read from ${floor_source} covers no files: ${minimum_files}" >&2
+            exit 1
+          fi
+          skipped_paths=(
+            "presentation/package-lock.json"
+          )
+          exclusions=()
+          for skipped_path in "${skipped_paths[@]}"; do
+            if [ -z "$(git ls-files -- "${skipped_path}")" ]; then
+              echo "spelling skip matches no tracked file: ${skipped_path}" >&2
+              exit 1
+            fi
+            exclusions+=(":(exclude)${skipped_path}")
+          done
+          scope_list="$(mktemp)"
+          trap 'rm -f "${scope_list}"' EXIT
+          git ls-files -z -- . "${exclusions[@]}" > "${scope_list}"
+          mapfile -d '' scope_paths < "${scope_list}"
+          if [ "${#scope_paths[@]}" -lt "${minimum_files}" ]; then
+            echo "spelling scope covered ${#scope_paths[@]} file(s), fewer than the required minimum of ${minimum_files}" >&2
+            exit 1
+          fi
+          printf '%s\0' "${scope_paths[@]}" | xargs -0 codespell --
+
   verify:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -37,28 +130,6 @@ jobs:
       - name: Install quality tools
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
 
-      - name: Check Python formatting
-        if: matrix.python-version == '3.13'
-        run: black --check scenario.py scripts tests
-
-      - name: Lint Python
-        if: matrix.python-version == '3.13'
-        run: ruff check scenario.py scripts tests
-
-      - name: Type-check production Python
-        if: matrix.python-version == '3.13'
-        run: mypy --strict scenario.py scripts/check_public_surface.py
-
-      - name: Check spelling
-        if: matrix.python-version == '3.13'
-        run: >-
-          codespell README.md GUIDE.md SECURITY.md CONTRIBUTING.md docs
-          reports/README.md scenario.py scripts tests schema scenarios skills
-          presentation/README.md presentation/src presentation/scripts
-          presentation/tests presentation/index.html presentation/package.json
-          presentation/tsconfig.json presentation/vite.config.ts
-          presentation/vendor/image-size-disabled/README.md
-
       - name: Run unit tests
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
@@ -68,8 +139,32 @@ jobs:
       - name: Check public surface
         run: python scripts/check_public_surface.py
 
+      # Every tracked Python file must parse, including the scenario sources
+      # this repository ships into a customer project. The list is derived from
+      # the git index because compileall reports an unreadable path on stdout
+      # and still exits 0, so a written-out list could go stale unnoticed.
+      # -f is required rather than tidy: compileall otherwise accepts a cached
+      # .pyc whose recorded whole-second source timestamp still matches, so an
+      # edit made inside that second is skipped without a word.
+      # Parsing is a property every published file owes a customer; formatting,
+      # lint rules and strict typing are this repository's house style and are
+      # deliberately not imposed on customer-shaped scenario sources.
+      # The scope has a floor for the same reason the spelling gate does: a
+      # pathspec that matches nothing, or a checkout with no tracked Python,
+      # would otherwise compile nothing and report success.
       - name: Compile Python sources
-        run: python -m compileall -q scenario.py scripts tests
+        run: |
+          set -euo pipefail
+          minimum_files=3
+          scope_list="$(mktemp)"
+          trap 'rm -f "${scope_list}"' EXIT
+          git ls-files -z -- '*.py' > "${scope_list}"
+          mapfile -d '' scope_paths < "${scope_list}"
+          if [ "${#scope_paths[@]}" -lt "${minimum_files}" ]; then
+            echo "compile scope covered ${#scope_paths[@]} Python file(s), fewer than the required minimum of ${minimum_files}" >&2
+            exit 1
+          fi
+          printf '%s\0' "${scope_paths[@]}" | xargs -0 python -m compileall -q -f --
 
   presentation:
     name: Presentation artifacts

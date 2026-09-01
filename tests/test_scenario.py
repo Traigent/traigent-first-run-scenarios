@@ -6,9 +6,11 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import tracemalloc
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -26,6 +28,19 @@ TEST_DATASET_ROW = (
         }
     )
     + "\n"
+)
+
+# A fixture scenario ships an evaluator because a customer-shaped project has
+# one, and because `check` parses every shipped Python file for syntax. Nothing
+# in the catalog contract is derived from what this source says: the shape of
+# its table, and whether it has one at all, are deliberately not read.
+EVALUATOR_SOURCE = (
+    "# SPDX-License-Identifier: Apache-2.0\n"
+    '"""A deterministic label evaluator for fixture scenarios."""\n'
+    "\n"
+    "\n"
+    "def score(output, expected, input_data=None, metadata=None):\n"
+    "    return 1.0 if output == expected else 0.0\n"
 )
 
 
@@ -56,7 +71,7 @@ def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
                 },
                 "evaluator": {
                     "state": "ready",
-                    "path": "project/input.txt",
+                    "path": "project/evaluator.py",
                     "method": "normalized-exact-match",
                     "calibration": {"path": None, "case_count": 0},
                 },
@@ -83,8 +98,7 @@ def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
                     "label_shape": {
                         "kind": "mapped-labels",
                         "surface_label_count": 1,
-                        "normalized_class_count": 1,
-                        "normalization_map": {"A": "class-a"},
+                        "label_counts": {"A": 1},
                     },
                     "limitations": ["traigent-authored-synthetic"],
                 }
@@ -183,6 +197,10 @@ class ScenarioBankTests(unittest.TestCase):
         if materialized:
             (root / "project" / "input.txt").write_text(
                 TEST_DATASET_ROW,
+                encoding="utf-8",
+            )
+            (root / "project" / "evaluator.py").write_text(
+                EVALUATOR_SOURCE,
                 encoding="utf-8",
             )
             (root / "verifier" / "expected-opening.json").write_text(
@@ -477,6 +495,12 @@ class ScenarioBankTests(unittest.TestCase):
             ),
         )
         self.assertEqual(scenario.DATASET_KEYS, set(dataset_schema["required"]))
+        for optional_key in scenario.OPTIONAL_DATASET_KEYS:
+            self.assertIn(optional_key, dataset_properties)
+            self.assertNotIn(optional_key, dataset_schema["required"])
+        for optional_key in scenario.OPTIONAL_CATALOG_KEYS:
+            self.assertIn(optional_key, catalog_properties)
+            self.assertNotIn(optional_key, catalog_schema["required"])
         self.assertEqual(
             scenario.COUNT_DIMENSION_KEYS,
             set(definitions["countDimension"]["required"]),
@@ -504,6 +528,16 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(
             scenario.LABEL_SHAPES,
             set(definitions["labelShape"]["properties"]["kind"]["enum"]),
+        )
+        self.assertEqual(
+            scenario.EVALUATOR_METHODS,
+            set(definitions["evaluatorMethod"]["enum"]),
+            "the evaluator method decides how many labels a catalog may claim, "
+            "so the schema and the runtime must offer the same closed set",
+        )
+        self.assertEqual(
+            scenario.MAPPED_LABEL_SHAPE,
+            "mapped-labels",
         )
         self.assertEqual(
             scenario.DATASET_FORMATS,
@@ -611,8 +645,7 @@ class ScenarioBankTests(unittest.TestCase):
                 "label_shape": {
                     "kind": "absent",
                     "surface_label_count": 0,
-                    "normalized_class_count": 0,
-                    "normalization_map": {},
+                    "label_counts": {},
                 },
             }
         )
@@ -717,11 +750,13 @@ class ScenarioBankTests(unittest.TestCase):
         dataset["state"] = "limited"
         dataset["splits"] = {"field": None, "counts": {}}
         dataset["difficulty_strata"] = {"field": None, "counts": {}}
+        # Dropping the split and difficulty dimensions leaves the rows' metadata
+        # column described by nothing, which is what passthrough_fields is for.
+        dataset["passthrough_fields"] = ["metadata"]
         dataset["label_shape"] = {
             "kind": "free-text",
             "surface_label_count": 0,
-            "normalized_class_count": 0,
-            "normalization_map": {},
+            "label_counts": {},
         }
         (root / "scenario.json").write_text(
             json.dumps(manifest),
@@ -745,8 +780,7 @@ class ScenarioBankTests(unittest.TestCase):
                 "label_shape": {
                     "kind": "absent",
                     "surface_label_count": 0,
-                    "normalized_class_count": 0,
-                    "normalization_map": {},
+                    "label_counts": {},
                 },
             }
         )
@@ -759,6 +793,1087 @@ class ScenarioBankTests(unittest.TestCase):
 
         self.assertEqual(0, status, error)
         self.assertIn("OK: limited-data", output)
+
+    def write_dataset(self, root: Path, *labels: str) -> None:
+        rows = "".join(
+            json.dumps(
+                {
+                    "input": f"example-{index}",
+                    "output": label,
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            )
+            + "\n"
+            for index, label in enumerate(labels)
+        )
+        (root / "project" / "input.txt").write_text(rows, encoding="utf-8")
+
+    def labelled_manifest(
+        self,
+        slug: str,
+        legacy_id: int,
+        *,
+        rows: int,
+        label_counts: dict[str, int],
+    ) -> dict[str, object]:
+        manifest = valid_manifest(slug, legacy_id)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "rows": rows,
+                "unique_inputs": rows,
+                "splits": {"field": "metadata.split", "counts": {"tuning": rows}},
+                "difficulty_strata": {
+                    "field": "metadata.difficulty",
+                    "counts": {"easy": rows},
+                },
+                "label_shape": {
+                    "kind": "mapped-labels",
+                    "surface_label_count": len(label_counts),
+                    "label_counts": label_counts,
+                },
+            }
+        )
+        return manifest
+
+    def write_evaluator(self, root: Path, source: str) -> None:
+        (root / "project" / "evaluator.py").write_text(source, encoding="utf-8")
+
+    def write_manifest(self, root: Path, manifest: dict[str, object]) -> None:
+        (root / "scenario.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    def test_declared_label_counts_must_match_the_rows_that_ship(self) -> None:
+        """The catalog's label facts are facts about the bytes, checked against them."""
+
+        root = self.create_scenario("counted-labels", 90)
+        self.write_dataset(root, "SEV1", "SEV1", "SEV2")
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "counted-labels",
+                90,
+                rows=3,
+                label_counts={"SEV1": 1, "SEV2": 2},
+            ),
+        )
+
+        status, output, error = self.run_cli("check", "counted-labels")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("declares {'SEV1': 1, 'SEV2': 2}", error)
+        self.assertIn("carries {'SEV1': 2, 'SEV2': 1}", error)
+
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "counted-labels",
+                90,
+                rows=3,
+                label_counts={"SEV1": 2, "SEV2": 1},
+            ),
+        )
+
+        status, output, error = self.run_cli("check", "counted-labels")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: counted-labels", output)
+
+    def test_a_label_string_the_catalog_does_not_list_is_refused(self) -> None:
+        root = self.create_scenario("unlisted-label", 91)
+        self.write_dataset(root, "SEV1", "SEV9")
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "unlisted-label",
+                91,
+                rows=2,
+                label_counts={"SEV1": 2},
+            ),
+        )
+
+        status, output, error = self.run_cli("check", "unlisted-label")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("does not cover observed label 'SEV9'", error)
+
+    def test_spellings_that_differ_only_in_case_are_separate_label_strings(
+        self,
+    ) -> None:
+        """The catalog counts strings, because strings are what the rows carry.
+
+        Whether an evaluator folds ``SEV1`` and ``sev1`` together is a fact
+        about the evaluator at run time. It is not asserted here, so it cannot
+        be forged here, and the catalog describes the twelve-or-so spellings a
+        reader would find by opening the file.
+        """
+
+        root = self.create_scenario("case-varied-labels", 92)
+        self.write_dataset(root, "SEV1", "sev1", "Sev-1")
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "case-varied-labels",
+                92,
+                rows=3,
+                label_counts={"SEV1": 1, "sev1": 1, "Sev-1": 1},
+            ),
+        )
+
+        status, output, error = self.run_cli("check", "case-varied-labels")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: case-varied-labels", output)
+
+    def test_the_manifest_contract_carries_no_claim_about_the_evaluator(self) -> None:
+        """The forgeable claim is removed from the contract, not merely unchecked.
+
+        ``normalization_map`` and ``normalized_class_count`` said which
+        spellings the evaluator scores alike, which is a property of the
+        evaluator when it runs. Nothing that never runs it can establish that,
+        so the contract no longer has the words for it.
+        """
+
+        self.assertEqual(
+            {"kind", "label_counts", "surface_label_count"},
+            scenario.LABEL_SHAPE_KEYS,
+        )
+
+        removed_keys = ("normalization_map", "normalized_class_count")
+        for index, removed in enumerate(removed_keys):
+            with self.subTest(key=removed):
+                slug = f"legacy-claim-{index}"
+                root = self.create_scenario(slug, 93 + index)
+                manifest = valid_manifest(slug, 93 + index)
+                catalog = manifest["catalog"]
+                assert isinstance(catalog, dict)
+                catalog["datasets"][0]["label_shape"][removed] = {}
+                self.write_manifest(root, manifest)
+
+                status, output, error = self.run_cli("check", slug)
+                self.write_manifest(root, valid_manifest(slug, 93 + index))
+
+                self.assertNotEqual(0, status, output)
+                self.assertIn(removed, error)
+
+    def test_what_an_evaluator_tells_apart_is_never_read_from_its_source(self) -> None:
+        """A published evaluator is customer-shaped code, not a declaration.
+
+        Reading a dict literal out of it and calling that literal the
+        evaluator's table was forgeable in two lines and refused honest
+        evaluators in seven shapes at once. None of these sources says anything
+        the catalog is checked against, so all of them are accepted -- and a
+        collapsed table is neither caught nor claimed.
+        """
+
+        root = self.create_scenario("evaluator-shapes", 94)
+        self.write_dataset(root, "SEV1", "SEV1", "SEV2", "SEV2")
+        self.write_manifest(
+            root,
+            self.labelled_manifest(
+                "evaluator-shapes",
+                94,
+                rows=4,
+                label_counts={"SEV1": 2, "SEV2": 2},
+            ),
+        )
+        head = "# SPDX-License-Identifier: Apache-2.0\n"
+        tail = (
+            "\n\ndef score(output, expected, input_data=None, metadata=None):\n"
+            "    return 1.0 if output == expected else 0.0\n"
+        )
+        shapes: tuple[tuple[str, str], ...] = (
+            (
+                "no table at all",
+                head + "def score(output, expected):\n    return 0.0\n",
+            ),
+            (
+                "two module-level tables",
+                head + 'FIRST = {"sev1": 1}\nSECOND = {"sev1": 2}\n' + tail,
+            ),
+            (
+                "a second dict beside the table",
+                head
+                + 'LEVELS = {"sev1": 1, "sev2": 2}\nMODES = {"binary": 1.0}\n'
+                + tail,
+            ),
+            (
+                "an annotated second dict",
+                head
+                + 'LEVELS = {"sev1": 1, "sev2": 2}\n'
+                + 'BOARD: dict[str, str] = {"owner": "review-board"}\n'
+                + tail,
+            ),
+            (
+                "a table built by a call",
+                head + "LEVELS = dict(sev1=1, sev2=2)\n" + tail,
+            ),
+            (
+                "table values written int(1)",
+                head + 'LEVELS = {"sev1": int(1), "sev2": int(2)}\n' + tail,
+            ),
+            (
+                "an if/elif scorer",
+                head
+                + "def _level(label):\n"
+                + '    if label == "SEV1":\n        return 1\n'
+                + '    if label == "SEV2":\n        return 2\n'
+                + "    return None\n"
+                + tail,
+            ),
+            (
+                "a table on a class, the idiom the SDK uses",
+                head
+                + "class Grader:\n"
+                + '    LEVELS = {"sev1": 1, "sev2": 2}\n'
+                + tail,
+            ),
+            (
+                "a table collapsed to one class after it is written",
+                head
+                + 'LEVELS = {"sev1": 1, "sev2": 2}\n'
+                + "LEVELS = dict.fromkeys(LEVELS, 1)\n"
+                + tail,
+            ),
+        )
+        for name, source in shapes:
+            with self.subTest(evaluator=name):
+                self.write_evaluator(root, source)
+                self.commit_repository_paths(root, message=f"Ship {name}")
+
+                status, output, error = self.run_cli("check", "evaluator-shapes")
+
+                self.assertEqual(0, status, error)
+                self.assertIn("OK: evaluator-shapes", output)
+
+    def test_a_component_declared_missing_may_not_ship_its_own_source(self) -> None:
+        """`state` cannot deny a component whose source lands in the checkout.
+
+        ``missing`` forces the component's ``path`` to null, so a check keyed on
+        the declared path checks nothing at all here -- which is how the
+        declaration used to switch off its own contradiction. The files that
+        ship are asked instead.
+        """
+
+        cases: tuple[tuple[str, str, bool], ...] = (
+            ("needs-repair", "needs-repair", True),
+            ("limited", "limited", True),
+            ("missing", "missing", False),
+        )
+        for index, (name, state, accepted) in enumerate(cases):
+            with self.subTest(state=name):
+                slug = f"evaluator-{name}"
+                root = self.create_scenario(slug, 180 + index)
+                manifest = valid_manifest(slug, 180 + index)
+                catalog = manifest["catalog"]
+                assert isinstance(catalog, dict)
+                catalog["starting_condition"] = "gaps-present"
+                evaluator = catalog["components"]["evaluator"]
+                evaluator["state"] = state
+                if state == "missing":
+                    evaluator["path"] = None
+                    evaluator["method"] = None
+                self.write_manifest(root, manifest)
+
+                status, output, error = self.run_cli("check", slug)
+
+                if accepted:
+                    self.assertEqual(0, status, error)
+                    self.assertIn(f"OK: {slug}", output)
+                else:
+                    self.assertNotEqual(
+                        0,
+                        status,
+                        "the evaluator source still reaches the worker, so a "
+                        "catalog that denies the component is contradicted by "
+                        "its own bytes",
+                    )
+                    self.assertIn("project/evaluator.py", error)
+
+    def test_a_missing_component_cannot_be_laundered_as_a_non_dataset_file(
+        self,
+    ) -> None:
+        """Naming the source under another key does not make the component absent."""
+
+        root = self.create_scenario("laundered-evaluator", 184)
+        manifest = valid_manifest("laundered-evaluator", 184)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["starting_condition"] = "gaps-present"
+        catalog["components"]["evaluator"].update(
+            {"state": "missing", "path": None, "method": None}
+        )
+        catalog["non_dataset_files"] = ["project/evaluator.py"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "laundered-evaluator")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("declares this component missing", error)
+        self.assertIn("project/evaluator.py", error)
+
+    def test_a_dataset_that_claims_no_label_surface_needs_no_label_counts(
+        self,
+    ) -> None:
+        """A gap scenario models a broken evaluator; it owes no label list."""
+
+        root = self.create_scenario("free-text-task", 161)
+        self.write_evaluator(
+            root,
+            "def score(output, expected):\n    raise NotImplementedError\n",
+        )
+        manifest = valid_manifest("free-text-task", 161)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["label_shape"] = {
+            "kind": "free-text",
+            "surface_label_count": 0,
+            "label_counts": {},
+        }
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship an unimplemented evaluator")
+
+        status, output, error = self.run_cli("check", "free-text-task")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: free-text-task", output)
+
+    def test_an_unmapped_label_surface_declares_a_count_and_not_a_list(self) -> None:
+        root = self.create_scenario("unmapped-labels", 163)
+        self.write_dataset(root, "SEV1", "SEV2", "SEV2")
+        manifest = self.labelled_manifest(
+            "unmapped-labels", 163, rows=3, label_counts={"SEV1": 1, "SEV2": 2}
+        )
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["label_shape"] = {
+            "kind": "unmapped-labels",
+            "surface_label_count": 3,
+            "label_counts": {},
+        }
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "unmapped-labels")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("carries 2 distinct label strings", error)
+
+        catalog["datasets"][0]["label_shape"]["surface_label_count"] = 2
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "unmapped-labels")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: unmapped-labels", output)
+
+    def write_calibration(self, root: Path, *cases: dict[str, object]) -> None:
+        (root / "project" / "calibration.json").write_text(
+            json.dumps(list(cases), indent=2) + "\n", encoding="utf-8"
+        )
+
+    def calibrated_manifest(
+        self,
+        slug: str,
+        legacy_id: int,
+        *,
+        case_count: int,
+    ) -> dict[str, object]:
+        manifest = self.labelled_manifest(
+            slug,
+            legacy_id,
+            rows=3,
+            label_counts={"SEV1": 1, "P1": 1, "SEV2": 1},
+        )
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["components"]["evaluator"]["calibration"] = {
+            "path": "project/calibration.json",
+            "case_count": case_count,
+        }
+        return manifest
+
+    def test_calibration_probes_must_be_named_non_empty_labels(self) -> None:
+        """What the calibration file's own bytes settle is still checked."""
+
+        malformed: tuple[tuple[str, dict[str, object], str], ...] = (
+            (
+                "probes are not an object",
+                {"expected": "SEV1", "probes": ["good"]},
+                "must be a JSON object",
+            ),
+            (
+                "no recorded label to probe against",
+                {"probes": {"good": "SEV1"}},
+                "needs a non-empty 'expected' label",
+            ),
+            (
+                "a blank probe label",
+                {"expected": "SEV1", "probes": {"good": "   "}},
+                "must be a non-empty string",
+            ),
+            (
+                "a probe name this contract does not know",
+                {"expected": "SEV1", "probes": {"nearly_good": "P1"}},
+                "declares probes this contract does not know",
+            ),
+        )
+        for index, (name, case, expected_error) in enumerate(malformed):
+            with self.subTest(case=name):
+                slug = f"calibration-{index}"
+                root = self.create_scenario(slug, 100 + index)
+                self.write_dataset(root, "SEV1", "P1", "SEV2")
+                self.write_calibration(root, case)
+                self.write_manifest(
+                    root, self.calibrated_manifest(slug, 100 + index, case_count=1)
+                )
+                self.commit_repository_paths(root, message=f"Ship {slug}")
+
+                status, output, error = self.run_cli("check", slug)
+
+                self.assertNotEqual(0, status, output)
+                self.assertEqual("", output)
+                self.assertIn(expected_error, error)
+
+    def test_a_probe_may_name_a_spelling_no_row_carries(self) -> None:
+        """A probe states what the evaluator does, and it is never run here.
+
+        The published calibration file relies on exactly this: it probes
+        ``equivalent_good: "sev4"`` against a recorded ``"Low"``. Whether those
+        two score alike is the evaluator's business at run time, so tying the
+        probe to the dataset's spellings would refuse an honest file to enforce
+        a claim this check cannot make.
+        """
+
+        root = self.create_scenario("calibration-ok", 110)
+        self.write_dataset(root, "SEV1", "P1", "SEV2")
+        self.write_calibration(
+            root,
+            {
+                "expected": "SEV1",
+                "probes": {
+                    "good": "SEV1",
+                    "equivalent_good": "sev1",
+                    "partial": "SEV2",
+                    "bad": "Low",
+                },
+            },
+        )
+        self.write_manifest(
+            root, self.calibrated_manifest("calibration-ok", 110, case_count=1)
+        )
+        self.commit_repository_paths(root, message="Ship a calibration file")
+
+        status, output, error = self.run_cli("check", "calibration-ok")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: calibration-ok", output)
+
+    def test_absent_label_shape_must_match_the_rows_that_ship(self) -> None:
+        root = self.create_scenario("denied-labels", 120)
+        manifest = valid_manifest("denied-labels", 120)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "label_field": None,
+                "label_shape": {
+                    "kind": "absent",
+                    "surface_label_count": 0,
+                    "label_counts": {},
+                },
+            }
+        )
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "denied-labels")
+
+        self.assertNotEqual(0, status)
+        self.assertEqual("", output)
+        self.assertIn("claims this dataset carries no labels", error)
+        self.assertIn("also carries output", error)
+
+        (root / "project" / "input.txt").write_text(
+            json.dumps(
+                {
+                    "input": "example",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        status, output, error = self.run_cli("check", "denied-labels")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: denied-labels", output)
+
+    def write_rows(self, root: Path, rows: list[dict[str, object]]) -> None:
+        (root / "project" / "input.txt").write_text(
+            "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+        )
+
+    def test_a_column_the_task_does_not_use_can_be_declared(self) -> None:
+        """An unlabeled dataset may still carry an ordinary row_id column."""
+
+        root = self.create_scenario("unlabeled-row-id", 170)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": "example",
+                    "row_id": 1,
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            ],
+        )
+        manifest = valid_manifest("unlabeled-row-id", 170)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset["label_field"] = None
+        dataset["label_shape"] = {
+            "kind": "absent",
+            "surface_label_count": 0,
+            "label_counts": {},
+        }
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "unlabeled-row-id")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("which the catalog does not describe", error)
+
+        dataset["passthrough_fields"] = ["row_id"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "unlabeled-row-id")
+
+        self.assertEqual(
+            0,
+            status,
+            "a column the catalog names is a column a captain can see, which is "
+            f"what this check is for: {error}",
+        )
+        self.assertIn("OK: unlabeled-row-id", output)
+
+    def test_every_label_kind_accounts_for_the_columns_its_rows_carry(self) -> None:
+        """The same undeclared column must not pass merely because labels are mapped."""
+
+        root = self.create_scenario("mapped-row-id", 171)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": "example",
+                    "output": "A",
+                    "row_id": 1,
+                    "source_tool": "legacy",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "mapped-row-id")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a mapped-labels dataset receives the same undeclared columns an "
+            "unlabeled one does, so it cannot be held to a looser rule",
+        )
+        self.assertIn("row_id, source_tool", error)
+
+        manifest = valid_manifest("mapped-row-id", 171)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["passthrough_fields"] = ["row_id", "source_tool"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "mapped-row-id")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: mapped-row-id", output)
+
+    def test_a_declared_passthrough_column_must_be_one_the_rows_carry(self) -> None:
+        root = self.create_scenario("stale-passthrough", 172)
+        manifest = valid_manifest("stale-passthrough", 172)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["passthrough_fields"] = ["row_id"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "stale-passthrough")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("which no row carries", error)
+
+    def test_a_passthrough_column_may_not_hide_a_closed_label_surface(self) -> None:
+        """`passthrough_fields` names content the task does not use, not the label.
+
+        This vocabulary was added in the same change that stopped a dataset
+        declaring itself unlabeled while labelled rows shipped, and it reopened
+        that hole: name the label column a passthrough and the claim stood
+        again. A column whose values are a small repeating set of strings is a
+        label surface whatever the catalog calls it.
+        """
+
+        root = self.create_scenario("hidden-labels", 177)
+        manifest = valid_manifest("hidden-labels", 177)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "label_field": None,
+                "label_shape": {
+                    "kind": "absent",
+                    "surface_label_count": 0,
+                    "label_counts": {},
+                },
+                "passthrough_fields": ["output"],
+                "rows": 8,
+                "unique_inputs": 8,
+                "splits": {"field": "metadata.split", "counts": {"tuning": 8}},
+                "difficulty_strata": {
+                    "field": "metadata.difficulty",
+                    "counts": {"easy": 8},
+                },
+            }
+        )
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "output": "SEV1" if index % 2 else "SEV2",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "hidden-labels")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "declaring the label column a passthrough is the same false claim "
+            "the absent shape used to make on its own",
+        )
+        self.assertEqual("", output)
+        self.assertIn("the shape of a label", error)
+
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "output": f"ticket-{index}",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "hidden-labels")
+
+        self.assertEqual(
+            0,
+            status,
+            "a column whose value is different in every row is an identifier, "
+            f"which is exactly what a passthrough column is for: {error}",
+        )
+        self.assertIn("OK: hidden-labels", output)
+
+    def test_a_row_shaped_file_that_is_not_task_data_can_be_declared(self) -> None:
+        """A run record under project/ is not a dataset, and saying so is honest."""
+
+        root = self.create_scenario("run-records", 173)
+        records = root / "project" / "traigent-runs" / "events.jsonl"
+        records.parent.mkdir()
+        records.write_text(
+            "".join(
+                json.dumps({"event": name, "sequence": index}) + "\n"
+                for index, name in enumerate(("started", "scored", "finished"))
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(records, message="Ship a run record")
+
+        status, output, error = self.run_cli("check", "run-records")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("catalog.non_dataset_files", error)
+
+        manifest = valid_manifest("run-records", 173)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "run-records")
+
+        self.assertEqual(
+            0,
+            status,
+            "declaring the file is the workaround the catalog should have had; "
+            f"calling it a dataset would have been the wrong one: {error}",
+        )
+        self.assertIn("OK: run-records", output)
+
+    def test_a_declared_non_dataset_file_must_be_one_that_ships(self) -> None:
+        root = self.create_scenario("stale-non-dataset", 174)
+        manifest = valid_manifest("stale-non-dataset", 174)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "stale-non-dataset")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("catalog.non_dataset_files[0]", error)
+
+        catalog["non_dataset_files"] = ["project/input.txt"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "stale-non-dataset")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a file cannot be a dataset and not a dataset at the same time",
+        )
+        self.assertIn("also declared as dataset paths", error)
+
+    def test_a_shipped_file_the_catalog_does_not_name_is_refused(self) -> None:
+        """Every file a worker receives is named, whatever its bytes look like.
+
+        The sweep this replaces classified a file first and asked for a
+        declaration only for the ones it judged to be dataset rows. Each
+        dressing below walked a labelled row stream past that judgement: a blank
+        line, a leading comment, a byte-order mark, rows written as JSON arrays,
+        and one line too long for the reader to hold. Nothing here reads the
+        bytes, so there is nothing to dress.
+        """
+
+        root = self.create_scenario("undeclared-files", 121)
+        rows = [
+            json.dumps({"input": f"example-{index}", "output": "A"})
+            for index in range(3)
+        ]
+        body = ("\n".join(rows) + "\n").encode("utf-8")
+        arrays = "".join(
+            json.dumps(list(json.loads(row).items())) + "\n" for row in rows
+        ).encode("utf-8")
+        oversized = (
+            b'{"pad": "' + b"x" * (2 * scenario.MAX_DATASET_ROW_BYTES) + b'"}\n' + body
+        )
+        variants: tuple[tuple[str, str, bytes], ...] = (
+            ("a verbatim copy", "project/copy.jsonl", body),
+            (
+                "a blank line inside",
+                "project/spaced.jsonl",
+                ("\n".join(rows[:1] + [""] + rows[1:]) + "\n").encode("utf-8"),
+            ),
+            ("a trailing blank line", "project/trailing.jsonl", body + b"\n"),
+            ("a leading blank line", "project/leading.jsonl", b"\n" + body),
+            ("a foreign suffix", "project/renamed.txt", body),
+            ("a byte-order mark", "project/marked.jsonl", b"\xef\xbb\xbf" + body),
+            ("a leading comment", "project/commented.jsonl", b"# scratch\n" + body),
+            ("rows written as JSON arrays", "project/arrays.jsonl", arrays),
+            ("one line too long to read", "project/oversized.jsonl", oversized),
+            ("bytes that are not text", "project/payload.bin", b"\x00\xff" * 16),
+            ("prose", "project/notes.md", b"# notes\n"),
+        )
+        for name, relative, content in variants:
+            with self.subTest(dressing=name):
+                shipped = root / Path(relative)
+                shipped.write_bytes(content)
+                self.commit_repository_paths(shipped, message=f"Ship {relative}")
+
+                status, output, error = self.run_cli("check", "undeclared-files")
+
+                self.assertNotEqual(0, status, output)
+                self.assertEqual("", output)
+                self.assertIn("ships files the catalog does not name", error)
+                self.assertIn(relative, error)
+
+                shipped.unlink()
+                self.commit_repository_paths(root, message=f"Withdraw {relative}")
+
+        status, output, error = self.run_cli("check", "undeclared-files")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: undeclared-files", output)
+
+    def test_shipped_files_nested_below_the_project_directory_are_swept(self) -> None:
+        """`prepare` copies the whole project tree, not only its top level."""
+
+        root = self.create_scenario("nested-file", 134)
+        nested = root / "project" / "extra" / "rows.jsonl"
+        nested.parent.mkdir()
+        nested.write_text(
+            "".join(
+                json.dumps({"input": f"example-{index}", "output": "A"}) + "\n"
+                for index in range(2)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(nested, message="Ship nested rows")
+
+        status, output, error = self.run_cli("check", "nested-file")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("ships files the catalog does not name", error)
+        self.assertIn("project/extra/rows.jsonl", error)
+
+    def test_untracked_scratch_files_are_not_refused(self) -> None:
+        """`prepare` copies recorded Git blobs, so a worker never sees these."""
+
+        root = self.create_scenario("scratch-file", 135)
+        scratch = root / "project" / "scratch.jsonl"
+        scratch.write_text(
+            "".join(
+                json.dumps({"input": f"example-{index}", "output": "A"}) + "\n"
+                for index in range(2)
+            ),
+            encoding="utf-8",
+        )
+
+        status, output, error = self.run_cli("check", "scratch-file")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: scratch-file", output)
+
+        self.commit_repository_paths(scratch, message="Track the scratch rows")
+
+        status, output, error = self.run_cli("check", "scratch-file")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "tracking the same bytes puts them in the worker's checkout, so the "
+            "sweep that was right to ignore them must now refuse them",
+        )
+        self.assertIn("project/scratch.jsonl", error)
+
+    def test_a_bank_inside_a_foreign_work_tree_keeps_its_sweeps(self) -> None:
+        """Unpacking the bank inside someone else's repository must not
+        silently disable the shipped-file sweeps.
+
+        There `git ls-files` succeeds with no output; reading that as "nothing
+        ships" would make every sweep vacuously green, so trackedness falls
+        back to keeping every regular file instead.
+        """
+
+        root = self.create_scenario("foreign-tree", 136)
+        planted = root / "project" / "rows.jsonl"
+        planted.write_text(
+            "".join(
+                json.dumps({"input": f"example-{index}", "output": "SEV1"}) + "\n"
+                for index in range(2)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(planted, message="Ship undeclared rows")
+
+        status, _, error = self.run_cli("check", "foreign-tree")
+        self.assertNotEqual(0, status, "sanity: refused in its own repository")
+        self.assertIn("ships files the catalog does not name", error)
+
+        with tempfile.TemporaryDirectory() as outer_name:
+            outer = Path(outer_name)
+            subprocess.run(["git", "init", "-q", os.fspath(outer)], check=True)
+            foreign_root = outer / "unpacked-bank"
+            shutil.copytree(
+                self.repository_root,
+                foreign_root,
+                ignore=shutil.ignore_patterns(".git"),
+            )
+            output = io.StringIO()
+            foreign_error = io.StringIO()
+            status = scenario.main(
+                ["check", "foreign-tree"],
+                scenarios_dir=foreign_root / "scenarios",
+                repository_root=foreign_root,
+                output=output,
+                error=foreign_error,
+            )
+
+        self.assertNotEqual(0, status, output.getvalue())
+        self.assertIn("ships files the catalog does not name", foreign_error.getvalue())
+
+    def test_a_declared_record_may_not_be_a_labelled_row_stream(self) -> None:
+        """Naming a dataset a record is not a way to ship it undeclared."""
+
+        root = self.create_scenario("named-dataset", 175)
+        records = root / "project" / "traigent-runs" / "events.jsonl"
+        records.parent.mkdir()
+        labelled = [
+            {"input": f"example-{index}", "output": "SEV1" if index % 2 else "SEV2"}
+            for index in range(8)
+        ]
+        manifest = valid_manifest("named-dataset", 175)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+
+        for name, payload in (
+            (
+                "rows as objects",
+                "".join(json.dumps(row) + "\n" for row in labelled),
+            ),
+            (
+                "rows as arrays",
+                "".join(
+                    json.dumps([row["input"], row["output"]]) + "\n" for row in labelled
+                ),
+            ),
+        ):
+            with self.subTest(shape=name):
+                records.write_text(payload, encoding="utf-8")
+                self.commit_repository_paths(root, message=f"Ship {name}")
+
+                status, output, error = self.run_cli("check", "named-dataset")
+
+                self.assertNotEqual(0, status, output)
+                self.assertIn("carry a closed label surface", error)
+
+        records.write_text(
+            "".join(
+                json.dumps({"event": f"step-{index}", "sequence": index}) + "\n"
+                for index in range(8)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship a real run record")
+
+        status, output, error = self.run_cli("check", "named-dataset")
+
+        self.assertEqual(
+            0,
+            status,
+            "a record whose columns are identifiers and numbers is what a run "
+            f"log looks like, and declaring it is honest: {error}",
+        )
+        self.assertIn("OK: named-dataset", output)
+
+    def test_a_declared_record_with_a_line_too_long_to_read_is_refused(self) -> None:
+        """A line this check cannot read is not a line it may vouch for."""
+
+        root = self.create_scenario("unreadable-record", 176)
+        records = root / "project" / "traigent-runs" / "events.jsonl"
+        records.parent.mkdir()
+        records.write_bytes(
+            b'{"pad": "' + b"x" * (2 * scenario.MAX_DATASET_ROW_BYTES) + b'"}\n'
+        )
+        manifest = valid_manifest("unreadable-record", 176)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship an unreadable record")
+
+        status, output, error = self.run_cli("check", "unreadable-record")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("carries a line longer than", error)
+
+    def test_reading_a_declared_record_does_not_read_it_whole(self) -> None:
+        """The scan costs the columns of one row, not the length of the file."""
+
+        root = self.create_scenario("large-record", 136)
+        records = root / "project" / "traigent-runs" / "events.jsonl"
+        records.parent.mkdir()
+        size = 16 * scenario.MAX_DATASET_ROW_BYTES
+        line = json.dumps({"event": "step", "note": "x" * 200}) + "\n"
+        records.write_text(line * (size // len(line)), encoding="utf-8")
+        manifest = valid_manifest("large-record", 136)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a large run record")
+
+        tracemalloc.start()
+        try:
+            status, output, error = self.run_cli("check", "large-record")
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: large-record", output)
+        self.assertLess(
+            peak,
+            4 * scenario.MAX_DATASET_ROW_BYTES,
+            "scanning a declared record must cost the longest line the bank can "
+            f"accept, not the size of the file; this one is {size} bytes",
+        )
+
+    def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
+        root = self.create_scenario("unparsable-code", 122)
+        manifest = valid_manifest("unparsable-code", 122)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["components"]["agent"]["path"] = "project/agent.py"
+        self.write_manifest(root, manifest)
+        agent = root / "project" / "agent.py"
+        sentinel = Path(self.temporary_directory.name) / "agent-executed"
+        agent.write_text(
+            "from pathlib import Path\n"
+            f"Path({str(sentinel)!r}).write_text('ran', encoding='utf-8')\n"
+            "def broken(:\n",
+            encoding="utf-8",
+        )
+
+        self.commit_repository_paths(agent, message="Ship unparsable Python")
+
+        status, output, error = self.run_cli("check", "unparsable-code")
+
+        self.assertNotEqual(0, status)
+        self.assertEqual("", output)
+        self.assertIn("ships Python that does not parse", error)
+        self.assertIn("project/agent.py:3", error)
+        self.assertFalse(sentinel.exists())
+
+        agent.write_text(
+            "from pathlib import Path\n"
+            f"Path({str(sentinel)!r}).write_text('ran', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(agent, message="Repair the shipped Python")
+
+        status, output, error = self.run_cli("check", "unparsable-code")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: unparsable-code", output)
+        self.assertFalse(sentinel.exists())
+
+    def test_published_scenario_bank_passes_check(self) -> None:
+        output = io.StringIO()
+        error = io.StringIO()
+
+        status = scenario.main(
+            ["check"],
+            scenarios_dir=scenario.DEFAULT_SCENARIOS_DIR,
+            repository_root=scenario.REPOSITORY_ROOT,
+            output=output,
+            error=error,
+        )
+
+        self.assertEqual(0, status, error.getvalue())
+        self.assertEqual("", error.getvalue())
+        self.assertIn("OK: ", output.getvalue())
 
     def test_catalog_rejects_declared_dataset_facts_that_do_not_match_rows(
         self,
@@ -803,8 +1918,7 @@ class ScenarioBankTests(unittest.TestCase):
                         "label_shape": {
                             "kind": "mapped-labels",
                             "surface_label_count": 1,
-                            "normalized_class_count": 1,
-                            "normalization_map": {"B": "class-b"},
+                            "label_counts": {"B": 1},
                         }
                     }
                 ),
@@ -821,7 +1935,7 @@ class ScenarioBankTests(unittest.TestCase):
                 self.assertEqual("", output)
                 self.assertIn(expected, error)
 
-    def test_catalog_validates_unique_inputs_and_normalized_class_count(self) -> None:
+    def test_catalog_validates_unique_inputs_and_surface_label_count(self) -> None:
         root = self.create_scenario("identity-facts", 83)
         manifest = valid_manifest("identity-facts", 83)
         dataset = manifest["catalog"]["datasets"][0]
@@ -841,17 +1955,15 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertIn("unique_inputs", error)
         self.assertIn("declares 2 but observed 1", error)
 
-        invalid_classes = valid_manifest("identity-facts", 83)
-        invalid_classes["catalog"]["datasets"][0]["label_shape"][
-            "normalized_class_count"
-        ] = 2
+        overstated = valid_manifest("identity-facts", 83)
+        overstated["catalog"]["datasets"][0]["label_shape"]["surface_label_count"] = 2
         (root / "scenario.json").write_text(
-            json.dumps(invalid_classes),
+            json.dumps(overstated),
             encoding="utf-8",
         )
         status, _, error = self.run_cli("list")
         self.assertNotEqual(0, status)
-        self.assertIn("must equal the number of distinct normalized classes", error)
+        self.assertIn("must equal the number of label_counts entries", error)
 
     def test_catalog_rejects_missing_paths_and_non_array_calibration(self) -> None:
         root = self.create_scenario("catalog-paths", 84)
@@ -913,8 +2025,7 @@ class ScenarioBankTests(unittest.TestCase):
                 {
                     "kind": "unmapped-labels",
                     "surface_label_count": 1,
-                    "normalized_class_count": 0,
-                    "normalization_map": {},
+                    "label_counts": {},
                 },
             ),
             (
@@ -923,8 +2034,7 @@ class ScenarioBankTests(unittest.TestCase):
                 {
                     "kind": "free-text",
                     "surface_label_count": 0,
-                    "normalized_class_count": 0,
-                    "normalization_map": {},
+                    "label_counts": {},
                 },
             ),
             (
@@ -933,8 +2043,7 @@ class ScenarioBankTests(unittest.TestCase):
                 {
                     "kind": "numeric",
                     "surface_label_count": 0,
-                    "normalized_class_count": 0,
-                    "normalization_map": {},
+                    "label_counts": {},
                 },
             ),
             (
@@ -943,8 +2052,7 @@ class ScenarioBankTests(unittest.TestCase):
                 {
                     "kind": "structured",
                     "surface_label_count": 0,
-                    "normalized_class_count": 0,
-                    "normalization_map": {},
+                    "label_counts": {},
                 },
             ),
             (
@@ -953,8 +2061,7 @@ class ScenarioBankTests(unittest.TestCase):
                 {
                     "kind": "absent",
                     "surface_label_count": 0,
-                    "normalized_class_count": 0,
-                    "normalization_map": {},
+                    "label_counts": {},
                 },
             ),
         )
@@ -1178,6 +2285,11 @@ class ScenarioBankTests(unittest.TestCase):
 
     def test_prepare_copies_only_worker_project_and_allowlisted_guide(self) -> None:
         root = self.create_scenario("prepared-case", 46)
+        manifest = valid_manifest("prepared-case", 46)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/run-check.sh"]
+        self.write_manifest(root, manifest)
         tracked_runner = root / "project" / "run-check.sh"
         tracked_runner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         tracked_runner.chmod(0o755)
@@ -1192,6 +2304,7 @@ class ScenarioBankTests(unittest.TestCase):
                 "add",
                 "--",
                 tracked_runner_path,
+                os.fspath((root / "scenario.json").relative_to(self.repository_root)),
             ],
             check=True,
         )
@@ -1317,8 +2430,11 @@ class ScenarioBankTests(unittest.TestCase):
             },
             first_manifest["worker"],
         )
-        project_file = first_manifest["inputs"]["scenario_project"]["files"][0]
-        self.assertEqual("input.txt", project_file["path"])
+        project_file = next(
+            item
+            for item in first_manifest["inputs"]["scenario_project"]["files"]
+            if item["path"] == "input.txt"
+        )
         expected_project_bytes = TEST_DATASET_ROW.encode("utf-8")
         self.assertEqual(
             hashlib.sha256(expected_project_bytes).hexdigest(),
@@ -2042,7 +3158,13 @@ class ScenarioBankTests(unittest.TestCase):
         verifier_payload = root / "verifier" / "verifier.py"
         candidate_payload.write_text(payload, encoding="utf-8")
         verifier_payload.write_text(payload, encoding="utf-8")
+        manifest = valid_manifest("inert-code", 24)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/candidate.py"]
+        self.write_manifest(root, manifest)
         self.commit_repository_paths(
+            root / "scenario.json",
             candidate_payload,
             verifier_payload,
             message="Track inert scenario payloads",

@@ -45,7 +45,9 @@ The manifest follows `schema/scenario.schema.json` and includes:
 - `content.license: Apache-2.0`; and
 - a required `catalog` containing the starting condition, component states and
   paths, agent controls, dataset profiles and limitations, evaluator method and
-  calibration facts, expected-route reference, and bounded evidence scope.
+  calibration facts, expected-route reference, and bounded evidence scope. Two
+  optional catalog keys account for content the task does not use:
+  `datasets[].passthrough_fields` and `catalog.non_dataset_files`.
 
 Catalog values are stable machine-readable identifiers and facts, not sales
 copy. Put narrative explanation in the scenario README and presentation
@@ -57,9 +59,71 @@ Represent gaps explicitly instead of fabricating substitutes. Missing paths are
 null, an agent with no usable controls has an empty control list, and an
 unavailable split or difficulty dimension has a null field with empty counts.
 Choose the output shape that matches the materialized rows rather than forcing
-free-text, numeric, structured, or unlabeled data into a mapped-label profile.
-For a present JSONL dataset, declared rows, unique inputs, dimensions, surface
-labels, and normalized classes must match the checked-in bytes exactly.
+free-text, numeric, structured, or unlabeled data into a labelled profile.
+For a present JSONL dataset, declared rows, unique inputs, dimensions, label
+strings and per-label row counts must match the checked-in bytes exactly.
+
+## What the catalog may claim
+
+Every catalog fact this repository checks is a fact about bytes that ship.
+`scenario.py` never imports or executes a scenario file -- shipped Python is
+parsed for syntax and nothing more -- so it cannot establish what a program
+does when it runs, and the contract does not ask a manifest to state it.
+
+That is why `label_shape` describes the label column and not the evaluator:
+
+- `mapped-labels` lists every distinct label string the rows carry, mapped to
+  the number of rows carrying it, in `label_counts`. `surface_label_count` is
+  the number of entries. Both are compared with the file.
+- `unmapped-labels` declares `surface_label_count` and leaves `label_counts`
+  empty, for a dataset whose spellings are too many to list.
+- `absent`, `free-text`, `numeric` and `structured` declare a zero count and an
+  empty `label_counts`.
+
+Two spellings of the same severity are two label strings here, because two
+strings are what the file carries. Whether an evaluator folds them together is
+a property of the evaluator at run time; it is not asserted, so it cannot be
+forged. `components.evaluator.method` is carried as a description of the
+scenario and checked only for being one of `exact-match` or
+`normalized-exact-match`; no count and no gate is derived from it.
+
+**Not established here, on purpose:** whether the shipped evaluator actually
+distinguishes the classes a scenario is built around, and what a constant answer
+would score against it. Establishing that means running the evaluator, or
+diffing a checked-in witness produced by a real run. Until one of those exists,
+no manifest key claims it.
+
+A declaration that switches a check off is itself checked against the bytes:
+
+- Every column a row carries must be named by the catalog: `input_field`,
+  `label_field`, a dimension field, or `passthrough_fields` for the columns the
+  task does not use. This holds for every label shape, so `label_shape.kind:
+  absent` cannot claim rows carry no label while an undescribed column ships.
+  A `passthrough_fields` entry no row carries is refused, so the declaration
+  cannot outlive what it described -- and a passthrough column whose values are
+  a small repeating set of short strings is a label surface whatever the catalog
+  calls it, so an `absent` shape cannot hide the label column behind it.
+- Every file that ships under `project/` must be named by the catalog: a
+  component path, a dataset profile, the calibration record, or
+  `catalog.non_dataset_files` for content that is a record rather than task
+  data. Nothing about a file's bytes decides whether it needs naming, because a
+  check that decides from the bytes is a check a file can be dressed to slip
+  past. Each `non_dataset_files` entry must name a file that is there, and a
+  declared record whose rows carry a closed label surface is refused: naming a
+  dataset a record does not stop it being one.
+- A component declared `missing` may not ship its own source. `missing` forces
+  the component's `path` to null, so the shipped Python under `project/` is
+  what the check reads: with a component declared missing, the only Python that
+  may ship is the source a component that is present names.
+- Calibration `probes` are checked for being named, non-empty labels under a
+  case that records one. What they say about the evaluator -- that
+  `equivalent_good` scores like the recorded label and `bad` does not -- is a
+  run-time property and is not cross-checked against anything.
+- The sweeps read the Git index rather than the directory, because `prepare`
+  copies recorded blobs: an untracked scratch file never reaches a worker.
+  Outside a Git work tree every regular file is swept instead, which covers
+  more rather than fewer.
+- Published Python is parsed for syntax. It is never imported or executed.
 
 The current schema admits only that origin and license pair. Adding another
 origin, license, or third-party work requires a schema and licensing review
