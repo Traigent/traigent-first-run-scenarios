@@ -7,14 +7,18 @@ In this guide, **captain** means the human test operator who prepares the run,
 controls the worker handoff and stop point, and retains evidence.
 
 The repository currently publishes one reference scenario and its expected
-opening contract. It does not publish a recorded worker result. Until a fresh
-run is captured and verified, describe the opening as **expected**, not
-**verified**.
+opening contract (**published** means checked into this public repository as
+reviewed, versioned files). It does not publish a recorded worker result.
+Until a fresh run is captured and verified, describe the opening as
+**expected**, not **verified**. Every step below works the same way for any
+published scenario; case `46` is the one published today.
 
 ## 1. Create two clean checkouts
 
-Use a disposable directory outside any customer production repository. The
-scenario workflow supports Python 3.11 through 3.13. The selected first-run
+Use a disposable directory outside any customer production repository, and
+outside any workspace an existing coding-agent session already has as context
+— the worker must later open the prepared copy with none of these
+repositories in its supplied context. The scenario workflow supports Python 3.11 through 3.13. The selected first-run
 guide must be a local checkout so the run can identify exactly which guide
 bytes were used.
 
@@ -119,6 +123,12 @@ Use the Traigent first-run checkout at ./traigent-first-run and follow ./traigen
 Do not mention the case number, expected band, verifier, grading contract, or
 previous attempts. Do not place this repository or `run.json` in the worker's
 supplied context.
+
+The worker is not told this is a scenario run; only the captain knows the
+case identity. The worker is deliberately
+blinded so that it behaves like a real customer's coding agent: give it
+nothing beyond the prepared project and the printed handoff, and its opening
+reflects what a fresh agent would actually do.
 
 The captain observes the run and stops it at the first question or decision
 that belongs to the human. For this Phase A opening:

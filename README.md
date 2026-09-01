@@ -17,6 +17,11 @@ from a realistic starting point.
   toward; licensed separately and not included here (see
   [Content origin and licensing](#content-origin-and-licensing)).
 
+Throughout this repository, **published** means checked into this public
+repository as reviewed, versioned files. A published scenario or contract is a
+fact you can read and pin to a Git revision — never a recorded run or a
+measured outcome.
+
 **Phase A** is the guide's opening: the coding agent inspects what exists,
 explains the readiness state, and stops at the first question or decision that
 belongs to the human. It needs no Traigent access code, project model-provider
@@ -156,9 +161,23 @@ before using a customer-controlled machine.
 
 ### The reproduction flow at a glance
 
+The whole arc is: **install** (clone both repositories), **isolate** (prepare a
+fresh copy of one scenario outside any workspace an agent has seen), **run the
+guide** (a blinded worker follows the Traigent Guided First Run inside that
+copy), and **verify** (compare its opening against the published contract).
+This flow is per-scenario, not specific to case 46: each published scenario is
+prepared, run, and verified through these same steps — case 46 is simply the
+one published today, and planned scenarios join the catalog the same way. For
+the ready-reference case (46), the prepared project is a complete,
+optimization-ready project, so with the separate human approvals, credentials,
+and cost boundaries in place, the same `customer-project/` can continue past
+the opening into baseline, managed optimization, and results; no such
+continuation is recorded here. Planned families deliberately stop earlier —
+each demonstrates the ask, repair, or safety stop its route exists for.
+
 ```mermaid
 flowchart TD
-    A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
+    A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run,<br/>then pick a published scenario (today: case 46)"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
     B --> C["scenario.py prepare 46<br/>--guide-src ../traigent-first-run --output ../incident-triage-run"]
     C --> D["customer-project/ from tracked Git blobs only,<br/>plus a generated run.json; the verifier, expected opening,<br/>and scenario manifest stay outside"]
     D --> E["One fresh coding-agent session opened in customer-project/,<br/>given only the handoff printed by prepare"]
@@ -167,7 +186,7 @@ flowchart TD
     G --> H["scenario.py verify 46<br/>--run-record run.json --result opening-result.json"]
     H -->|"band, status, recommended_action, caps all match"| I["PASS - the captured Phase A opening<br/>matched the published contract"]
     H -->|"any mismatch"| J["FAIL - every mismatched field reported"]
-    I -.->|"never automatic - separate human approvals"| K["Phase B: live optimization"]
+    I -.->|"never automatic - separate human approvals"| K["Phase B (ready route): the same customer-project/<br/>continues through baseline, managed optimization, and results"]
 ```
 
 ## Three distinct proof layers
