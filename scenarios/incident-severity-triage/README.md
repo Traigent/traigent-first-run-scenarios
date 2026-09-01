@@ -28,11 +28,13 @@ The worker-visible project contains exactly these files:
 - `traigent-runs/calibration-cases.json`
 
 The catalog declares 120 unique labeled reports: 100 tuning and 20 holdout,
-with 30 rows in each of four difficulty strata. The 12 surface labels present
-in the rows map to four normalized severity classes. `scenario.py check`
-derives those counts from the JSONL bytes and compares them with the manifest;
-it also checks that the calibration JSON contains the declared two cases. It
-does not import or execute the agent or evaluator to do so.
+with 30 rows in each of four difficulty strata, and it lists the 12 distinct
+label strings the rows carry with the number of rows carrying each.
+`scenario.py check` derives those counts from the JSONL bytes and compares them
+with the manifest; it also checks that the calibration JSON contains the
+declared two cases. It does not import or execute the agent or evaluator to do
+so, and so it does not establish which of those 12 spellings the evaluator
+scores alike -- the catalog makes no claim about that.
 
 ## Reading `dataset.jsonl`
 
@@ -51,10 +53,15 @@ for readability; the JSONL file stores it on one physical line:
 - `input` - the incident-report text the agent classifies.
 - `output` - the expected label, written as one of 12 **surface labels**
   (`SEV1`-`SEV4`, `P1`-`P4`, `Critical`, `High`, `Medium`, `Low`). Different
-  fictional ticketing systems use different vocabularies; the evaluator
-  normalizes them, so `SEV1`, `P1`, and `Critical` all count as the same class,
-  `severity-1`. The full 12-to-4 map is the dataset entry's `label_shape.normalization_map`
-  under `catalog.datasets` in `scenario.json`.
+  fictional ticketing systems use different vocabularies. The shipped
+  `evaluator.py` normalizes them before comparing, so `SEV1`, `P1`, and
+  `Critical` all count as the same class -- that is a statement about what that
+  file does when it runs, and you can read its table directly. The catalog does
+  not restate it: `check` never imports or executes a scenario file, so it
+  cannot establish what an evaluator distinguishes, and a claim it cannot check
+  is one it does not make. What the catalog does record, and verify against the
+  shipped rows, is `label_shape.label_counts` -- every distinct label string
+  with the number of rows carrying it.
 - `metadata.split` - `tuning` (100 rows) or `holdout` (20 rows). Holdout rows
   are reserved for checking a winner outside the tuning data.
 - `metadata.difficulty` - `easy`, `medium`, `hard`, or `very-hard`, 30 rows

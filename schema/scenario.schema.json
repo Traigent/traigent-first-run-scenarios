@@ -94,8 +94,7 @@
       "required": [
         "kind",
         "surface_label_count",
-        "normalized_class_count",
-        "normalization_map"
+        "label_counts"
       ],
       "properties": {
         "kind": {
@@ -112,11 +111,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "normalized_class_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "normalization_map": {
+        "label_counts": {
           "type": "object",
           "maxProperties": 32,
           "propertyNames": {
@@ -126,7 +121,8 @@
             "pattern": "\\S"
           },
           "additionalProperties": {
-            "$ref": "#/$defs/catalogIdentifier"
+            "type": "integer",
+            "minimum": 1
           }
         }
       },
@@ -147,10 +143,7 @@
               "surface_label_count": {
                 "minimum": 1
               },
-              "normalized_class_count": {
-                "minimum": 1
-              },
-              "normalization_map": {
+              "label_counts": {
                 "minProperties": 1
               }
             }
@@ -172,10 +165,7 @@
               "surface_label_count": {
                 "minimum": 1
               },
-              "normalized_class_count": {
-                "const": 0
-              },
-              "normalization_map": {
+              "label_counts": {
                 "maxProperties": 0
               }
             }
@@ -202,10 +192,7 @@
               "surface_label_count": {
                 "const": 0
               },
-              "normalized_class_count": {
-                "const": 0
-              },
-              "normalization_map": {
+              "label_counts": {
                 "maxProperties": 0
               }
             }
@@ -294,6 +281,14 @@
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/catalogIdentifier"
+          }
+        },
+        "passthrough_fields": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fieldPath"
           }
         }
       },
@@ -407,6 +402,13 @@
         }
       ],
       "additionalProperties": false
+    },
+    "evaluatorMethod": {
+      "type": "string",
+      "enum": [
+        "exact-match",
+        "normalized-exact-match"
+      ]
     }
   },
   "type": "object",
@@ -666,7 +668,7 @@
                 "method": {
                   "oneOf": [
                     {
-                      "$ref": "#/$defs/catalogIdentifier"
+                      "$ref": "#/$defs/evaluatorMethod"
                     },
                     {
                       "type": "null"
@@ -758,7 +760,7 @@
                         "$ref": "#/$defs/relativePath"
                       },
                       "method": {
-                        "$ref": "#/$defs/catalogIdentifier"
+                        "$ref": "#/$defs/evaluatorMethod"
                       }
                     }
                   }
@@ -820,6 +822,14 @@
             }
           },
           "additionalProperties": false
+        },
+        "non_dataset_files": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relativePath"
+          }
         }
       },
       "allOf": [

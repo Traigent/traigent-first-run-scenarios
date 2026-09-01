@@ -1,8 +1,10 @@
 # Traigent First Run Scenarios
 
-Public, reproducible simulated-project scenarios for demonstrating how a coding
-agent begins the [Traigent Guided First Run](https://github.com/Traigent/traigent-first-run)
-from a realistic starting point.
+Public, reproducible simulated-project scenarios: realistic starting points
+for the [Traigent Guided First Run](https://github.com/Traigent/traigent-first-run).
+Today's exercise is the guide's context-isolated opening; the
+route it opens continues, under human approvals, to baseline, managed
+optimization, and results.
 
 **How the pieces fit.** Three things carry the name Traigent here:
 
@@ -17,10 +19,16 @@ from a realistic starting point.
   toward; licensed separately and not included here (see
   [Content origin and licensing](#content-origin-and-licensing)).
 
-Throughout this repository, **published** means checked into this public
-repository as reviewed, versioned files. A published scenario or contract is a
-fact you can read and pin to a Git revision — never a recorded run or a
-measured outcome.
+The subject of this repository is the whole bank of starting points, not one
+case. Every scenario — published and planned — is a realistic starting state
+that the guide takes toward the same finish line: baseline, managed
+optimization, and results. Some starting states have gaps. The guide
+creates, repairs, or reviews what it can, pauses for the human decisions
+that are required, discloses what cannot be closed, and continues; a pause
+is where a human decides, not where the journey ends. The one deliberate
+early stop is the execution-safety family, whose evaluator path would
+execute candidate code or SQL. Case 46 is simply the first
+published starting point: the one that begins with no gaps to fill.
 
 **Phase A** is the guide's opening: the coding agent inspects what exists,
 explains the readiness state, and stops at the first question or decision that
@@ -58,11 +66,14 @@ optimization, not a promise that every project can optimize immediately or
 earn an Excellent opening; the full claims model is in
 [docs/methodology.md](docs/methodology.md).
 
-## Published scenario catalog
+## Scenarios in this repository
 
-The catalog currently contains one released scenario. Other starting
-conditions may be described as coverage targets, but they are not published
-scenarios until their complete directory and validated manifest exist here.
+**Released today: one scenario — `incident-severity-triage` (case 46).** Six
+more families are planned and listed further down; a family becomes a released
+scenario only when its complete directory and validated manifest are checked
+in here. A release is files you can read and pin to a Git revision — never a
+recorded run or a measured outcome. ("Published" and "released" mean the same
+thing here.)
 
 | Scenario                        | Starting condition            | Components                                                       | Expected route                                     | Evidence scope                                                                 |
 | ------------------------------- | ----------------------------- | ---------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -71,16 +82,21 @@ scenarios until their complete directory and validated manifest exist here.
 Its primary dataset is declared and checked as data rather than presentation
 copy:
 
-| Dataset            | Task                        | Shape                                                                                 | Splits                  | Difficulty                             | Important limits                                                                 |
-| ------------------ | --------------------------- | ------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------- | -------------------------------------------------------------------------------- |
-| `incident-reports` | Closed-label classification | 120 unique inputs; 12 observed surface labels mapped to 4 normalized severity classes | 100 tuning / 20 holdout | 30 each: easy, medium, hard, very hard | Traigent-authored synthetic data; no customer data or observed model performance |
+| Dataset | Task | Shape | Splits | Difficulty | Important limits |
+| --- | --- | --- | --- | --- | --- |
+| `incident-reports` | Closed-label classification | 120 unique inputs; 12 distinct label strings, each with its row count | 100 tuning / 20 holdout | 30 each: easy, medium, hard, very hard | Traigent-authored synthetic data; no customer data or observed model performance |
 
 These facts come from the scenario's strict `scenario.json` catalog. `check`
 compares its declared paths, row and unique-input counts, split and difficulty
-counts, label coverage, normalized classes, and evaluator calibration count
-with the materialized files. The presentation can render those facts, but it
-does not own a second copy of them. Field-by-field meaning, with a sample row:
-[reading the dataset](scenarios/incident-severity-triage/README.md#reading-datasetjsonl).
+counts, label strings with their per-label row counts, and evaluator
+calibration count with the materialized files. The presentation can render
+those facts, but it does not own a second copy of them.
+
+Every fact the catalog states is a fact about bytes that ship. `check` never
+imports or executes a scenario file, so it does not establish what the shipped
+evaluator does when it runs -- which spellings it scores alike, or what a
+constant answer would score against it. The catalog therefore does not claim
+it.
 
 See [Scenario and dataset coverage](docs/scenario-coverage.md) for the current
 public case, the explicitly not-yet-published coverage roadmap, dataset-origin
@@ -106,43 +122,71 @@ test results.
 | Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | End this guide run before candidate output executes; any containment and restart procedure is separate and human-governed                                                          | Planned                                                                                |
 | Search-space readiness | The agent has no meaningful varying tunable settings, or declared settings are not wired into requests                                             | Establish and verify real variation before requesting approval for paid search                                                                                                     | Planned                                                                                |
 
-## What you can do here
+In every family except execution safety, the actions above are waypoints, not
+endings: once any gap is closed and the human approves, the run continues
+along the same route toward baseline, optimization, and results. A family
+defines where the opening pauses for a human, not how far the scenario can
+go.
+
+## Run a scenario against the guide
+
+Five steps take a scenario from clone to a verified opening. This is the
+minimal path; [GUIDE.md](GUIDE.md) is the complete, authoritative procedure.
+Case `46` below is today's published scenario; the same steps run any future
+one.
+
+**1. Install** — clone both repositories side by side, in a disposable
+directory outside any workspace a coding-agent session has already seen:
 
 ```bash
 git clone https://github.com/Traigent/traigent-first-run-scenarios.git
+git clone https://github.com/Traigent/traigent-first-run.git
 cd traigent-first-run-scenarios
-
-python scenario.py list
-python scenario.py show 46
-python scenario.py check 46
-python scenario.py check
 ```
 
-These commands inspect and validate the published files, including the expected
-opening contract. They do not launch an agent or execute scenario code.
-
-To prepare a context-isolated Phase A opening run, first clone the public guide
-beside this repository, then choose a new output path whose parent already
-exists:
+**2. Check** — validate the scenario's files (reads data only; runs
+nothing, launches nothing):
 
 ```bash
-git clone https://github.com/Traigent/traigent-first-run ../traigent-first-run
+python scenario.py list
+python scenario.py check 46
+```
+
+**3. Isolate** — prepare a fresh, context-isolated copy of the scenario at a
+new output path whose parent already exists:
+
+```bash
 python scenario.py prepare 46 \
   --guide-src ../traigent-first-run \
   --output ../incident-triage-run
 ```
 
-`prepare` validates both Git checkouts and copies only the recorded Git blobs
-for the tracked worker-visible project and allowlisted guide files into
-`../incident-triage-run/customer-project/`. It requires each stage-zero index
-entry to match the recorded `HEAD`, rechecks both sources before success, and
-records captain-side hashes and both revisions in
-`../incident-triage-run/run.json`. It invokes local Git read-only, but does not
-run scenario code, guide code, a shell, a worker, or a network request.
+`prepare` copies only recorded Git blobs of the worker-visible project and
+allowlisted guide files into `../incident-triage-run/customer-project/`, and
+writes the captain-side identity, both checkout revisions, and content
+hashes to `../incident-triage-run/run.json`. It requires both checkouts clean
+at their recorded `HEAD` and fails loudly otherwise. It invokes local Git
+read-only; it runs no scenario code, shell, worker, or network request.
 
-After a fresh worker returns its machine-readable opening result, save those
-exact JSON bytes outside the worker project and compare them with the public
-semantic contract:
+**4. Run the guide** — open a **new** coding-agent session whose working
+directory is `../incident-triage-run/customer-project/`, and give it only the
+handoff `prepare` printed:
+
+```text
+Help me run my first Traigent optimization.
+Use the Traigent first-run checkout at ./traigent-first-run and follow ./traigent-first-run/GUIDE.md.
+```
+
+Paste the handoff your own `prepare` printed — `run.json` records that exact
+text as evidence; the block above only shows what it looks like.
+
+The worker begins the guide's route on its own. Stop it at the first
+question or decision that belongs to you, and save its machine-readable
+opening readiness JSON outside the project copy. Do not mention this
+repository, the case number, or the expected result — the worker behaves like
+a real customer's coding agent only if it knows nothing else.
+
+**5. Verify** — compare the captured opening with the published contract:
 
 ```bash
 python scenario.py verify 46 \
@@ -150,30 +194,31 @@ python scenario.py verify 46 \
   --result /path/to/opening-result.json
 ```
 
-`verify` binds the result to the scenario contract and Git revision recorded in
-`run.json`, then compares `band`, `status`, `recommended_action`, and `caps`. It
-reads JSON as data and never executes verifier code. Expected `caps` are
-condition slugs; when captured readiness contains full cap objects, `verify`
-compares their `condition` fields and ignores display-only cap details. Follow
-[GUIDE.md](GUIDE.md) for
-the complete workflow and [the customer-PC runbook](docs/customer-pc-runbook.md)
-before using a customer-controlled machine.
+`verify` compares `band`, `status`, `recommended_action`, and `caps` against
+the contract loaded via local Git at the revision recorded in `run.json`,
+reading the result as data. A `PASS` means the four fields matched the
+contract at that recorded revision — nothing more; [GUIDE.md](GUIDE.md)
+states the exact claim boundary.
+
+From there the route continues, not the exercise: with your approvals,
+credentials, and cost boundaries in place, the same `customer-project/`
+proceeds through baseline, managed optimization, and results. No such
+continuation is recorded in this repository. Full workflow detail: [GUIDE.md](GUIDE.md); before using a
+customer-controlled machine, read
+[the customer-PC runbook](docs/customer-pc-runbook.md).
 
 ### The reproduction flow at a glance
 
-The whole arc is: **install** (clone both repositories), **isolate** (prepare a
+The whole arc is: **install** (clone both repositories), **check** (validate
+the scenario package), **isolate** (prepare a
 fresh copy of one scenario outside any workspace an agent has seen), **run the
 guide** (a blinded worker follows the Traigent Guided First Run inside that
 copy), and **verify** (compare its opening against the published contract).
 This flow is per-scenario, not specific to case 46: each published scenario is
 prepared, run, and verified through these same steps — case 46 is simply the
-one published today, and planned scenarios join the catalog the same way. For
-the ready-reference case (46), the prepared project is a complete,
-optimization-ready project, so with the separate human approvals, credentials,
-and cost boundaries in place, the same `customer-project/` can continue past
-the opening into baseline, managed optimization, and results; no such
-continuation is recorded here. Planned families deliberately stop earlier —
-each demonstrates the ask, repair, or safety stop its route exists for.
+one published today, and planned scenarios join the catalog the same way.
+Every Phase A opening — case 46's included — ends at the first question that
+belongs to a human; that is the exercise's boundary, not the route's.
 
 ```mermaid
 flowchart TD
@@ -186,7 +231,7 @@ flowchart TD
     G --> H["scenario.py verify 46<br/>--run-record run.json --result opening-result.json"]
     H -->|"band, status, recommended_action, caps all match"| I["PASS - the captured Phase A opening<br/>matched the published contract"]
     H -->|"any mismatch"| J["FAIL - every mismatched field reported"]
-    I -.->|"never automatic - separate human approvals"| K["Phase B (ready route): the same customer-project/<br/>continues through baseline, managed optimization, and results"]
+    I -.->|"never automatic - separate human approvals"| K["Phase B: the same customer-project/ continues through<br/>baseline, managed optimization, and results"]
 ```
 
 ## Three distinct proof layers

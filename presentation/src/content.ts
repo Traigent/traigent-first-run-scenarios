@@ -89,13 +89,8 @@ const scenarioManifestSchema = z
                       .int()
                       .nonnegative()
                       .optional(),
-                    normalized_class_count: z
-                      .number()
-                      .int()
-                      .nonnegative()
-                      .optional(),
-                    normalization_map: z
-                      .record(z.string().min(1), z.string().min(1))
+                    label_counts: z
+                      .record(z.string().min(1), z.number().int().nonnegative())
                       .optional(),
                   })
                   .passthrough(),
@@ -191,10 +186,13 @@ const splitSummary = countsSummary(dataset.splits.counts);
 const difficultySummary = countsSummary(dataset.difficulty_strata.counts);
 const calibrationCount =
   scenario.catalog.components.evaluator.calibration?.case_count ?? 0;
+// The catalog states the label strings the rows carry and how many rows carry
+// each. What the evaluator folds together is a property of the evaluator when
+// it runs, which the manifest does not claim, so neither does this summary.
 const labelSummary =
   dataset.label_shape.surface_label_count !== undefined &&
-  dataset.label_shape.normalized_class_count !== undefined
-    ? `${dataset.label_shape.surface_label_count} surface labels normalized to ${dataset.label_shape.normalized_class_count} classes`
+  dataset.label_shape.surface_label_count > 0
+    ? `${dataset.label_shape.surface_label_count} distinct label strings across ${dataset.rows} rows`
     : humanize(dataset.label_shape.kind);
 const expectedRouteSummary = `band ${expected.band} · status ${expected.status}${
   expected.status === "OK" ? " (not blocked)" : ""
@@ -653,7 +651,7 @@ const rawPresentation = {
       bullets: [
         `In the example: ${dataset.rows} authored incident reports, ${dataset.unique_inputs} unique inputs; the declared pool is ${splitSummary}`,
         `Even difficulty coverage: ${difficultySummary}, so the row pool does not win its score by concentrating only on easy cases`,
-        `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison`,
+        `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison - evaluator behavior, not a validated catalog claim`,
         "A row value such as provenance: real is part of the scenario's fiction - the simulated user's declaration read by the readiness scorer - not a claim about where the repository file came from",
         "The scenario and expected result are open for anyone to inspect; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
         "The 100/20 split demonstrates separate tuning and holdout pools; a paid run must still record the exact bounded rows it actually uses",

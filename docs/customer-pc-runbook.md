@@ -1,12 +1,12 @@
 # Customer PC Runbook
 
-This runbook is for a Traigent presales engineer or customer representative
-reproducing the public Phase A opening scenario on a customer-controlled
-computer.
+This runbook is for whoever operates a scenario test on a customer-controlled
+computer. It explains, step by step, how to validate a scenario package,
+prepare a context-isolated copy, run the Phase A opening with a fresh coding
+agent, and verify the result. Every step works the same way for every
+scenario in the catalog.
 
-It covers package validation, preparation, a context-isolated worker run, and
-semantic verification. It does not authorize the later credentialed
-optimization path.
+It does not authorize the later credentialed optimization path.
 
 ## Roles
 
@@ -59,7 +59,11 @@ git -C ../traigent-first-run rev-parse HEAD
 Record both revisions. Do not copy credentials or customer files into either
 checkout.
 
-## 3. Validate the published package
+## 3. Validate the scenario package
+
+The commands below use case `46`, today's released scenario. Substitute any
+case number shown by `scenario.py list`, and name the step-4 output path
+after the scenario you run.
 
 ```bash
 python scenario.py list
@@ -72,10 +76,11 @@ Retain the complete output and final status of each command. Confirm the
 scenario title, starting condition, component states and paths, dataset profile
 and limitations, expected route, evidence scope, phase, content origin, and
 license. A green catalog check confirms the declared dataset row, unique-input,
-split, difficulty, label, normalized-class, and calibration counts against the
-published files. It also confirms that the expected opening has valid strict
-structure and value ranges. It still proves package integrity only, not agent
-behavior.
+split, difficulty, per-label, and calibration counts against the published
+files. It also confirms that the expected opening has valid strict structure
+and value ranges. It still proves package integrity only, not agent or
+evaluator behavior: nothing is imported or executed, so what the shipped
+evaluator scores alike is not among the things a green check has confirmed.
 
 If any command fails, stop. Do not repair the published scenario on the
 customer machine or substitute other data.
