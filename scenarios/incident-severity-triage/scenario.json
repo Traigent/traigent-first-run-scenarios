@@ -72,20 +72,19 @@
         "label_shape": {
           "kind": "mapped-labels",
           "surface_label_count": 12,
-          "normalized_class_count": 4,
-          "normalization_map": {
-            "SEV1": "severity-1",
-            "P1": "severity-1",
-            "Critical": "severity-1",
-            "SEV2": "severity-2",
-            "P2": "severity-2",
-            "High": "severity-2",
-            "SEV3": "severity-3",
-            "P3": "severity-3",
-            "Medium": "severity-3",
-            "SEV4": "severity-4",
-            "P4": "severity-4",
-            "Low": "severity-4"
+          "label_counts": {
+            "SEV1": 18,
+            "P1": 6,
+            "Critical": 6,
+            "SEV2": 19,
+            "P2": 5,
+            "High": 6,
+            "SEV3": 18,
+            "P3": 6,
+            "Medium": 6,
+            "SEV4": 17,
+            "P4": 7,
+            "Low": 6
           }
         },
         "limitations": [
