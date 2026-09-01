@@ -51,6 +51,10 @@ class InventoryError(RuntimeError):
     """Raised when the repository inventory cannot be read completely."""
 
 
+# Conservative offline allowlist, verified against the public Traigent GitHub
+# organization on 2026-09-01. Explicit references to any other repository in
+# that organization fail by default. Private repository names therefore never
+# need to live in this public source tree.
 _PUBLIC_TRAIGENT_REPOSITORIES = frozenset(
     {
         "traigent",
