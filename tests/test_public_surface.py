@@ -125,12 +125,49 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertIn("unsupported or ambiguous text encoding", result.stderr)
 
+    def test_a_bare_work_item_reference_is_rejected(self) -> None:
+        """The form the owner-qualified patterns cannot see.
+
+        `<repo>#<number>` carries no `Traigent/` prefix and no URL, so the three
+        patterns above miss it -- and it is the form that actually accumulates
+        in prose and comments. Literals are split so this file does not trip the
+        rule it is testing.
+        """
+        planted = "".join(("agents", "-skil", "ls#314"))
+        (self.repo / "notes.md").write_text(
+            f"See {planted} for the rationale.\n", encoding="utf-8"
+        )
+        self._git("add", "notes.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("notes.md", result.stderr)
+
+    def test_public_work_item_and_plain_numbers_pass(self) -> None:
+        """The false-red half, and it is the reason the rule is not a bare `#N`.
+
+        A public repository's work item, this repository's own pull request, an
+        issue number in prose and an invoice number all have to survive -- the
+        last one because a sibling repository's support-email fixtures carry it.
+        """
+        public = "".join(("traigent", "-first", "-run#79"))
+        (self.repo / "ok.md").write_text(
+            f"See {public}, PR #1 of this repository, issue #244, invoice #4821.\n",
+            encoding="utf-8",
+        )
+        self._git("add", "ok.md")
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_unknown_traigent_repository_reference_is_rejected(self) -> None:
         planted_values = (
             "".join(("Traigent/", "secret")),
             "".join(("Traigent/", "nonpublic-example")),
             "".join(("traigent/", "nonpublic-example")),
-            "".join(("TRAIGENT/", "nonpublic-example#12")),
+            "".join(("TRAIGENT/", "nonpublic-exam", "ple#12")),
             "".join(("https://github.com/Traigent/", "nonpublic-example")),
             "".join(("https://github.com/Traigent/", "nonpublic-example/issues/12")),
             "".join(("git@github.com:Traigent/", "nonpublic-example.git")),
