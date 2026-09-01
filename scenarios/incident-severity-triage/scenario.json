@@ -69,6 +69,9 @@
             "very-hard": 30
           }
         },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
         "label_shape": {
           "kind": "mapped-labels",
           "surface_label_count": 12,

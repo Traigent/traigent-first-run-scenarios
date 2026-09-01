@@ -43,6 +43,19 @@ EVALUATOR_SOURCE = (
     "    return 1.0 if output == expected else 0.0\n"
 )
 
+# A component slot names a file whose bytes read as Python source, so the
+# fixture agent is Python rather than the dataset the fixture used to point the
+# agent slot at. That fixture was the hole in miniature: `agent.path` accepted
+# any regular file under project/, so it accepted the labelled dataset.
+AGENT_SOURCE = (
+    "# SPDX-License-Identifier: Apache-2.0\n"
+    '"""A configurable agent for fixture scenarios."""\n'
+    "\n"
+    "\n"
+    'def run(report, model="small"):\n'
+    "    return report.strip()\n"
+)
+
 
 def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
     return {
@@ -62,7 +75,7 @@ def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
             "components": {
                 "agent": {
                     "state": "ready",
-                    "path": "project/input.txt",
+                    "path": "project/agent.py",
                     "controls": ["model"],
                 },
                 "data": {
@@ -176,6 +189,38 @@ class ScenarioBankTests(unittest.TestCase):
             check=True,
         )
 
+    def remove_repository_paths(self, *paths: Path, message: str) -> None:
+        relative_paths = [
+            os.fspath(path.relative_to(self.repository_root)) for path in paths
+        ]
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                os.fspath(self.repository_root),
+                "rm",
+                "-q",
+                "--",
+                *relative_paths,
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                os.fspath(self.repository_root),
+                "-c",
+                "user.name=Scenario Tests",
+                "-c",
+                "user.email=scenario-tests@example.invalid",
+                "commit",
+                "-qm",
+                message,
+            ],
+            check=True,
+        )
+
     def create_scenario(
         self,
         slug: str,
@@ -197,6 +242,10 @@ class ScenarioBankTests(unittest.TestCase):
         if materialized:
             (root / "project" / "input.txt").write_text(
                 TEST_DATASET_ROW,
+                encoding="utf-8",
+            )
+            (root / "project" / "agent.py").write_text(
+                AGENT_SOURCE,
                 encoding="utf-8",
             )
             (root / "project" / "evaluator.py").write_text(
@@ -768,6 +817,13 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(0, status, error)
         self.assertIn("OK: limited-data", output)
 
+        # Declaring the data missing means the rows stop shipping: `prepare`
+        # hands a worker every tracked file under project/, so a dataset that
+        # stays in the checkout is one the worker finds.
+        self.remove_repository_paths(
+            root / "project" / "input.txt",
+            message="Stop shipping the dataset",
+        )
         catalog["components"]["data"] = {"state": "missing", "paths": []}
         dataset.update(
             {
@@ -1820,6 +1876,504 @@ class ScenarioBankTests(unittest.TestCase):
             f"accept, not the size of the file; this one is {size} bytes",
         )
 
+    def labelled_rows(self, count: int) -> list[dict[str, object]]:
+        return [
+            {
+                "input": f"example-{index}",
+                "output": "SEV1" if index % 2 else "SEV2",
+                "metadata": {"split": "tuning", "difficulty": "easy"},
+            }
+            for index in range(count)
+        ]
+
+    def test_a_component_slot_may_not_name_a_file_that_is_not_source(self) -> None:
+        """A slot has to describe what it names, and only the bytes settle that.
+
+        ``agent.path`` and ``evaluator.path`` were checked for existing, for
+        being a regular file, and for sitting under ``project/``. Nothing read
+        what was in them, so a byte-identical copy of the labelled dataset
+        under the name ``agent.py`` satisfied the slot and ``prepare`` shipped
+        the answer key to a blinded worker as the agent.
+        """
+
+        for index, component in enumerate(("agent", "evaluator")):
+            with self.subTest(component=component):
+                slug = f"slot-{component}"
+                root = self.create_scenario(slug, 300 + index)
+                self.write_rows(root, self.labelled_rows(8))
+                planted = root / "project" / f"{component}_impl.py"
+                planted.write_bytes((root / "project" / "input.txt").read_bytes())
+                manifest = self.labelled_manifest(
+                    slug, 300 + index, rows=8, label_counts={"SEV1": 4, "SEV2": 4}
+                )
+                catalog = manifest["catalog"]
+                assert isinstance(catalog, dict)
+                catalog["components"][component][
+                    "path"
+                ] = f"project/{component}_impl.py"
+                catalog["non_dataset_files"] = [f"project/{component}.py"]
+                self.write_manifest(root, manifest)
+                self.commit_repository_paths(root, message=f"Plant a {component}")
+
+                status, output, error = self.run_cli("check", slug)
+
+                self.assertNotEqual(
+                    0,
+                    status,
+                    "the labelled dataset reaches the worker as the "
+                    f"{component}, which the slot said would hold source",
+                )
+                self.assertEqual("", output)
+                self.assertIn("do not read as Python source", error)
+                self.assertIn(f"project/{component}_impl.py", error)
+
+                self.assertEqual(
+                    hashlib.sha256(planted.read_bytes()).hexdigest(),
+                    hashlib.sha256(
+                        (root / "project" / "input.txt").read_bytes()
+                    ).hexdigest(),
+                    "the planted slot file is the dataset byte for byte",
+                )
+
+                planted.write_text(AGENT_SOURCE, encoding="utf-8")
+                self.commit_repository_paths(root, message="Ship real source")
+
+                status, output, error = self.run_cli("check", slug)
+
+                self.assertEqual(
+                    0,
+                    status,
+                    f"a slot naming Python that does something is honest: {error}",
+                )
+                self.assertIn(f"OK: {slug}", output)
+
+    def test_a_denied_component_may_not_ship_its_source_under_another_name(
+        self,
+    ) -> None:
+        """The suffix is not what decides whether shipped bytes are a component.
+
+        The gate asked ``path.suffix == ".py"``, so ``git mv evaluator.py
+        evaluator.txt`` plus one ``non_dataset_files`` entry passed a catalog
+        that declared the evaluator missing while ``prepare`` handed the
+        blinded worker the byte-identical evaluator.
+        """
+
+        root = self.create_scenario("renamed-evaluator", 302)
+        source = root / "project" / "evaluator.py"
+        renamed = root / "project" / "evaluator.txt"
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        renamed.write_bytes(source.read_bytes())
+        source.unlink()
+        manifest = valid_manifest("renamed-evaluator", 302)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["starting_condition"] = "gaps-present"
+        catalog["components"]["evaluator"].update(
+            {"state": "missing", "path": None, "method": None}
+        )
+        catalog["non_dataset_files"] = ["project/evaluator.txt"]
+        self.write_manifest(root, manifest)
+        self.remove_repository_paths(source, message="Rename the evaluator away")
+        self.commit_repository_paths(root, message="Ship it under a data name")
+
+        status, output, error = self.run_cli("check", "renamed-evaluator")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("declares this component missing", error)
+        self.assertIn("project/evaluator.txt", error)
+        self.assertEqual(
+            digest,
+            hashlib.sha256(renamed.read_bytes()).hexdigest(),
+            "the renamed file is the evaluator byte for byte",
+        )
+
+        renamed.write_text("severity,count\nSEV1,3\nSEV2,4\n", encoding="utf-8")
+        self.commit_repository_paths(root, message="Ship a real record instead")
+
+        status, output, error = self.run_cli("check", "renamed-evaluator")
+
+        self.assertEqual(
+            0,
+            status,
+            f"a data file under a data name is what it says it is: {error}",
+        )
+        self.assertIn("OK: renamed-evaluator", output)
+
+    def test_a_calibration_record_may_not_be_a_labelled_dataset(self) -> None:
+        """A case that probes nothing said nothing, and was skipped rather than refused.
+
+        Skipping it made the slot accept any array of objects, so the labelled
+        rows shipped under the calibration name with a matching ``case_count``.
+        """
+
+        root = self.create_scenario("calibration-dataset", 303)
+        record = root / "project" / "calibration.json"
+        manifest = valid_manifest("calibration-dataset", 303)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["components"]["evaluator"]["calibration"] = {
+            "path": "project/calibration.json",
+            "case_count": 8,
+        }
+        self.write_manifest(root, manifest)
+
+        for name, cases, expected_error in (
+            (
+                "labelled dataset rows",
+                self.labelled_rows(8),
+                "needs a 'probes' object",
+            ),
+            (
+                "cases whose probes are empty",
+                [{"expected": "SEV1", "probes": {}} for _ in range(8)],
+                "'probes' is empty",
+            ),
+        ):
+            with self.subTest(shape=name):
+                record.write_text(json.dumps(cases), encoding="utf-8")
+                self.commit_repository_paths(root, message=f"Ship {name}")
+
+                status, output, error = self.run_cli("check", "calibration-dataset")
+
+                self.assertNotEqual(0, status, output)
+                self.assertEqual("", output)
+                self.assertIn(expected_error, error)
+
+        record.write_text(
+            json.dumps(
+                [
+                    {"expected": "SEV1", "probes": {"good": "SEV1", "bad": "SEV4"}}
+                    for _ in range(8)
+                ]
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship real calibration cases")
+
+        status, output, error = self.run_cli("check", "calibration-dataset")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: calibration-dataset", output)
+
+    def test_one_row_does_not_settle_what_a_whole_record_carries(self) -> None:
+        """A heterogeneous file is the case the scan was never given.
+
+        The scan seeded its candidate columns from the first row and deleted a
+        column globally on the first row whose value was not a short string, so
+        a single junk row in front of a verbatim labelled dataset emptied the
+        candidates and answered "no label surface" for the whole file. Every
+        fixture it had was uniformly well formed, so nothing pinned it.
+        """
+
+        root = self.create_scenario("heterogeneous-record", 304)
+        record = root / "project" / "traigent-runs" / "events.jsonl"
+        record.parent.mkdir()
+        manifest = valid_manifest("heterogeneous-record", 304)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+        labelled = "".join(json.dumps(row) + "\n" for row in self.labelled_rows(8))
+
+        for name, dressing in (
+            ("an empty object", "{}\n"),
+            ("a row whose label is a number", json.dumps({"output": 7}) + "\n"),
+            ("a line of prose", "these are just some notes\n"),
+            ("a bare scalar", "42\n"),
+            ("a comment and a blank line", "# events\n\n"),
+            ("an empty array", "[]\n"),
+        ):
+            with self.subTest(dressing=name):
+                record.write_text(dressing + labelled, encoding="utf-8")
+                self.commit_repository_paths(root, message=f"Dress with {name}")
+
+                status, output, error = self.run_cli("check", "heterogeneous-record")
+
+                self.assertNotEqual(
+                    0,
+                    status,
+                    f"{name} in front of a labelled dataset is dressing, not an "
+                    "answer about the rows behind it",
+                )
+                self.assertEqual("", output)
+                self.assertIn("carry a closed label surface", error)
+
+        record.write_bytes(
+            "\ufeff# events\n".encode("utf-8") + labelled.encode("utf-8")
+        )
+        self.commit_repository_paths(root, message="Dress with a byte-order mark")
+
+        status, output, error = self.run_cli("check", "heterogeneous-record")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("carry a closed label surface", error)
+
+        record.write_text(
+            "# events\n"
+            + "".join(
+                json.dumps({"event": f"step-{index}", "sequence": index}) + "\n"
+                for index in range(8)
+            ),
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship a real run record")
+
+        status, output, error = self.run_cli("check", "heterogeneous-record")
+
+        self.assertEqual(
+            0,
+            status,
+            "counting rows rather than letting one veto must not start "
+            f"refusing the run records this key exists for: {error}",
+        )
+        self.assertIn("OK: heterogeneous-record", output)
+
+    def test_a_junk_row_does_not_suppress_the_oversized_line_refusal(self) -> None:
+        """Abandoning on row one also threw away the refusal waiting on row two."""
+
+        root = self.create_scenario("suppressed-refusal", 305)
+        record = root / "project" / "traigent-runs" / "events.jsonl"
+        record.parent.mkdir()
+        record.write_bytes(
+            b"{}\n"
+            + b'{"pad": "'
+            + b"x" * (2 * scenario.MAX_DATASET_ROW_BYTES)
+            + b'"}\n'
+        )
+        manifest = valid_manifest("suppressed-refusal", 305)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.jsonl"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(
+            root, message="Hide a long line behind a short one"
+        )
+
+        status, output, error = self.run_cli("check", "suppressed-refusal")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("carries a line longer than", error)
+
+    def test_a_labelled_delimited_table_is_still_a_labelled_dataset(self) -> None:
+        """A labelled CSV reaches a worker as readably as a labelled JSONL file."""
+
+        root = self.create_scenario("delimited-record", 306)
+        record = root / "project" / "traigent-runs" / "events.csv"
+        record.parent.mkdir()
+        manifest = valid_manifest("delimited-record", 306)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        rows = self.labelled_rows(8)
+
+        for name, delimiter in (("commas", ","), ("tabs", "\t"), ("pipes", "|")):
+            with self.subTest(separator=name):
+                record.write_text(
+                    f"report{delimiter}severity\n"
+                    + "".join(
+                        f"{row['input']}{delimiter}{row['output']}\n" for row in rows
+                    ),
+                    encoding="utf-8",
+                )
+                self.commit_repository_paths(root, message=f"Ship a table of {name}")
+
+                status, output, error = self.run_cli("check", "delimited-record")
+
+                self.assertNotEqual(0, status, output)
+                self.assertEqual("", output)
+                self.assertIn("carry a closed label surface", error)
+                self.assertIn("severity", error)
+
+        record.write_text(
+            "Notes on the run\n"
+            "The first attempt timed out, so we retried it.\n"
+            "Then, after a while, it settled.\n"
+            "Nothing else to report.\n"
+            "Reviewed by the on-call engineer.\n"
+            "Filed for the record.\n",
+            encoding="utf-8",
+        )
+        self.commit_repository_paths(root, message="Ship prose instead")
+
+        status, output, error = self.run_cli("check", "delimited-record")
+
+        self.assertEqual(
+            0,
+            status,
+            "lines that disagree about how many fields they have are not a "
+            f"table, and prose is not a labelled dataset: {error}",
+        )
+        self.assertIn("OK: delimited-record", output)
+
+    def test_a_label_nested_below_the_top_level_is_still_a_label(self) -> None:
+        """Nesting the answer key one level down used to make it invisible.
+
+        The scan named a row's top-level keys and the sweep compared roots, so
+        an ``absent`` shape with the label at ``metadata.severity`` sat inside a
+        ``metadata`` root the catalog already described and nothing looked
+        further.
+        """
+
+        root = self.create_scenario("nested-label", 307)
+        manifest = valid_manifest("nested-label", 307)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        dataset = catalog["datasets"][0]
+        dataset.update(
+            {
+                "label_field": None,
+                "label_shape": {
+                    "kind": "absent",
+                    "surface_label_count": 0,
+                    "label_counts": {},
+                },
+                "passthrough_fields": ["metadata.severity"],
+                "rows": 8,
+                "unique_inputs": 8,
+                "splits": {"field": "metadata.split", "counts": {"tuning": 8}},
+                "difficulty_strata": {
+                    "field": "metadata.difficulty",
+                    "counts": {"easy": 8},
+                },
+            }
+        )
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "metadata": {
+                        "split": "tuning",
+                        "difficulty": "easy",
+                        "severity": "SEV1" if index % 2 else "SEV2",
+                    },
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "nested-label")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a label one level down is still a label, and declaring the object "
+            "around it does not describe it",
+        )
+        self.assertEqual("", output)
+        self.assertIn("the shape of a label", error)
+        self.assertIn("metadata.severity", error)
+
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": f"example-{index}",
+                    "metadata": {
+                        "split": "tuning",
+                        "difficulty": "easy",
+                        "severity": f"ticket-{index}",
+                    },
+                }
+                for index in range(8)
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "nested-label")
+
+        self.assertEqual(
+            0,
+            status,
+            "a nested column whose value is different in every row is an "
+            f"identifier, which is what a passthrough is for: {error}",
+        )
+        self.assertIn("OK: nested-label", output)
+
+    def test_every_column_a_row_carries_is_named_down_to_the_leaf(self) -> None:
+        """The sweep compared roots, so a nested column shipped undescribed."""
+
+        root = self.create_scenario("nested-column", 308)
+        manifest = valid_manifest("nested-column", 308)
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": "example",
+                    "output": "A",
+                    "metadata": {
+                        "split": "tuning",
+                        "difficulty": "easy",
+                        "note": "an aside the catalog never mentions",
+                    },
+                }
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "nested-column")
+
+        self.assertNotEqual(0, status, output)
+        self.assertEqual("", output)
+        self.assertIn("metadata.note", error)
+        self.assertIn("which the catalog does not describe", error)
+
+        dataset = manifest["catalog"]["datasets"][0]
+        dataset["passthrough_fields"] = ["metadata.note"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "nested-column")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: nested-column", output)
+
+        dataset["passthrough_fields"] = ["metadata.note", "metadata.absent"]
+        self.write_manifest(root, manifest)
+
+        status, output, error = self.run_cli("check", "nested-column")
+
+        self.assertNotEqual(
+            0,
+            status,
+            "a declaration naming a nested column no row carries outlives what "
+            "it described, exactly as a top-level one does",
+        )
+        self.assertIn("metadata.absent", error)
+
+    def test_a_structured_column_is_described_by_naming_it_once(self) -> None:
+        """Declaring a field describes its subtree, not one key at a time."""
+
+        root = self.create_scenario("structured-input", 309)
+        manifest = valid_manifest("structured-input", 309)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["datasets"][0]["input_field"] = "input"
+        self.write_manifest(root, manifest)
+        self.write_rows(
+            root,
+            [
+                {
+                    "input": {"report": "a page is down", "region": "eu-west"},
+                    "output": "A",
+                    "metadata": {"split": "tuning", "difficulty": "easy"},
+                }
+            ],
+        )
+
+        status, output, error = self.run_cli("check", "structured-input")
+
+        self.assertEqual(
+            0,
+            status,
+            "the catalog names `input`, so the keys inside it are described; "
+            f"asking for `input.region` would be asking for the model's own "
+            f"input shape: {error}",
+        )
+        self.assertIn("OK: structured-input", output)
+
     def test_check_rejects_shipped_python_that_does_not_parse(self) -> None:
         root = self.create_scenario("unparsable-code", 122)
         manifest = valid_manifest("unparsable-code", 122)
@@ -1970,6 +2524,10 @@ class ScenarioBankTests(unittest.TestCase):
         manifest = valid_manifest("catalog-paths", 84)
         manifest["catalog"]["components"]["agent"]["path"] = "project/missing-agent.py"
         (root / "scenario.json").write_text(json.dumps(manifest), encoding="utf-8")
+        self.remove_repository_paths(
+            root / "project" / "agent.py",
+            message="Point the agent slot at a file that is not there",
+        )
 
         status, _, error = self.run_cli("check", "catalog-paths")
 
@@ -1977,6 +2535,13 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertIn("catalog.components.agent.path", error)
         self.assertIn("cannot inspect", error)
 
+        # The second half asks about the calibration slot, so the agent slot goes
+        # back to naming a file that is there.
+        (root / "project" / "agent.py").write_text(AGENT_SOURCE, encoding="utf-8")
+        self.commit_repository_paths(
+            root / "project" / "agent.py",
+            message="Restore the agent source",
+        )
         calibration_path = root / "project" / "calibration.json"
         calibration_path.write_text("{}\n", encoding="utf-8")
         manifest = valid_manifest("catalog-paths", 84)
