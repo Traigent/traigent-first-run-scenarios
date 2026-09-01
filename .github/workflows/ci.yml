@@ -52,9 +52,17 @@ jobs:
       # Generated content is skipped by name, and every skip must still match a
       # tracked file so the list cannot outlive what it describes. Binary files
       # are skipped by codespell itself and need no entry here.
+      # A derived scope can also derive to nothing, and a gate that spell-checks
+      # nothing must not report success, so the scope has a floor. It is the
+      # same floor the public-surface guard uses and sits far below the tracked
+      # inventory; an empty checkout or a pathspec that matches nothing falls
+      # under it. `set -euo pipefail` is load-bearing here rather than habit:
+      # GitHub's default shell is `bash -e` with no `pipefail`, so without it a
+      # failing `git ls-files` at the head of a pipeline leaves the step green.
       - name: Check spelling
         run: |
           set -euo pipefail
+          minimum_files=12
           skipped_paths=(
             "presentation/package-lock.json"
           )
@@ -66,8 +74,15 @@ jobs:
             fi
             exclusions+=(":(exclude)${skipped_path}")
           done
-          git ls-files -z -- . "${exclusions[@]}" |
-            xargs -0 --no-run-if-empty codespell --
+          scope_list="$(mktemp)"
+          trap 'rm -f "${scope_list}"' EXIT
+          git ls-files -z -- . "${exclusions[@]}" > "${scope_list}"
+          mapfile -d '' scope_paths < "${scope_list}"
+          if [ "${#scope_paths[@]}" -lt "${minimum_files}" ]; then
+            echo "spelling scope covered ${#scope_paths[@]} file(s), fewer than the required minimum of ${minimum_files}" >&2
+            exit 1
+          fi
+          printf '%s\0' "${scope_paths[@]}" | xargs -0 codespell --
 
   verify:
     name: Python ${{ matrix.python-version }}
@@ -113,11 +128,22 @@ jobs:
       # Parsing is a property every published file owes a customer; formatting,
       # lint rules and strict typing are this repository's house style and are
       # deliberately not imposed on customer-shaped scenario sources.
+      # The scope has a floor for the same reason the spelling gate does: a
+      # pathspec that matches nothing, or a checkout with no tracked Python,
+      # would otherwise compile nothing and report success.
       - name: Compile Python sources
         run: |
           set -euo pipefail
-          git ls-files -z -- '*.py' |
-            xargs -0 --no-run-if-empty python -m compileall -q -f --
+          minimum_files=3
+          scope_list="$(mktemp)"
+          trap 'rm -f "${scope_list}"' EXIT
+          git ls-files -z -- '*.py' > "${scope_list}"
+          mapfile -d '' scope_paths < "${scope_list}"
+          if [ "${#scope_paths[@]}" -lt "${minimum_files}" ]; then
+            echo "compile scope covered ${#scope_paths[@]} Python file(s), fewer than the required minimum of ${minimum_files}" >&2
+            exit 1
+          fi
+          printf '%s\0' "${scope_paths[@]}" | xargs -0 python -m compileall -q -f --
 
   presentation:
     name: Presentation artifacts

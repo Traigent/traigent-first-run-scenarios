@@ -39,6 +39,9 @@ BLOCK_SCALAR_HEADERS = frozenset({"|", "|-", "|+", ">", ">-", ">+"})
 MAPPING_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*:(\s|$)")
 SEQUENCE_ITEM = re.compile(r"^-(\s|$)")
 SKIPPED_PATHS = re.compile(r"skipped_paths=\((?P<body>[^)]*)\)", re.DOTALL)
+MINIMUM_FILES = re.compile(r"^\s*minimum_files=(?P<count>\d+)\s*$", re.MULTILINE)
+SHELL_PRELUDE = "set -euo pipefail"
+DERIVED_SCOPE_STEPS = (SPELLING_STEP, COMPILE_STEP)
 QUOTED = re.compile(r'"([^"]+)"')
 COMPILEALL_FLAGS = frozenset({"-m", "compileall", "-q", "-f", "--"})
 ARGUMENT_SEPARATOR = "--"
@@ -383,6 +386,9 @@ class StepConditionTests(unittest.TestCase):
 class StepScriptTestCase(unittest.TestCase):
     """Runs a workflow step's own script, so the checks exercise shipped text."""
 
+    script = ""
+    filler_suffix = ".md"
+
     def setUp(self) -> None:
         self.workspace = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.workspace, True)
@@ -434,7 +440,23 @@ class StepScriptTestCase(unittest.TestCase):
             if argument != ARGUMENT_SEPARATOR
         ]
 
-    def build_repository(self, files: dict[str, str]) -> Path:
+    def declared_minimum_files(self) -> int:
+        """The floor the shipped step script declares for its derived scope."""
+        match = MINIMUM_FILES.search(self.script)
+        self.assertIsNotNone(
+            match,
+            "the step script declares no minimum_files floor, so a scope that "
+            "derives to nothing would be reported as a successful gate",
+        )
+        assert match is not None
+        return int(match.group("count"))
+
+    def filler_files(self, count: int, *, suffix: str = ".md") -> dict[str, str]:
+        """Clean files that only exist to carry a fixture over the gate's floor."""
+        body = "VALUE = 1\n" if suffix == ".py" else "A published note.\n"
+        return {f"filler-{index:02d}{suffix}": body for index in range(count)}
+
+    def build_repository(self, files: dict[str, str], *, pad: bool = True) -> Path:
         repository = self.workspace / "repository"
         repository.mkdir(exist_ok=True)
         subprocess.run(
@@ -442,6 +464,16 @@ class StepScriptTestCase(unittest.TestCase):
             check=True,
             capture_output=True,
         )
+        if pad:
+            # Padded past the floor rather than up to it: some of the fixture's
+            # own files are excluded from the derived scope, so counting them
+            # would leave the fixture one file short of the gate it exercises.
+            files = {
+                **self.filler_files(
+                    self.declared_minimum_files(), suffix=self.filler_suffix
+                ),
+                **files,
+            }
         self.write_files(repository, files)
         return repository
 
@@ -601,8 +633,66 @@ class SpellingScopeTests(StepScriptTestCase):
         self.assertEqual(0, corrected.returncode, corrected.stdout + corrected.stderr)
 
 
+    def test_gate_fails_when_the_derived_scope_matches_nothing(self) -> None:
+        repository = self.build_repository(
+            {"presentation/package-lock.json": "generated content\n"}, pad=False
+        )
+
+        result = self.run_step(
+            self.script, repository, shims={"codespell": RECORDING_SHIM}
+        )
+
+        self.assertNotEqual(
+            0,
+            result.returncode,
+            "a spelling gate whose derived scope is empty spell-checks nothing; "
+            "reporting that as success is the failure this floor exists for",
+        )
+        self.assertIn("fewer than the required minimum", result.stderr)
+        self.assertEqual([], self.recorded_arguments())
+
+    def test_gate_fails_one_file_below_the_declared_floor(self) -> None:
+        floor = self.declared_minimum_files()
+        skips = self.declared_skips()
+        repository = self.build_repository(
+            {
+                **self.filler_files(floor - 1),
+                **{skip: "generated content\n" for skip in skips},
+            },
+            pad=False,
+        )
+
+        result = self.run_step(
+            self.script, repository, shims={"codespell": RECORDING_SHIM}
+        )
+
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn(f"covered {floor - 1} file(s)", result.stderr)
+        self.assertEqual([], self.recorded_arguments())
+
+    def test_gate_passes_at_the_declared_floor(self) -> None:
+        floor = self.declared_minimum_files()
+        skips = self.declared_skips()
+        repository = self.build_repository(
+            {
+                **self.filler_files(floor),
+                **{skip: "generated content\n" for skip in skips},
+            },
+            pad=False,
+        )
+
+        result = self.run_step(
+            self.script, repository, shims={"codespell": RECORDING_SHIM}
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(floor, len(self.recorded_paths()))
+
+
 class CompileScopeTests(StepScriptTestCase):
     """Every published Python source must parse, including customer-shaped ones."""
+
+    filler_suffix = ".py"
 
     def setUp(self) -> None:
         super().setUp()
@@ -678,6 +768,106 @@ class CompileScopeTests(StepScriptTestCase):
         )
         self.assertIn("SyntaxError", result.stdout + result.stderr)
         self.assertIn(shipped, result.stdout + result.stderr)
+
+
+    def test_gate_fails_when_no_tracked_python_file_matches(self) -> None:
+        repository = self.build_repository({"README.md": "No Python here.\n"}, pad=False)
+
+        result = self.run_step(
+            self.script, repository, shims={"python": RECORDING_SHIM}
+        )
+
+        self.assertNotEqual(
+            0,
+            result.returncode,
+            "a compile gate with no tracked Python compiles nothing; reporting "
+            "that as success is the failure this floor exists for",
+        )
+        self.assertIn("fewer than the required minimum", result.stderr)
+        self.assertEqual([], self.recorded_arguments())
+
+    def test_gate_fails_one_file_below_the_declared_floor(self) -> None:
+        floor = self.declared_minimum_files()
+        repository = self.build_repository(
+            self.filler_files(floor - 1, suffix=".py"), pad=False
+        )
+
+        result = self.run_step(
+            self.script, repository, shims={"python": RECORDING_SHIM}
+        )
+
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn(f"covered {floor - 1} Python file(s)", result.stderr)
+        self.assertEqual([], self.recorded_arguments())
+
+    def test_gate_passes_at_the_declared_floor(self) -> None:
+        floor = self.declared_minimum_files()
+        repository = self.build_repository(
+            self.filler_files(floor, suffix=".py"), pad=False
+        )
+
+        result = self.run_step(
+            self.script, repository, shims={"python": RECORDING_SHIM}
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        compiled = [
+            argument
+            for argument in self.recorded_arguments()
+            if argument not in COMPILEALL_FLAGS
+        ]
+        self.assertEqual(floor, len(compiled))
+
+
+class DerivedScopeStepShapeTests(unittest.TestCase):
+    """The two derived-scope gates must keep the shell contract they rely on."""
+
+    def test_every_multi_line_step_pins_the_shell_options_it_relies_on(self) -> None:
+        workflow = read_workflow()
+        scripts = [
+            (job_id, step["name"], step["run"])
+            for job_id, job in jobs_of(workflow).items()
+            for step in steps_of(job)
+            if isinstance(step.get("run"), str) and "\n" in step["run"].strip()
+        ]
+
+        self.assertTrue(scripts, "the workflow declares no multi-line run scripts")
+        for job_id, step_name, script in scripts:
+            with self.subTest(job=job_id, step=step_name):
+                self.assertEqual(
+                    SHELL_PRELUDE,
+                    script.splitlines()[0].strip(),
+                    f"step {step_name!r} in job {job_id!r} does not open with "
+                    f"{SHELL_PRELUDE!r}; GitHub's default run shell is 'bash -e' "
+                    "with no pipefail, so a failing command at the head of a "
+                    "pipeline would leave the step green",
+                )
+
+    def test_derived_scope_steps_run_at_the_repository_root(self) -> None:
+        workflow = read_workflow()
+        for step_name in DERIVED_SCOPE_STEPS:
+            with self.subTest(step=step_name):
+                _, step = find_step(workflow, step_name)
+                self.assertIsNone(
+                    step.get("working-directory"),
+                    f"step {step_name!r} declares a working directory; the scope "
+                    "it derives from 'git ls-files' would then be relative to "
+                    "that directory and could silently cover nothing",
+                )
+
+    def test_derived_scope_steps_declare_a_floor(self) -> None:
+        workflow = read_workflow()
+        for step_name in DERIVED_SCOPE_STEPS:
+            with self.subTest(step=step_name):
+                script = step_script(workflow, step_name)
+                match = MINIMUM_FILES.search(script)
+                self.assertIsNotNone(
+                    match,
+                    f"step {step_name!r} derives its scope but declares no "
+                    "minimum_files floor, so an empty scope reports success",
+                )
+                assert match is not None
+                self.assertGreaterEqual(int(match.group("count")), 1)
 
 
 if __name__ == "__main__":
