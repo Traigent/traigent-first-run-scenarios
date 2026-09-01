@@ -691,12 +691,12 @@ const rawPresentation = {
       eyebrow: "DATASET ORIGIN - CASE 46",
       title:
         "Synthetic test data is useful when its origin and limits stay visible.",
-      body: `The published case-46 material is ${contentOriginLabel}, licensed under ${scenario.content.license}, and contains no customer or third-party dataset. Its rows were written for this scenario rather than sampled or adapted from a public benchmark, so no upstream dataset licence travels with them and you may run, copy and adapt the material under that licence. It exists to exercise readiness routing reproducibly, not to stand in for production evidence.`,
+      body: `The published case-46 material is ${contentOriginLabel}, licensed under ${scenario.content.license}, and contains no customer or third-party dataset. Its rows were written for this scenario rather than sampled or adapted from a public benchmark, so no upstream dataset license travels with them and you may run, copy and adapt the material under that license. It exists to exercise readiness routing reproducibly, not to stand in for production evidence.`,
       bullets: [
         `${dataset.rows} authored incident reports and ${dataset.unique_inputs} unique inputs; the declared pool is ${splitSummary}`,
         `Even difficulty coverage: ${difficultySummary}, so the public pool does not win its score by concentrating only on easy cases`,
         `Output shape: ${labelSummary}; the deterministic evaluator maps equivalent surface labels before comparison`,
-        "A row value such as provenance: real is the simulated user's declaration read by the readiness scorer, not a claim about where the repository file came from - the repository's own origin and licence are pinned by `scenario.py check` against its own constants",
+        "A row value such as provenance: real is the simulated user's declaration read by the readiness scorer, not a claim about where the repository file came from - the repository's own origin and license are pinned by scenario.py check against its own constants",
         "The scenario and expected result are public for inspection; the fresh coding-agent session receives neither the expected result nor the operator-kept verifier",
         "The 100/20 split demonstrates separate tuning and holdout pools; a paid run must still record the exact bounded rows it actually uses",
       ],
@@ -1081,7 +1081,7 @@ const rawPresentation = {
         "This appendix answers what the published scenario actually contains.",
         "Synthetic describes repository origin. The row value provenance: real is simulated scorer metadata inside the scenario.",
         "Nothing here is observed accuracy or evidence of a live optimization.",
-        `Calibration is a sample by design: ${calibrationCount} cases carry four probes each - a correct answer, an equivalent answer spelled differently, a near-miss and a wrong one. That asks whether the scorer agrees with itself, which is a property of the scorer rather than of the row count, so running it over all ${dataset.rows} rows would cost more and settle nothing further. Where inputs are expensive - long documents in, prose out - a handful of probes is the only practical check, and it is sound for the same reason.`,
+        `Calibration is a sample by design: ${calibrationCount} ${calibrationCount === 1 ? "case carries" : "cases carry"} four probes each - a correct answer, an equivalent answer spelled differently, a near-miss and a wrong one. That asks whether the scorer agrees with itself, which is a property of the scorer rather than of the row count, so running it over all ${dataset.rows} rows would cost more and would not change what the probes already establish. Where inputs are expensive - long documents in, prose out - a handful of probes is the only practical check, and it is sound for the same reason.`,
       ],
     },
     {
@@ -1104,7 +1104,7 @@ const rawPresentation = {
         `${dataset.unique_inputs} unique inputs; ${splitSummary}; difficulty: ${difficultySummary}.`,
         `${labelSummary} before deterministic exact/binary scoring.`,
         "Repository origin is Traigent-authored synthetic; provenance: real is simulated row metadata for the readiness scorer.",
-        "Written for this scenario, not sampled or adapted from a public benchmark, so no upstream dataset licence applies. Apache-2.0 with NOTICE: run it, copy it, adapt it.",
+        `Written for this scenario, not sampled or adapted from a public benchmark, so no upstream dataset license applies. ${scenario.content.license} with NOTICE: run it, copy it, adapt it.`,
       ],
     },
     {
