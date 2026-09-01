@@ -106,13 +106,15 @@ _RULES = (
 _GITLINK_MODE = "160000"
 
 # A guard that scans nothing must never report success, so the inventory has a
-# floor. It sits far below the current inventory (53 tracked files) and still
-# below the files this repository cannot lose while remaining itself: the
-# license, notice, readme, security policy, contributing guide, walkthrough,
-# ignore rules, CI workflow, pinned development requirements, the scenario
-# tool, its schema, this guard, and the two test modules. Normal growth, and
-# even removing whole optional areas, stays above it; an empty checkout, a
-# fully ignored tree, or a scan aimed at one subdirectory falls far below it.
+# floor. It sits far below the current inventory and still below the files this
+# repository cannot lose while remaining itself: the license, notice, readme,
+# security policy, contributing guide, walkthrough, ignore rules, CI workflow,
+# pinned development requirements, the scenario tool, its schema, this guard,
+# and the three test modules. Normal growth, and even removing whole optional
+# areas, stays above it; an empty checkout, a fully ignored tree, or a scan
+# aimed at one subdirectory falls far below it. The count is deliberately not
+# written down here: a comment naming today's inventory is a comment that goes
+# stale, and a test pins the relationship instead.
 _DEFAULT_MINIMUM_FILES = 12
 
 

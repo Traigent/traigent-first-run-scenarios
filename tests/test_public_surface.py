@@ -50,9 +50,9 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self,
         *,
         repo: Path | None = None,
-        minimum_files: int | None = 1,
+        minimum_files: int | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        """Run the guard, defaulting to the smallest floor these fixtures need."""
+        """Run the guard the way CI runs it, at the floor it ships with."""
         target = self.repo if repo is None else repo
         command = [sys.executable, str(GUARD_PATH), "--repo-root", str(target)]
         if minimum_files is not None:
@@ -65,7 +65,13 @@ class PublicSurfaceGuardTests(unittest.TestCase):
                 "Customer-visible sample line.\n", encoding="utf-8"
             )
 
+    def _pad_to_floor(self) -> int:
+        """Carry a fixture over the shipped floor, so it runs the gate CI runs."""
+        self._write_safe_files(GUARD._DEFAULT_MINIMUM_FILES)
+        return GUARD._DEFAULT_MINIMUM_FILES
+
     def test_safe_tracked_and_untracked_content_passes(self) -> None:
+        padding = self._pad_to_floor()
         (self.repo / "README.md").write_text(
             "# Reproducible Traigent scenarios\n", encoding="utf-8"
         )
@@ -77,9 +83,10 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         result = self._run_guard()
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("passed for 2 file(s)", result.stdout)
+        self.assertIn(f"passed for {padding + 2} file(s)", result.stdout)
 
     def test_planted_leaks_are_rejected_with_locations(self) -> None:
+        self._pad_to_floor()
         planted_values = {
             "private-work-item": "".join(("internal", " ", "issue")),
             "machine-path": "/" + "home" + "/example-user/project",
@@ -97,6 +104,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
                 self.assertIn(f"untracked:{filename}:2:", result.stderr)
 
     def test_staged_leak_is_found_when_worktree_copy_is_safe(self) -> None:
+        self._pad_to_floor()
         planted_value = "".join(("private", " ", "ticket"))
         path = self.repo / "staged-notes"
         path.write_text(planted_value + "\n", encoding="utf-8")
@@ -113,6 +121,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertNotIn("working-tree:staged-notes", result.stderr)
 
     def test_worktree_leak_is_found_when_staged_copy_is_safe(self) -> None:
+        self._pad_to_floor()
         planted_value = "C:" + "\\" + "Users" + "\\" + "example-user\\project"
         path = self.repo / "working-notes"
         path.write_text("safe staged copy\n", encoding="utf-8")
@@ -174,6 +183,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertIn("unsupported submodule entry external-content", result.stderr)
 
     def test_guard_source_does_not_trigger_itself(self) -> None:
+        padding = self._pad_to_floor()
         scripts_directory = self.repo / "scripts"
         scripts_directory.mkdir()
         copied_guard = scripts_directory / GUARD_PATH.name
@@ -183,7 +193,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         result = self._run_guard()
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("passed for 1 file(s)", result.stdout)
+        self.assertIn(f"passed for {padding + 1} file(s)", result.stdout)
 
     def test_subdirectory_of_a_work_tree_is_rejected(self) -> None:
         nested = self.repo / "nested"
@@ -258,6 +268,62 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertIn("must be at least 1", result.stderr)
         self.assertNotIn("passed for", result.stdout)
 
+    def test_the_shipped_floor_is_a_floor_and_not_merely_non_empty(self) -> None:
+        """A floor of one file rules out an empty scan and nothing else."""
+
+        floor = GUARD._DEFAULT_MINIMUM_FILES
+        tracked = len(GUARD._read_index(REPOSITORY_ROOT))
+
+        self.assertGreater(
+            floor,
+            1,
+            "a scan aimed at one subdirectory reports a handful of files, so a "
+            "floor has to sit above a handful to catch it",
+        )
+        self.assertLess(
+            floor,
+            tracked,
+            "the floor must sit below this repository's inventory, or removing "
+            "an optional area turns the guard red for no reason",
+        )
+
+    def test_a_floor_below_one_file_is_refused_by_the_check_itself(self) -> None:
+        """The command line refuses it too, but the refusal belongs to the check."""
+
+        self._pad_to_floor()
+
+        with self.assertRaises(GUARD.InventoryError) as raised:
+            GUARD.check_repository(self.repo, 0)
+
+        self.assertIn("at least one file", str(raised.exception))
+
+    def test_distinct_references_in_one_path_are_counted_separately(self) -> None:
+        """A path is scanned for every match it carries, not only the first."""
+
+        self._pad_to_floor()
+        first = "".join(("internal", " ", "issue"))
+        second = "".join(("private", " ", "ticket"))
+        name = f"{first} 42 and {second} 7.md"
+        (self.repo / name).write_text("Customer-visible note.\n", encoding="utf-8")
+
+        result = self._run_guard()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("found 2 prohibited public-surface reference(s)", result.stderr)
+        reported = [
+            line for line in result.stderr.splitlines() if line.startswith("  path:")
+        ]
+        self.assertEqual(
+            [
+                f"  path:{name}:1:1: explicit private work-item reference",
+                f"  path:{name}:1:{name.index(second) + 1}: "
+                "explicit private work-item reference",
+            ],
+            reported,
+            "a path carrying two references must report both; reporting only "
+            "the first understates what a public checkout would publish",
+        )
+
     def test_published_repository_root_passes_with_shipped_defaults(self) -> None:
         result = subprocess.run(
             (sys.executable, str(GUARD_PATH)),
@@ -270,6 +336,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertIn("Public-surface check passed for", result.stdout)
 
     def test_distinct_references_on_one_line_are_counted_separately(self) -> None:
+        self._pad_to_floor()
         home_prefix = "/" + "home" + "/"
         planted_values = (
             home_prefix + "first-example/alpha",
