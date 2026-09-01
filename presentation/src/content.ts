@@ -1020,7 +1020,7 @@ const rawPresentation = {
       eyebrow: "APPENDIX - PUBLIC SCENARIO ROADMAP 2 OF 2",
       title:
         "Evaluator, execution, and search-space gates need distinct tests.",
-      body: "These roadmap themes can require multiple cases because their conditions lead to materially different actions. A repair route, a human timeout choice, and a hard safety stop must not be presented as the same tested behavior.",
+      body: "These roadmap themes can require multiple cases because their conditions lead to materially different actions. A repair route, a human timeout choice, and a hard safety stop must not be presented as the same tested behavior. As on the previous slide, these are public scenario-test themes, not additional product capability: each gate below ships in the guide today, and what is planned is the public case that lets you reproduce it.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -1081,6 +1081,7 @@ const rawPresentation = {
         "This appendix answers what the published scenario actually contains.",
         "Synthetic describes repository origin. The row value provenance: real is simulated scorer metadata inside the scenario.",
         "Nothing here is observed accuracy or evidence of a live optimization.",
+        `Calibration is a sample by design: ${calibrationCount} cases carry four probes each - a correct answer, an equivalent answer spelled differently, a near-miss and a wrong one. That asks whether the scorer agrees with itself, which is a property of the scorer rather than of the row count, so running it over all ${dataset.rows} rows would cost more and settle nothing further. Where inputs are expensive - long documents in, prose out - a handful of probes is the only practical check, and it is sound for the same reason.`,
       ],
     },
     {
