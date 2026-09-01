@@ -6,11 +6,12 @@ opening run. It does not authorize a credentialed optimization.
 In this guide, **captain** means the human test operator who prepares the run,
 controls the worker handoff and stop point, and retains evidence.
 
-The repository currently ships one reference scenario and its expected
+The repository currently releases one reference scenario and its expected
 opening contract as reviewed, versioned files — not a recorded worker result.
 Until a fresh run is captured and verified, describe the opening as
-**expected**, not **verified**. Every step below works the same way for any
-scenario in the catalog; case `46` is the one released today.
+**expected**, not **verified**. Every step below works the same way
+for any scenario `scenario.py list` shows; case `46` is the one released
+today.
 
 ## 1. Create two clean checkouts
 
@@ -45,7 +46,7 @@ python scenario.py check 46
 python scenario.py check
 ```
 
-`list` discovers published scenarios. `show` prints one validated manifest,
+`list` discovers the released scenarios. `show` prints one validated manifest,
 including its starting condition, component states, dataset profiles, expected
 route, limitations, and evidence scope. `check CASE` validates those declared
 facts against the materialized paths and data, then validates the strict

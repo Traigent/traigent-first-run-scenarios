@@ -62,9 +62,8 @@ checkout.
 ## 3. Validate the scenario package
 
 The commands below use case `46`, today's released scenario. Substitute any
-case number shown by `scenario.py list` — the steps are identical for every
-scenario, and the output path in step 4 is yours to name after the scenario
-you run.
+case number shown by `scenario.py list`, and name the step-4 output path
+after the scenario you run.
 
 ```bash
 python scenario.py list
