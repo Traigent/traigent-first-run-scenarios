@@ -160,7 +160,7 @@ before using a customer-controlled machine.
 flowchart TD
     A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
     B --> C["scenario.py prepare 46<br/>--guide-src ../traigent-first-run --output ../incident-triage-run"]
-    C --> D["customer-project/ + run.json<br/>tracked Git blobs only; the verifier, expected opening,<br/>and scenario manifest stay outside"]
+    C --> D["customer-project/ from tracked Git blobs only,<br/>plus a generated run.json; the verifier, expected opening,<br/>and scenario manifest stay outside"]
     D --> E["One fresh coding-agent session opened in customer-project/,<br/>given only the handoff printed by prepare"]
     E --> F["The operator stops the run at the first question<br/>or decision that belongs to the human"]
     F --> G["Save the session's opening readiness JSON<br/>outside the project copy"]
@@ -221,9 +221,9 @@ reviewable, resettable, and reproducible.
 [`presentation/`](presentation/README.md) renders one validated semantic story
 as a self-contained HTML file and an editable PowerPoint with speaker notes.
 Both formats use the same content and evidence labels. The current deck shows
-which claims come from the pinned public guide and which come from the expected
-scenario contract; both are marked as having no recorded run. It does not
-present a simulated result as a recorded run.
+which claims come from the pinned public guide and which come from the
+published scenario contract; both are marked as having no recorded run. It
+does not present a simulated result as a recorded run.
 
 ```bash
 cd presentation

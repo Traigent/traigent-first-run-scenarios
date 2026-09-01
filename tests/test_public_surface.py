@@ -134,6 +134,14 @@ class PublicSurfaceGuardTests(unittest.TestCase):
             "".join(("https://github.com/Traigent/", "nonpublic-example")),
             "".join(("https://github.com/Traigent/", "nonpublic-example/issues/12")),
             "".join(("git@github.com:Traigent/", "nonpublic-example.git")),
+            # The repository's own dominant markdown reference styles must not
+            # slip past the terminator class: backticks, revision pins,
+            # markdown links, and bold emphasis.
+            "".join(("`Traigent/", "nonpublic-example`")),
+            "".join(("Traigent/", "nonpublic-example@abc123")),
+            "".join(("[Traigent/", "nonpublic-example](https://example.invalid)")),
+            "".join(("**Traigent/", "nonpublic-example**")),
+            "".join(("https://github.com/Traigent/", "nonpublic-example@main")),
         )
         for index, planted_value in enumerate(planted_values):
             with self.subTest(planted_value=planted_value):
@@ -179,7 +187,8 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         path.write_text(
             "Merged in PR #1. See Traigent/traigent-first-run#79,\n"
             "https://github.com/Traigent/traigent-skills/issues/3, and\n"
-            "git@github.com:Traigent/TraigentSchema.git.\n",
+            "git@github.com:Traigent/TraigentSchema.git.\n"
+            "Pinned as `Traigent/traigent-first-run@6ec2b9c1` in the deck.\n",
             encoding="utf-8",
         )
 

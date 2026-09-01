@@ -11,6 +11,7 @@ import { brandName, traigentLogoPngDataUri } from "./brand";
 import { coreSlideCount, presentation } from "./content";
 import {
   coverageLabel,
+  displayEyebrow,
   evidenceLabel,
   type CatalogEntry,
   type SlideSpec,
@@ -265,11 +266,7 @@ function ScenarioCatalog({
 function Slide({ slide }: { slide: SlideSpec }) {
   const isHero = slide.kind === "hero";
   const slideRef = useRef<HTMLElement>(null);
-  const eyebrow =
-    slide.section === "appendix" &&
-    !slide.eyebrow.toLocaleUpperCase("en").startsWith("APPENDIX")
-      ? `APPENDIX · ${slide.eyebrow}`
-      : slide.eyebrow;
+  const eyebrow = displayEyebrow(slide);
 
   useLayoutEffect(() => {
     const fitParameters = new URLSearchParams(window.location.search);
@@ -290,6 +287,7 @@ function Slide({ slide }: { slide: SlideSpec }) {
       ".matrix-wrap",
       ".catalog-grid",
       ".slide-footer",
+      ".slide-brand",
     ].join(",");
     const clipped = Array.from(element.querySelectorAll<HTMLElement>(selectors))
       .filter((child) => {
@@ -301,7 +299,11 @@ function Slide({ slide }: { slide: SlideSpec }) {
           bounds.bottom > slideBounds.bottom + 1
         );
       })
-      .map((child) => child.className);
+      .map((child) =>
+        Array.from(child.classList)
+          .map((name) => `.${name}`)
+          .join(""),
+      );
     const reasons = [
       Number(fitParameters.get("fit-width")) !== window.innerWidth ||
       Number(fitParameters.get("fit-height")) !== window.innerHeight
@@ -321,6 +323,7 @@ function Slide({ slide }: { slide: SlideSpec }) {
     document.documentElement.dataset.fitStatus =
       reasons.length === 0 ? "pass" : "fail";
     document.documentElement.dataset.fitDetail = reasons.join("; ");
+    document.documentElement.dataset.fitSlide = slide.id;
   }, [slide]);
 
   return (

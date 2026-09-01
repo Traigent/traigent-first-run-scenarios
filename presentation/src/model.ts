@@ -242,6 +242,13 @@ export function coverageLabel(
     : "Shipped in the guide; public test case planned";
 }
 
+export function displayEyebrow(slide: SlideSpec): string {
+  return slide.section === "appendix" &&
+    !slide.eyebrow.toLocaleUpperCase("en").startsWith("APPENDIX")
+    ? `APPENDIX · ${slide.eyebrow}`
+    : slide.eyebrow;
+}
+
 export function evidenceLabel(state: EvidenceState): string {
   switch (state) {
     case "guide-contract":

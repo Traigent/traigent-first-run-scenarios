@@ -139,6 +139,17 @@ function inspectSlide(
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  const renderedSlide = html.match(/data-fit-slide="([^"]*)"/)?.[1];
+  if (renderedSlide !== id) {
+    // An unknown hash id silently falls back to the first slide, so a pass
+    // for the wrong slide means the requested slide was never measured.
+    return {
+      id,
+      pass,
+      viewport: `${width}x${height}`,
+      detail: `rendered slide "${renderedSlide ?? "none"}" instead of "${id}" (stale dist/?)`,
+    };
+  }
   if (html.includes('data-fit-status="pass"')) {
     return null;
   }

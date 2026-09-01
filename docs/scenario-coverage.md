@@ -60,8 +60,9 @@ The guide's offline, isolated behavioral suite exercises missing, weak,
 invalid, no-usable-component-anchor, and execution-safety stop contracts.
 Those are code and contract tests, not public context-isolated coding-agent
 scenario runs, so no
-planned theme may be described as passed. The seven rows here are a maintained
-coverage model, not an exhaustive taxonomy of every project condition.
+planned theme may be described as passed. The six planned rows here, plus the
+published ready-reference scenario above, are a maintained coverage model, not
+an exhaustive taxonomy of every project condition.
 
 In this document, **invalid evaluator** means an evaluator that cannot make a
 trustworthy comparison, for example because it does not distinguish known-good

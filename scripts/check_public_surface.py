@@ -127,19 +127,19 @@ _TRAIGENT_REPOSITORY_REFERENCE_PATTERNS = (
     re.compile(
         r"\bhttps?://github\.com/(?P<owner>Traigent)/"
         r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*?)"
-        r"(?:\.git)?(?=$|[/?#\s\"'<>),.;:])",
+        r"(?:\.git)?(?=$|[/?#\s\"'<>()\[\],.;:@!*`])",
         re.IGNORECASE,
     ),
     re.compile(
         r"\bgit@github\.com:(?P<owner>Traigent)/"
         r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*?)"
-        r"(?:\.git)?(?=$|[/?#\s\"'<>),.;:])",
+        r"(?:\.git)?(?=$|[/?#\s\"'<>()\[\],.;:@!*`])",
         re.IGNORECASE,
     ),
     re.compile(
         r"(?<![@A-Za-z0-9_.-])(?P<owner>Traigent)/"
         r"(?P<repository>[A-Za-z0-9][A-Za-z0-9._-]*)"
-        r"(?=$|[/?#\s\"'<>),.;:])",
+        r"(?=$|[/?#\s\"'<>()\[\],.;:@!*`])",
         re.IGNORECASE,
     ),
 )
@@ -395,7 +395,9 @@ def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding
                 rule="unsupported or ambiguous text encoding requires review",
             )
         )
-    return findings
+    # Identical findings can arise from overlapping reference patterns and
+    # near-duplicate decoded variants; report each one once.
+    return list(dict.fromkeys(findings))
 
 
 def _scan_path(relative_path: str) -> list[Finding]:
@@ -407,7 +409,9 @@ def _scan_path(relative_path: str) -> list[Finding]:
     findings.extend(
         _repository_reference_findings("path", relative_path, 1, relative_path)
     )
-    return findings
+    # Identical findings can arise from overlapping reference patterns and
+    # near-duplicate decoded variants; report each one once.
+    return list(dict.fromkeys(findings))
 
 
 def check_repository(repo_root: Path) -> ScanResult:

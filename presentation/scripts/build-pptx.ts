@@ -9,6 +9,7 @@ import { brandBlue, brandName } from "../src/brand";
 import { presentation } from "../src/content";
 import {
   coverageLabel,
+  displayEyebrow,
   evidenceLabel,
   type CatalogEntry,
   type PresentationSpec,
@@ -138,11 +139,7 @@ function addBrand(pptx: PptxGenJS, slide: PptxGenJS.Slide): void {
 
 function addHeading(slide: PptxGenJS.Slide, slideSpec: SlideSpec): void {
   const titleFontSize = slideSpec.kind === "hero" ? 34 : 28;
-  const eyebrow =
-    slideSpec.section === "appendix" &&
-    !slideSpec.eyebrow.toLocaleUpperCase("en").startsWith("APPENDIX")
-      ? `APPENDIX · ${slideSpec.eyebrow}`
-      : slideSpec.eyebrow;
+  const eyebrow = displayEyebrow(slideSpec);
 
   slide.addText(eyebrow, {
     x: CONTENT_X,
@@ -791,9 +788,9 @@ function addFooter(
   slide.addText(
     `${slideSpec.section === "appendix" ? "APPENDIX" : "CORE"} · ${slideNumber} / ${slideCount}`,
     {
-      x: 11.75,
+      x: 11.3,
       y: FOOTER_TOP,
-      w: 1.35,
+      w: 1.8,
       h: 0.3,
       margin: 0,
       color: theme.colors.muted,

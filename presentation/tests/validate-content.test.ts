@@ -289,7 +289,7 @@ describe("presentation content validation", () => {
       ...vocabularyDocuments,
     ];
     for (const document of legacyLabelDocuments) {
-      expect(document).not.toMatch(/Expected\s+scenario\s+contract/);
+      expect(document).not.toMatch(/Expected\s+scenario\s+contract/i);
     }
 
     const runEvidenceDocuments = [
@@ -297,6 +297,7 @@ describe("presentation content validation", () => {
       "docs/customer-pc-runbook.md",
       "docs/methodology.md",
       "presentation/README.md",
+      "skills/traigent-first-run-scenarios/SKILL.md",
     ].map((relativePath) =>
       readFileSync(path.join(repositoryRoot, relativePath), "utf8"),
     );
