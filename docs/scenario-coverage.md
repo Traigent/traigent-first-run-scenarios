@@ -50,6 +50,10 @@ verifier contract are present in this repository.
 | Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | End this guide run before candidate output executes; any containment and restart procedure is separate and human-governed                                                          | Planned; not released or passed |
 | Search-space readiness | The agent has no meaningful varying tunable settings, or declared settings are not wired into requests                                             | Establish and verify real variation before requesting approval for paid search                                                                                                     | Planned; not released or passed |
 
+In every family except execution safety, the exercised behavior is a waypoint
+on the same route, not an ending: once the gap is closed and the human
+approves, the run continues toward baseline, optimization, and results.
+
 "Planned" describes a roadmap theme for public, context-isolated scenario
 tests, not the guide behavior itself. A theme can require multiple cases or
 subcases when its conditions lead to different actions; passing one case does

@@ -31,8 +31,8 @@ describe("presentation content validation", () => {
   it("accepts the canonical contract-only deck and public catalog", () => {
     const validated = validatePresentationContent(presentation);
 
-    expect(validated.slides).toHaveLength(28);
-    expect(coreSlideCount).toBe(10);
+    expect(validated.slides).toHaveLength(24);
+    expect(coreSlideCount).toBe(9);
     expect(
       validated.slides
         .slice(0, coreSlideCount)
@@ -58,14 +58,14 @@ describe("presentation content validation", () => {
     const scoringIndex = ids.indexOf("readiness-scoring");
     const foundationCapsIndex = ids.indexOf("readiness-ceilings-foundations");
     const evidenceCapsIndex = ids.indexOf("readiness-ceilings-evidence");
-    const expectedOpeningIndex = ids.indexOf("expected-opening");
+    const baselineIndex = ids.indexOf("stage-baseline");
 
     expect([
       readinessIndex,
       scoringIndex,
       foundationCapsIndex,
       evidenceCapsIndex,
-      expectedOpeningIndex,
+      baselineIndex,
     ]).toEqual([
       readinessIndex,
       readinessIndex + 1,
@@ -101,8 +101,9 @@ describe("presentation content validation", () => {
       "one-customer-prompt",
       "different-starting-points",
       "case-46",
-      "next-step",
+      "test-layers",
     ]);
+    expect(coreSlides[coreSlideCount - 1]?.id).toBe("next-step");
     expect(
       coreSlides
         .flatMap((slide) => slide.metrics)
@@ -153,24 +154,18 @@ describe("presentation content validation", () => {
   });
 
   it("explains the bounded search and held-out selection without claiming an exhaustive run", () => {
-    const searchSpace = presentation.slides.find(
-      (slide) => slide.id === "case-46-search-space",
-    )!;
     const selection = presentation.slides.find(
       (slide) => slide.id === "selection-and-heldout",
     )!;
     const optimizeStep = selection.steps.find(
-      (step) => step.label === "Run managed search",
+      (step) => step.label === "Run the enhanced search",
     )!;
 
-    expect(searchSpace.title).toContain("54 candidate configurations");
-    expect(searchSpace.body).toContain(
-      "does not establish the final approved search space",
-    );
-    expect(searchSpace.body).not.toContain("up to 12");
     expect(optimizeStep.detail).toContain("tests up to 12");
-    expect(selection.body).toContain("Only that locked recommendation");
-    expect(selection.body).toContain("never choose it");
+    expect(selection.body).toContain("up to 12 configurations");
+    expect(selection.body).toContain("larger approved space");
+    expect(selection.body).toContain("score that single pick once");
+    expect(selection.body).toContain("never part of choosing it");
     expect(selection.notes.join("\n")).toContain(
       "not a claim that every paid first run uses all 120 rows",
     );
