@@ -457,6 +457,18 @@ def _repository_reference_findings(
 _SQLITE_MAGIC = b"SQLite format 3\x00"
 _SQLITE_HEADER_BYTES = 100
 _SQLITE_PAYLOAD_FRACTIONS = (64, 32, 32)
+# Offsets into that 100-byte header, from the format's own description of it.
+# Named rather than written inline: the one part of the check below a reader
+# cannot verify against the spec without counting bytes.
+_SQLITE_PAGE_SIZE_AT = slice(16, 18)
+_SQLITE_WRITE_VERSION_AT = 18
+_SQLITE_READ_VERSION_AT = 19
+_SQLITE_PAYLOAD_FRACTIONS_AT = slice(21, 24)
+_SQLITE_PAGE_COUNT_AT = slice(28, 32)
+# A page size is a power of two in this range; the field stores 65536 as 1,
+# because it is two bytes wide and 65536 does not fit in them.
+_SQLITE_MIN_PAGE_SIZE = 512
+_SQLITE_MAX_PAGE_SIZE = 65536
 
 
 def _declares_known_binary_format(content: bytes) -> bool:
@@ -466,17 +478,21 @@ def _declares_known_binary_format(content: bytes) -> bool:
         return False
     if len(content) < _SQLITE_HEADER_BYTES:
         return False
-    page_size_field = int.from_bytes(content[16:18], "big")
-    page_size = 65536 if page_size_field == 1 else page_size_field
-    if page_size < 512 or page_size & (page_size - 1):
+    page_size_field = int.from_bytes(content[_SQLITE_PAGE_SIZE_AT], "big")
+    page_size = _SQLITE_MAX_PAGE_SIZE if page_size_field == 1 else page_size_field
+    if page_size < _SQLITE_MIN_PAGE_SIZE or page_size > _SQLITE_MAX_PAGE_SIZE:
         return False
-    if content[18] not in (1, 2) or content[19] not in (1, 2):
+    if page_size & (page_size - 1):
         return False
-    if (content[21], content[22], content[23]) != _SQLITE_PAYLOAD_FRACTIONS:
+    if content[_SQLITE_WRITE_VERSION_AT] not in (1, 2):
+        return False
+    if content[_SQLITE_READ_VERSION_AT] not in (1, 2):
+        return False
+    if tuple(content[_SQLITE_PAYLOAD_FRACTIONS_AT]) != _SQLITE_PAYLOAD_FRACTIONS:
         return False
     if len(content) % page_size:
         return False
-    page_count = int.from_bytes(content[28:32], "big")
+    page_count = int.from_bytes(content[_SQLITE_PAGE_COUNT_AT], "big")
     return page_count in (0, len(content) // page_size)
 
 

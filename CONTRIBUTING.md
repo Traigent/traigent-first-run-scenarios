@@ -265,6 +265,32 @@ directory, historical branch or tag, deleted file, or inherited commit message.
 The public scenario receives a new identity in this repository. Source history
 and unrelated context do not travel with it.
 
+## Adding a scenario
+
+`scenario.py` discovers scenarios from the directory tree, so it costs nothing.
+Everything else that counts them is manual, and this is the list:
+
+1. `scenarios/<slug>/` -- `scenario.json`, `README.md`, `project/`, `verifier/`,
+   per "Required layout and manifest" above.
+2. `presentation/src/content.ts` -- two imports (the manifest and the contract)
+   and one `SCENARIO_BANK` row naming the slug, the legacy id and a family from
+   the closed list already there.
+3. `presentation/src/model.ts` -- **the index slides hold six scenarios each**,
+   and `catalogSlugs` is bounded at six. The deck splits the bank in half for
+   its two index slides, so the thirteenth scenario makes one half seven and
+   `npm run validate` fails with `slides.NN.catalogSlugs :: Too big: expected
+   array to have <=6 items`. That is the right failure -- loud, precise, before
+   anything publishes -- but it is a slide-capacity decision, not a typo: add a
+   third index slide, or raise the bound and check the slide still fits the
+   browser gate.
+4. The count in prose. "Twelve" is written out in `README.md`,
+   `docs/scenario-coverage.md`, `docs/methodology.md`, `GUIDE.md` and
+   `docs/customer-pc-runbook.md`. The deck derives its own count; the markdown
+   does not.
+5. The measured opening. `verifier/expected-opening.json` records what the
+   guide at the pinned revision returned for the project as shipped -- it is
+   measured, never authored, and a scenario whose bytes change is re-measured.
+
 ## Validate the final change
 
 For every scenario change, run:
