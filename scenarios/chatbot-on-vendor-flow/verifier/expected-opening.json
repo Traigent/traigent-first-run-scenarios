@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "phase-a-opening",
+  "band": "NOT READY",
+  "status": "BLOCKED",
+  "recommended_action": "connect-agent",
+  "caps": [
+    "agent-absent"
+  ],
+  "display": {
+    "overall": {
+      "score": 25,
+      "confidence": 0.75
+    },
+    "pillars": {
+      "agent": {
+        "score": 0,
+        "confidence": 0.0
+      },
+      "dataset": {
+        "score": 97,
+        "confidence": 1.0
+      },
+      "evaluation": {
+        "score": 100,
+        "confidence": 1.0
+      }
+    }
+  }
+}

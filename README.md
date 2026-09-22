@@ -20,15 +20,16 @@ optimization, and results.
   [Content origin and licensing](#content-origin-and-licensing)).
 
 The subject of this repository is the whole bank of starting points, not one
-case. Every scenario — published and planned — is a realistic starting state
-that the guide takes toward the same finish line: baseline, managed
-optimization, and results. Some starting states have gaps. The guide
-creates, repairs, or reviews what it can, pauses for the human decisions
-that are required, discloses what cannot be closed, and continues; a pause
-is where a human decides, not where the journey ends. The one deliberate
-early stop is the execution-safety family, whose evaluator path would
-execute candidate code or SQL. Case 46 is simply the first
-published starting point: the one that begins with no gaps to fill.
+case. Every scenario is a realistic starting state that the guide takes
+toward the same finish line: baseline, managed optimization, and results.
+Some starting states have gaps. The guide creates, repairs, or reviews what
+it can, pauses for the human decisions that are required, discloses what
+cannot be closed, and continues; a pause is where a human decides, not where
+the journey ends. That holds for the execution-safety family too: where the
+evaluator path would execute candidate code or SQL, the guide declines to
+calibrate the customer's original evaluator, discloses the declined check on
+the readiness card, and continues. Twelve scenarios are published: three
+declare every component ready, and nine declare a gap.
 
 **Phase A** is the guide's opening: the coding agent inspects what exists,
 explains the readiness state, and stops at the first question or decision that
@@ -37,60 +38,102 @@ credential, project-provider call, Traigent paid call, or optimization. The
 approved coding-agent service may itself be remote or billed and receives the
 project context supplied to it; that service is a separate customer boundary.
 **Phase B** is the later human-approved live path (baseline, managed
-optimization, results). Phase A never becomes Phase B automatically. Case `46`
-in the commands below is a stable numeric alias for
-`incident-severity-triage`, not a count of published scenarios.
+optimization, results). Phase A never becomes Phase B automatically. Case
+numbers such as `46` in the commands below are stable numeric aliases
+(`legacy_id` in each `scenario.json`; `46` is `incident-severity-triage`),
+not a count or an ordering of published scenarios.
 
 The testing instructions call the human test operator the **captain**. This is
 the person who prepares the isolated project, gives the coding agent its exact
 handoff, enforces the stop point, and retains evidence; it is not a product
 role.
 
-The first published scenario is an optimization-ready incident-severity triage
-project. It contains a synthetic agent, labeled rows, a deterministic evaluator,
-and the public contract for the expected opening assessment. The repository does
-not include a recorded worker run, so the current result is labeled **Scenario
-contract · no recorded run**, not **Verified run evidence**.
+Each published scenario is a customer-shaped project — an agent, rows, an
+evaluator, or a declared absence of one of them — plus the public contract
+for its expected opening assessment. Every expected opening in this bank was
+measured by running the guide's own preflight, calibration, and readiness
+scripts offline over the scenario's project bytes at the pinned guide
+revision. That is a captain measurement of the guide's scripts over the
+bytes, not a worker run. The repository includes no recorded worker run, so
+every current result is labeled **Scenario contract · no recorded run**, not
+**Verified run evidence**.
 
 At public guide revision
-[`6ec2b9c1`](https://github.com/Traigent/traigent-first-run/tree/6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9),
-the Guided First Run implements the route families summarized below: a ready
-project advances to baseline approval; incomplete material is preserved,
-created, repaired, or reviewed with the required human decisions; invalid
-measurement stops before paid work; and, when inspection identifies an
-evaluator path that would execute candidate code or SQL, this guide run ends
-before that output executes. This repository tracks public, context-isolated
-scenario coverage for those route families. One public test case is published
-today. This is a governed path toward
-optimization, not a promise that every project can optimize immediately or
-earn an Excellent opening; the full claims model is in
-[docs/methodology.md](docs/methodology.md).
+[`d07b62cd`](https://github.com/Traigent/traigent-first-run/tree/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199)
+(readiness `schema_version` 6), the Guided First Run implements the route
+families summarized below: a ready project advances to baseline approval;
+incomplete material is preserved, created, repaired, or reviewed with the
+required human decisions; invalid measurement stops before paid work; and,
+when inspection identifies an evaluator path that would execute candidate
+code or SQL, the guide declines to calibrate the customer's original
+evaluator, records a containment warning, discloses the declined check on
+the readiness card as `evaluator-calibration-refused`, and continues. This
+repository tracks public, context-isolated scenario coverage for those route
+families. Twelve public scenarios are published today, at least one per
+family. This is a governed path toward optimization, not a promise that
+every project can optimize immediately or earn an Excellent opening; the
+full claims model is in [docs/methodology.md](docs/methodology.md).
 
 ## Scenarios in this repository
 
-**Released today: one scenario — `incident-severity-triage` (case 46).** Six
-more families are planned and listed further down; a family becomes a released
-scenario only when its complete directory and validated manifest are checked
-in here. A release is files you can read and pin to a Git revision — never a
-recorded run or a measured outcome. ("Published" and "released" mean the same
-thing here.)
+**Released today: twelve scenarios, cases 46 through 57.** Every family in
+the coverage model further down has at least one released scenario. A
+scenario is released only when its complete directory and validated manifest
+are checked in here. A release is files you can read and pin to a Git
+revision — never a recorded run or a measured outcome. ("Published" and
+"released" mean the same thing here.)
 
-| Scenario                        | Starting condition            | Components                                                       | Expected route                                     | Evidence scope                                                                 |
-| ------------------------------- | ----------------------------- | ---------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `incident-severity-triage` (46) | All required components ready | Agent, dataset, and evaluator are present; four tunable settings | Proceed, because the required components are ready | Expected Phase A opening contract; no captured worker run or live optimization |
+The expected opening of every row is the four fields `verify` compares —
+`band · status · recommended_action · caps` — as measured by the guide's own
+scripts over the project bytes at guide revision `d07b62cd`. Each is a
+case-specific contract for that scenario at that revision, not a target for
+another project. The evidence scope of every row is the same: an expected
+Phase A opening contract, with no captured worker run and no live
+optimization.
 
-Its primary dataset is declared and checked as data rather than presentation
-copy:
+| Scenario                             | Family                 | Starting state the project brings                                                                                                   | Expected opening (band · status · action · caps)                                                          |
+| ------------------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `incident-severity-triage` (46)      | Ready reference        | Closed-label severity classifier; agent, labeled rows, evaluator, and four varying settings present                                 | EXCELLENT · OK · `proceed` · none                                                                         |
+| `helpdesk-queue-router` (47)         | Ready reference        | Six-queue ticket router whose evaluator folds three ticketing tools' spellings together; all components ready                       | EXCELLENT · OK · `proceed` · none                                                                         |
+| `policy-handbook-rag` (48)           | Ready reference        | Retrieval-augmented short-answer QA over a 20-document handbook; all components ready                                               | EXCELLENT · OK · `proceed` · none                                                                         |
+| `warehouse-text-to-sql` (49)         | Evaluator quality      | Text-to-SQL over a shipped SQLite database; the scorer compares SQL as text, the wrong kind of check for the task                    | EXCELLENT · OK · `proceed` · none (the mismatch is a task-fit finding on the card, not a cap)              |
+| `clinic-scheduling-sql-exec` (50)    | Execution safety       | Text-to-SQL whose scorer executes the generated query against the shipped database; calibration of the original is declined        | WORKABLE · OK · `confirm-evaluator-connection` · `evaluator-calibration-refused`                          |
+| `booking-assistant-next-action` (51) | Dataset integrity      | Next-action selection from a flat chat transcript; six tuning transcripts repeat on the holdout side                                | PARTIAL · BLOCKED · `resplit-dataset` · `dataset-tune-holdout-overlap`, `dataset-repeated-rows`           |
+| `tool-dispatch-selector` (52)        | Search-space readiness | Tool-call selection with one model, one fixed instruction, and no setting that varies                                               | PARTIAL · BLOCKED · `vary-knobs` · `agent-no-varying-knobs`                                               |
+| `meeting-notes-summarizer` (53)      | Evaluator quality      | Free-text summarization whose evaluator delegates to a package that is not in the project; no calibration record                    | PARTIAL · BLOCKED · `repair-evaluator` · `evaluator-unresolved`                                           |
+| `contract-clause-extractor` (54)     | Evidence strength      | Structured extraction with a set-F1 scorer; the answer key was drafted by a model and never reviewed                                | WORKABLE · OK · `review-answer-key` · `dataset-generated-answer-key`                                      |
+| `returns-email-replies` (55)         | Missing material       | Reply drafting from 150 logged emails; no expected outputs, no evaluator, no calibration record                                     | PARTIAL · BLOCKED · `label-data` · `dataset-no-expected-outputs`, `evaluator-absent`                      |
+| `freight-quote-estimator` (56)       | Evidence strength      | Numeric estimation with a tolerance scorer over 24 worked quotes                                                                    | STRONG · OK · `add-examples` · `dataset-coarse-resolution`                                                |
+| `chatbot-on-vendor-flow` (57)        | Missing material       | Intent routing on a hosted vendor flow; labeled rows and a calibratable evaluator, but no local agent                               | NOT READY · BLOCKED · `connect-agent` · `agent-absent`                                                    |
 
-| Dataset | Task | Shape | Splits | Difficulty | Important limits |
-| --- | --- | --- | --- | --- | --- |
-| `incident-reports` | Closed-label classification | 120 unique inputs; 12 distinct label strings, each with its row count | 100 tuning / 20 holdout | 30 each: easy, medium, hard, very hard | Traigent-authored synthetic data; no customer data or observed model performance |
+Each scenario's primary dataset is declared and checked as data rather than
+presentation copy:
 
-These facts come from the scenario's strict `scenario.json` catalog. `check`
-compares its declared paths, row and unique-input counts, split and difficulty
-counts, label strings with their per-label row counts, and evaluator
-calibration count with the materialized files. The presentation can render
-those facts, but it does not own a second copy of them.
+| Scenario | Dataset | Task | Rows | Splits | Difficulty strata | Label shape |
+| --- | --- | --- | --- | --- | --- | --- |
+| 46 | `incident-reports` | Closed-label classification | 120 unique | 100 tuning / 20 holdout | 30 / 30 / 30 / 30 | 12 mapped label strings |
+| 47 | `support-tickets` | Queue routing | 96 unique | 80 / 16 | 24 / 24 / 24 / 24 | 18 mapped label strings |
+| 48 | `handbook-questions` | Short-answer QA | 90 unique | 75 / 15 | 23 / 23 / 22 / 22 | 69 unmapped label strings |
+| 49 | `stock-questions` | Text-to-SQL | 80 unique | 66 / 14 | 20 / 20 / 20 / 20 | free text (SQL) |
+| 50 | `scheduling-questions` | Text-to-SQL | 72 unique | 60 / 12 | 18 / 18 / 18 / 18 | free text (SQL) |
+| 51 | `booking-chat-next-actions` | Closed-label classification | 100 rows, 94 unique | 83 / 17 | 25 / 25 / 25 / 25 | 8 mapped label strings |
+| 52 | `voice-requests` | Tool-call selection | 90 unique | 75 / 15 | 23 / 23 / 22 / 22 | structured |
+| 53 | `meeting-transcripts` | Free-text summarization | 40 unique | 34 / 6 | 10 / 10 / 10 / 10 | free text |
+| 54 | `lease-clauses` | Structured extraction | 60 unique | 50 / 10 | 15 / 15 / 15 / 15 | structured |
+| 55 | `inbound-returns-emails` | Free-text reply drafting | 150 unique | no split | no strata | absent |
+| 56 | `worked-quotes` | Numeric estimation | 24 unique | 20 / 4 | 6 / 6 / 6 / 6 | numeric |
+| 57 | `first-messages` | Intent routing | 90 unique | 75 / 15 | 23 / 23 / 22 / 22 | 6 mapped label strings |
+
+Difficulty strata are listed as easy / medium / hard / very hard. Every
+dataset is Traigent-authored synthetic content with no customer data and no
+observed model performance; each scenario's `scenario.json` lists its own
+further limitations.
+
+These facts come from each scenario's strict `scenario.json` catalog.
+`check` compares its declared paths, row and unique-input counts, split and
+difficulty counts, label strings with their per-label row counts, and
+evaluator calibration count with the materialized files. The presentation
+can render those facts, but it does not own a second copy of them.
 
 Every fact the catalog states is a fact about bytes that ship. `check` never
 imports or executes a scenario file, so it does not establish what the shipped
@@ -98,42 +141,42 @@ evaluator does when it runs -- which spellings it scores alike, or what a
 constant answer would score against it. The catalog therefore does not claim
 it.
 
-See [Scenario and dataset coverage](docs/scenario-coverage.md) for the current
-public case, the explicitly not-yet-published coverage roadmap, dataset-origin
-rules, and the claim supported by each test layer.
+See [Scenario and dataset coverage](docs/scenario-coverage.md) for the
+released scenarios by family, dataset-origin rules, and the claim supported by
+each test layer.
 
 ### Scenario families
 
 The pinned public guide implements the route families summarized below. This
 is a coverage model, not a claim that seven rows exhaust every project
-condition. The rows are roadmap themes for public, context-isolated scenario
-tests. A theme can require multiple cases or subcases when its conditions lead
-to materially different actions; passing one case does not pass the theme. One
-theme has a published reference case; the other six are planned coverage, not
-test results.
+condition. The rows are themes for public, context-isolated scenario tests.
+A theme can require multiple cases or subcases when its conditions lead to
+materially different actions; a contract for one case is not a contract for
+the theme. Every theme now has at least one released scenario; a released
+scenario is an expected Phase A contract, not a test result.
 
-| Family                 | Starting state the customer brings                                                                                                                 | What the Guided First Run does                                                                                                                                                     | Public case today                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Ready reference        | Agent, labeled data, evaluator, and four varying tunable settings are all present                                                                  | Explain the ready state and stop at the human's baseline approval                                                                                                                  | `incident-severity-triage` (case 46) - expected Phase A contract only; no captured run |
-| Missing material       | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                                          | Preserve what exists; ask only for an unresolved human or domain choice; create or repair only a required dependency; otherwise disclose the limitation; re-check before paid work | Planned                                                                                |
-| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                 | Planned                                                                                |
-| Evidence strength      | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution             | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                                                   | Planned                                                                                |
-| Evaluator quality      | A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, or timing out                                                    | Calibrate it, inspect and repair or replace it, or pause for a bounded timeout decision; do not call a slow evaluator broken                                                       | Planned                                                                                |
-| Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | End this guide run before candidate output executes; any containment and restart procedure is separate and human-governed                                                          | Planned                                                                                |
-| Search-space readiness | The agent has no meaningful varying tunable settings, or declared settings are not wired into requests                                             | Establish and verify real variation before requesting approval for paid search                                                                                                     | Planned                                                                                |
+| Family                 | Starting state the customer brings                                                                                                                 | What the Guided First Run does                                                                                                                                                                         | Released scenarios (expected Phase A contract only; no captured run)                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Ready reference        | Agent, labeled data, evaluator, and varying tunable settings are all present                                                                       | Explain the ready state and stop at the human's baseline approval                                                                                                                                      | `incident-severity-triage` (46), `helpdesk-queue-router` (47), `policy-handbook-rag` (48) |
+| Missing material       | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                                          | Preserve what exists; ask only for an unresolved human or domain choice; create or repair only a required dependency; otherwise disclose the limitation; re-check before paid work                     | `returns-email-replies` (55), `chatbot-on-vendor-flow` (57)                         |
+| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                                     | `booking-assistant-next-action` (51)                                                |
+| Evidence strength      | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution             | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                                                                       | `contract-clause-extractor` (54), `freight-quote-estimator` (56)                    |
+| Evaluator quality      | A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, timing out, or the wrong kind of check for the task              | Calibrate it, inspect and repair or replace it, or pause for a bounded timeout decision; do not call a slow evaluator broken                                                                           | `warehouse-text-to-sql` (49), `meeting-notes-summarizer` (53)                       |
+| Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | Decline to calibrate the customer's original evaluator, record a containment warning, disclose the declined check on the card, and continue; a copied-actor route may calibrate a copy against a bounded target | `clinic-scheduling-sql-exec` (50)                                                   |
+| Search-space readiness | The agent has no meaningful varying tunable settings, or declared settings are not wired into requests                                             | Establish and verify real variation before requesting approval for paid search                                                                                                                         | `tool-dispatch-selector` (52)                                                       |
 
-In every family except execution safety, the actions above are waypoints, not
-endings: once any gap is closed and the human approves, the run continues
-along the same route toward baseline, optimization, and results. A family
-defines where the opening pauses for a human, not how far the scenario can
-go.
+In every family, the actions above are waypoints, not endings: once any gap
+is closed and the human approves, the run continues along the same route
+toward baseline, optimization, and results. A family defines where the
+opening pauses for a human, not how far the scenario can go.
 
 ## Run a scenario against the guide
 
 Five steps take a scenario from clone to a verified opening. This is the
 minimal path; [GUIDE.md](GUIDE.md) is the complete, authoritative procedure.
-Case `46` below is today's published scenario; the same steps run any future
-one.
+Case `46` below is one of the twelve published scenarios; the same steps run
+any case `scenario.py list` shows, with an output path named after the
+scenario you run.
 
 **1. Install** — clone both repositories side by side, in a disposable
 directory outside any workspace a coding-agent session has already seen:
@@ -211,18 +254,19 @@ customer-controlled machine, read
 
 The whole arc is: **install** (clone both repositories), **check** (validate
 the scenario package), **isolate** (prepare a
-fresh copy of one scenario outside any workspace an agent has seen), **run the
-guide** (a blinded worker follows the Traigent Guided First Run inside that
+fresh copy of the chosen scenario outside any workspace an agent has seen),
+**run the guide** (a blinded worker follows the Traigent Guided First Run inside that
 copy), and **verify** (compare its opening against the published contract).
-This flow is per-scenario, not specific to case 46: each published scenario is
-prepared, run, and verified through these same steps — case 46 is simply the
-one published today, and planned scenarios join the catalog the same way.
-Every Phase A opening — case 46's included — ends at the first question that
-belongs to a human; that is the exercise's boundary, not the route's.
+This flow is per-scenario, not specific to case 46: each of the twelve
+published scenarios is prepared, run, and verified through these same steps,
+and a later scenario joins the catalog the same way. Every Phase A opening —
+whether the contract reads `proceed` or `BLOCKED` — ends at the first
+question that belongs to a human; that is the exercise's boundary, not the
+route's.
 
 ```mermaid
 flowchart TD
-    A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run,<br/>then pick a published scenario (today: case 46)"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
+    A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run,<br/>then pick a published scenario (case 46 shown; any of the twelve works)"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
     B --> C["scenario.py prepare 46<br/>--guide-src ../traigent-first-run --output ../incident-triage-run"]
     C --> D["customer-project/ from tracked Git blobs only,<br/>plus a generated run.json; the verifier, expected opening,<br/>and scenario manifest stay outside"]
     D --> E["One fresh coding-agent session opened in customer-project/,<br/>given only the handoff printed by prepare"]
@@ -266,19 +310,23 @@ behavior.
 
 ```text
 scenario.py                         Catalog, preparation, and verification CLI
-scenarios/<slug>/scenario.json      Public scenario identity and content terms
+scenarios/<slug>/README.md          The scenario's starting state, in prose
+scenarios/<slug>/scenario.json      Public scenario identity, catalog, and content terms
 scenarios/<slug>/project/           Files copied into the worker project
 scenarios/<slug>/verifier/          Captain-side expected opening contract
 schema/scenario.schema.json         Scenario manifest schema
+scripts/check_public_surface.py     Public-surface guard over tracked bytes and paths
+docs/scenario-coverage.md           Released scenarios by family and dataset-origin rules
 docs/customer-pc-runbook.md         Customer-machine operating procedure
 docs/methodology.md                 Claims, isolation, and evidence model
 skills/traigent-first-run-scenarios Bundled agent skill for this repository
 presentation/                       Shared browser and PowerPoint presentation
 ```
 
-Each scenario is fully materialized. A run never assembles fragments from a
-hidden shared dataset. This keeps each published starting point independently
-reviewable, resettable, and reproducible.
+Twelve scenario directories are checked in, `incident-severity-triage`
+through `chatbot-on-vendor-flow`. Each is fully materialized. A run never
+assembles fragments from a hidden shared dataset. This keeps each published
+starting point independently reviewable, resettable, and reproducible.
 
 ## Customer presentation
 
@@ -310,8 +358,10 @@ made automatically.
 
 ## Content origin and licensing
 
-`scenario.json` records the structured scenario catalog plus the origin and
-license of the files published here.
+Each scenario's `scenario.json` records its structured catalog plus the
+origin and license of the files published here. All twelve scenarios are
+Traigent-authored synthetic content: every company, person, database row,
+handbook page, transcript, and email in them is invented for the scenario.
 That is distinct from a row-level `provenance` value inside the simulated
 project. For example, `provenance: real` models what a fictional user declares
 to the readiness scorer; it does not claim that the row came from a real

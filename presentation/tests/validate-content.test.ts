@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { coreSlideCount, presentation } from "../src/content";
+import { coreSlideCount, presentation, scenarioBankSize } from "../src/content";
 import { evidenceLabel, type PresentationSpec } from "../src/model";
 import { repositoryRoot } from "../scripts/runtime";
 import {
@@ -31,7 +31,7 @@ describe("presentation content validation", () => {
   it("accepts the canonical contract-only deck and public catalog", () => {
     const validated = validatePresentationContent(presentation);
 
-    expect(validated.slides).toHaveLength(24);
+    expect(validated.slides).toHaveLength(26);
     expect(coreSlideCount).toBe(9);
     expect(
       validated.slides
@@ -43,7 +43,11 @@ describe("presentation content validation", () => {
         .slice(coreSlideCount)
         .every((slide) => slide.section === "appendix"),
     ).toBe(true);
-    expect(validated.catalog).toHaveLength(1);
+    expect(scenarioBankSize).toBe(12);
+    expect(validated.catalog).toHaveLength(12);
+    expect(validated.catalog.map((entry) => entry.legacyId)).toEqual([
+      46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57,
+    ]);
     expect(validated.slides.every((slide) => slide.notes.length > 0)).toBe(
       true,
     );
@@ -111,19 +115,125 @@ describe("presentation content validation", () => {
     ).not.toContain("Expected opening");
   });
 
-  it("keeps coverage targets distinct from the one published scenario", () => {
+  it("marks every scenario family published and names its cases", () => {
     const matrix = presentation.slides
-      .filter((slide) => slide.id.startsWith("coverage-roadmap-"))
+      .filter((slide) => slide.id.startsWith("scenario-families-"))
       .flatMap((slide) => slide.scenarioMatrix ?? []);
 
     expect(matrix).toHaveLength(7);
-    expect(matrix.filter((row) => row.coverage === "published")).toHaveLength(
-      1,
-    );
-    expect(
-      matrix.filter((row) => row.coverage === "coverage-target"),
-    ).toHaveLength(6);
+    expect(matrix.every((row) => row.coverage === "published")).toBe(true);
+    expect(matrix.map((row) => row.setup.split(":")[0])).toEqual([
+      "Cases 46, 47, 48",
+      "Cases 55, 57",
+      "Case 51",
+      "Cases 54, 56",
+      "Cases 49, 53",
+      "Case 50",
+      "Case 52",
+    ]);
     expect(presentation.catalog[0]?.slug).toBe("incident-severity-triage");
+    expect(presentation.scenario.slug).toBe("incident-severity-triage");
+  });
+
+  it("keeps the two caps no scenario exercises as coverage targets", () => {
+    const rows = presentation.slides
+      .filter((slide) => slide.id.startsWith("readiness-ceilings-"))
+      .flatMap((slide) => slide.matrix ?? []);
+
+    expect(rows).toHaveLength(5);
+    const byCeiling = (ceiling: string) =>
+      rows.find((row) => row.safestNextStep.includes(ceiling))!;
+    expect(byCeiling("Ceiling 25").coverage).toBe("coverage-target");
+    expect(byCeiling("Ceiling 65").coverage).toBe("coverage-target");
+    expect(byCeiling("Ceiling 45").coverage).toBe("published");
+    expect(byCeiling("Ceiling 45").startingPoint).toContain("Case 52");
+    expect(byCeiling("Ceiling 74").coverage).toBe("published");
+    expect(byCeiling("Ceiling 74").startingPoint).toContain("Case 54");
+    expect(rows[0]!.coverage).toBe("published");
+    expect(rows[0]!.startingPoint).toContain("Cases 46, 47, 48, 49");
+  });
+
+  it("lists every catalog entry exactly once across the index slides", () => {
+    const indexSlides = presentation.slides.filter(
+      (slide) => slide.catalogView === "index",
+    );
+    const listed = indexSlides.flatMap((slide) => slide.catalogSlugs ?? []);
+
+    expect(indexSlides.map((slide) => slide.id)).toEqual([
+      "scenario-bank-1",
+      "scenario-bank-2",
+    ]);
+    expect(listed).toEqual(presentation.catalog.map((entry) => entry.slug));
+    expect(new Set(listed).size).toBe(listed.length);
+    for (const entry of presentation.catalog) {
+      expect(entry.expectedRouting).toContain(`band ${entry.expectedBand}`);
+      expect(entry.expectedRouting).toContain(`status ${entry.expectedStatus}`);
+      expect(entry.expectedRouting).toContain(`action ${entry.expectedAction}`);
+      for (const cap of entry.expectedCaps) {
+        expect(entry.expectedRouting).toContain(cap);
+      }
+    }
+  });
+
+  it("rejects a catalog entry that no index slide lists", () => {
+    const candidate = copyPresentation();
+    const index = candidate.slides.find(
+      (slide) => slide.catalogView === "index",
+    )!;
+    const dropped = index.catalogSlugs!.pop()!;
+
+    expectValidationIssue(
+      candidate,
+      `catalog entry ${dropped} is missing from every index slide`,
+    );
+  });
+
+  it("rejects a catalog entry listed on two index slides", () => {
+    const candidate = copyPresentation();
+    const [first, second] = candidate.slides.filter(
+      (slide) => slide.catalogView === "index",
+    );
+    second!.catalogSlugs!.push(first!.catalogSlugs![0]!);
+
+    expectValidationIssue(candidate, "is listed on more than one index slide");
+  });
+
+  it("rejects a worked example that is not in the catalog", () => {
+    const candidate = copyPresentation();
+    candidate.scenario.slug = "not-in-the-catalog";
+
+    expectValidationIssue(
+      candidate,
+      "worked example not-in-the-catalog is not a catalog entry",
+    );
+  });
+
+  it("states the execution-safety route as a disclosed refusal, not a run end", () => {
+    const text = presentation.slides
+      .flatMap((slide) => [
+        slide.body,
+        ...slide.bullets,
+        ...slide.notes,
+        ...(slide.scenarioMatrix ?? []).map((row) => row.expectedRoute),
+      ])
+      .join("\n");
+
+    expect(text).not.toMatch(/guide run ends/i);
+    expect(text).not.toMatch(/hard safety stop/i);
+    expect(text).not.toMatch(/end this guide run/i);
+    expect(text).toContain("evaluator-calibration-refused");
+    expect(text).toContain("containment warning");
+  });
+
+  it("never says a scenario passed or that a run was recorded", () => {
+    const rendered = JSON.stringify(presentation);
+
+    expect(rendered).not.toMatch(/only (?:case 46|one scenario)/i);
+    expect(rendered).not.toMatch(/one scenario is released/i);
+    expect(rendered).not.toMatch(/scenario(?:s)? passed/i);
+    expect(rendered).not.toMatch(/ready reference is the only/i);
+    expect(rendered).not.toMatch(/downloadable here today/i);
+    expect(rendered).not.toMatch(/6ec2b9c1/);
   });
 
   it("pins every published-guide claim to the full reviewed revision", () => {
@@ -135,7 +245,7 @@ describe("presentation content validation", () => {
     expect(
       guideSlides.every(
         (slide) =>
-          slide.sourceRevision === "6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9",
+          slide.sourceRevision === "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199",
       ),
     ).toBe(true);
   });

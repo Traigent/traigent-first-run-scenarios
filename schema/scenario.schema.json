@@ -409,8 +409,21 @@
     "evaluatorMethod": {
       "type": "string",
       "enum": [
+        "composite",
+        "embedding",
         "exact-match",
-        "normalized-exact-match"
+        "execution",
+        "fuzzy",
+        "llm-judge-pairwise",
+        "llm-judge-pointwise",
+        "llm-judge-rubric",
+        "normalized-exact-match",
+        "numeric-tolerance",
+        "routing",
+        "schema",
+        "set-f1",
+        "sql-structure",
+        "state-transition"
       ]
     }
   },

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "slug": "warehouse-text-to-sql",
+  "legacy_id": 49,
+  "title": "Warehouse text-to-SQL with a text-comparing evaluator",
+  "summary": "A customer-shaped text-to-SQL project over a small wholesaler's stock database: a configurable agent, labeled questions with gold SQLite queries, calibration probes, and an evaluator that compares the generated query with the recorded one as normalized text instead of running either.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "schema_context",
+          "prompt_style",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "ready",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "limited",
+        "path": "project/evaluator.py",
+        "method": "normalized-exact-match",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 4
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "stock-questions",
+        "state": "ready",
+        "path": "project/dataset.jsonl",
+        "task": "text-to-sql",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 80,
+        "unique_inputs": 80,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 66,
+            "holdout": 14
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 20,
+            "medium": 20,
+            "hard": 20,
+            "very-hard": 20
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "free-text",
+          "surface_label_count": 0,
+          "label_counts": {}
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "one-gold-query-per-question"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "evaluator-compares-sql-as-text",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome",
+        "sql-equivalence-scoring"
+      ]
+    },
+    "non_dataset_files": [
+      "project/warehouse.db",
+      "project/schema.sql",
+      "project/requirements.txt"
+    ]
+  },
+  "tags": [
+    "text-to-sql",
+    "sqlite",
+    "normalized-exact-evaluator",
+    "evaluator-quality",
+    "labeled-data",
+    "gaps-present",
+    "synthetic-data"
+  ]
+}

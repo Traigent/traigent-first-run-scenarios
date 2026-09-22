@@ -1,0 +1,70 @@
+[
+  {
+    "name": "one table, one filter - the recorded query typed in lower case with a double-quoted literal",
+    "score_mode": "binary",
+    "expected": "SELECT name FROM suppliers WHERE country = 'Spain';",
+    "input_data": {
+      "question": "List the names of all suppliers based in Spain."
+    },
+    "metadata": {
+      "scoring_path": "normalised-text"
+    },
+    "probes": {
+      "good": "SELECT name FROM suppliers WHERE country = 'Spain';",
+      "equivalent_good": "select name\n  from suppliers\n  where country = \"Spain\"",
+      "partial": "SELECT name FROM suppliers WHERE country = 'Portugal';",
+      "bad": "SELECT COUNT(*) FROM orders;"
+    }
+  },
+  {
+    "name": "one join - the same statement spread over several lines without the semicolon",
+    "score_mode": "binary",
+    "expected": "SELECT products.name FROM products JOIN suppliers ON products.supplier_id = suppliers.supplier_id WHERE suppliers.name = 'Castellano Olive Estates';",
+    "input_data": {
+      "question": "Which products are supplied by Castellano Olive Estates?"
+    },
+    "metadata": {
+      "scoring_path": "normalised-text"
+    },
+    "probes": {
+      "good": "SELECT products.name FROM products JOIN suppliers ON products.supplier_id = suppliers.supplier_id WHERE suppliers.name = 'Castellano Olive Estates';",
+      "equivalent_good": "SELECT products.name\nFROM products\nJOIN suppliers ON products.supplier_id = suppliers.supplier_id\nWHERE suppliers.name = 'Castellano Olive Estates'",
+      "partial": "SELECT products.name FROM products JOIN suppliers ON products.supplier_id = suppliers.supplier_id WHERE suppliers.name = 'Harbourside Pulses';",
+      "bad": "SELECT * FROM shipments WHERE status = 'delayed';"
+    }
+  },
+  {
+    "name": "join with group, order and limit - keywords in lower case, padding inside the parentheses",
+    "score_mode": "binary",
+    "expected": "SELECT suppliers.name, COUNT(*) AS shipment_count FROM shipments JOIN suppliers ON shipments.supplier_id = suppliers.supplier_id GROUP BY suppliers.supplier_id ORDER BY shipment_count DESC LIMIT 1;",
+    "input_data": {
+      "question": "Which supplier has sent us the most shipments?"
+    },
+    "metadata": {
+      "scoring_path": "normalised-text"
+    },
+    "probes": {
+      "good": "SELECT suppliers.name, COUNT(*) AS shipment_count FROM shipments JOIN suppliers ON shipments.supplier_id = suppliers.supplier_id GROUP BY suppliers.supplier_id ORDER BY shipment_count DESC LIMIT 1;",
+      "equivalent_good": "select suppliers.name, count( * ) as shipment_count\nfrom shipments join suppliers on shipments.supplier_id = suppliers.supplier_id\ngroup by suppliers.supplier_id\norder by shipment_count desc\nlimit 1;",
+      "partial": "SELECT suppliers.name, COUNT(*) AS shipment_count FROM shipments JOIN suppliers ON shipments.supplier_id = suppliers.supplier_id WHERE shipments.warehouse = 'Riverside' GROUP BY suppliers.supplier_id ORDER BY shipment_count DESC LIMIT 1;",
+      "bad": "SELECT name, unit_price FROM products WHERE unit_price > 20;"
+    }
+  },
+  {
+    "name": "subquery - the recorded query with extra spaces around the parentheses and no semicolon",
+    "score_mode": "binary",
+    "expected": "SELECT name FROM products WHERE product_id NOT IN (SELECT product_id FROM order_lines);",
+    "input_data": {
+      "question": "Which products have never been ordered?"
+    },
+    "metadata": {
+      "scoring_path": "normalised-text"
+    },
+    "probes": {
+      "good": "SELECT name FROM products WHERE product_id NOT IN (SELECT product_id FROM order_lines);",
+      "equivalent_good": "select name from products where product_id not in ( select product_id from order_lines )",
+      "partial": "SELECT name FROM products WHERE product_id IN (SELECT product_id FROM order_lines);",
+      "bad": "SELECT AVG(lead_time_days) FROM suppliers;"
+    }
+  }
+]

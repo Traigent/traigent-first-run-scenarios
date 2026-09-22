@@ -84,8 +84,11 @@ Two spellings of the same severity are two label strings here, because two
 strings are what the file carries. Whether an evaluator folds them together is
 a property of the evaluator at run time; it is not asserted, so it cannot be
 forged. `components.evaluator.method` is carried as a description of the
-scenario and checked only for being one of `exact-match` or
-`normalized-exact-match`; no count and no gate is derived from it.
+scenario and checked only for being one of the published spellings: the two
+the first scenario shipped with, `exact-match` and `normalized-exact-match`,
+and the guide's own `--evaluator-method` names (`GUIDE_EVALUATOR_METHODS` in
+`scenario.py`), so a catalog can describe a scorer the way the guide's
+readiness read will be told about it. No count and no gate is derived from it.
 
 **Not established here, on purpose:** whether the shipped evaluator actually
 distinguishes the classes a scenario is built around, and what a constant answer
@@ -183,7 +186,16 @@ the limits are worth stating rather than leaving to be discovered:
   A record that is neither -- free-form prose carrying `INC-001: SEV1` on every
   line, say -- is reported as carrying no closed label surface. That is the one
   place left where "I could not establish this is a label surface" is answered
-  as "it is not one", and it is stated here rather than implied. The scan's
+  as "it is not one", and it is stated here rather than implied. A shipped
+  binary record named in `non_dataset_files` -- a SQLite database, say -- is
+  read the same way: a decoded line carrying a control byte is skipped as a
+  run of bytes out of a binary file rather than handed to the table reader,
+  so the database reads as an opaque record with no label surface instead of
+  crashing the scan. `scripts/check_public_surface.py` likewise treats a file
+  that opens with the SQLite magic as a declared binary format rather than
+  text of an unknown encoding; every decoded view of it still goes through the
+  denylist, so a secret or a private path inside a database page is found as
+  readily as one in a text file. The scan's
   floor is also relative: a column carried by fewer than one row in ten reads
   as telemetry, so burying a labelled dataset under more than ten junk lines
   per labelled row dilutes it below the floor -- at ten lines of authoring

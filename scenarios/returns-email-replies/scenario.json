@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "slug": "returns-email-replies",
+  "legacy_id": 55,
+  "title": "Returns-desk reply drafting with no expected outputs and no evaluator",
+  "summary": "A customer-shaped email-reply project with a configurable drafting agent and 150 logged inbound customer emails, but no expected replies, no evaluator and no calibration record: the material an optimization needs to score a draft is missing.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "tone",
+          "length",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "limited",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "missing",
+        "path": null,
+        "method": null,
+        "calibration": {
+          "path": null,
+          "case_count": 0
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "inbound-returns-emails",
+        "state": "limited",
+        "path": "project/dataset.jsonl",
+        "task": "free-text-reply-drafting",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": null,
+        "rows": 150,
+        "unique_inputs": 150,
+        "splits": {
+          "field": null,
+          "counts": {}
+        },
+        "difficulty_strata": {
+          "field": null,
+          "counts": {}
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "absent",
+          "surface_label_count": 0,
+          "label_counts": {}
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-expected-outputs",
+          "no-split",
+          "no-difficulty-strata",
+          "no-observed-model-performance",
+          "free-text-task"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "expected-outputs-and-evaluator-missing",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    },
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ]
+  },
+  "tags": [
+    "free-text",
+    "email-replies",
+    "no-evaluator",
+    "no-expected-outputs",
+    "unlabeled-data",
+    "gaps-present",
+    "synthetic-data"
+  ]
+}

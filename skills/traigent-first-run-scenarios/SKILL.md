@@ -65,7 +65,10 @@ Stop the Phase A run at the first question or decision that belongs to the
 human. Do not provide credentials, approve paid or remote product/provider
 calls, expose customer data, mutate production, establish a baseline, or run an
 optimization. A local deterministic evaluator calibration is allowed only when
-the first-run guide's safety gate admits that exact path.
+the first-run guide's safety gate admits that exact path. Where that gate
+declines the path because the evaluator would execute candidate code or SQL,
+the guide discloses the declined check on the readiness card and continues;
+do not calibrate the original evaluator on its behalf.
 
 The scenario is public. The worker receives the project's evaluator, but the
 captain keeps the expected opening, semantic verifier, and earlier results out

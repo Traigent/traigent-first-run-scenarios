@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scope": "phase-a-opening",
+  "band": "PARTIAL",
+  "status": "BLOCKED",
+  "recommended_action": "resplit-dataset",
+  "caps": [
+    "dataset-repeated-rows",
+    "dataset-tune-holdout-overlap"
+  ],
+  "display": {
+    "overall": {
+      "score": 50,
+      "confidence": 0.94
+    },
+    "pillars": {
+      "agent": {
+        "score": 100,
+        "confidence": 0.77
+      },
+      "dataset": {
+        "score": 86,
+        "confidence": 1.0
+      },
+      "evaluation": {
+        "score": 100,
+        "confidence": 1.0
+      }
+    }
+  }
+}

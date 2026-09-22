@@ -134,13 +134,15 @@ function hasPositiveRunClaim(claimText: string): boolean {
   return false;
 }
 
-function renderedCatalogEntry(
+function renderedCatalogEntries(
   slide: SlideSpec,
   catalog: readonly CatalogEntry[],
-): CatalogEntry | undefined {
-  return slide.catalogSlug === undefined
-    ? undefined
-    : catalog.find((entry) => entry.slug === slide.catalogSlug);
+): CatalogEntry[] {
+  const slugs = new Set<string>([
+    ...(slide.catalogSlug === undefined ? [] : [slide.catalogSlug]),
+    ...(slide.catalogSlugs ?? []),
+  ]);
+  return catalog.filter((entry) => slugs.has(entry.slug));
 }
 
 function validateTemplateContract(slide: SlideSpec): string[] {
@@ -174,15 +176,29 @@ function validateTemplateContract(slide: SlideSpec): string[] {
   ) {
     issues.push("only matrix slides may define matrix data");
   }
+  if (slide.kind === "catalog" && slide.catalogView === undefined) {
+    issues.push("catalog slides require a catalog view");
+  }
   if (
     slide.kind === "catalog" &&
-    (slide.catalogView === undefined || slide.catalogSlug === undefined)
+    slide.catalogView !== undefined &&
+    slide.catalogView !== "index" &&
+    slide.catalogSlug === undefined
   ) {
-    issues.push("catalog slides require a catalog slug and view");
+    issues.push("catalog detail slides require a catalog slug");
+  }
+  if (
+    slide.kind === "catalog" &&
+    slide.catalogView === "index" &&
+    slide.catalogSlugs === undefined
+  ) {
+    issues.push("catalog index slides require the slugs they list");
   }
   if (
     slide.kind !== "catalog" &&
-    (slide.catalogView !== undefined || slide.catalogSlug !== undefined)
+    (slide.catalogView !== undefined ||
+      slide.catalogSlug !== undefined ||
+      slide.catalogSlugs !== undefined)
   ) {
     issues.push("only catalog slides may define catalog routing");
   }
@@ -204,7 +220,7 @@ function validateEvidenceContract(
   const issues: string[] = [];
   const claimText = visibleClaimText(
     slide,
-    renderedCatalogEntry(slide, catalog),
+    renderedCatalogEntries(slide, catalog),
   );
 
   if (
@@ -263,16 +279,35 @@ function schemaIssues(error: ZodError): string[] {
 }
 
 function validateDeckContract(spec: PresentationSpec): string[] {
+  const issues: string[] = [];
   // Deck-level text renders on every slide and in the PowerPoint document
   // properties, and carries no evidence state of its own, so it can never
   // reach the verified-run state a positive run claim would require.
-  return hasPositiveRunClaim(
-    visibleClaimText(spec.title, spec.subtitle, spec.scenario),
-  )
-    ? [
-        "deck: positive run claims require evidenceState verified-run, which deck-level text cannot carry",
-      ]
-    : [];
+  if (
+    hasPositiveRunClaim(
+      visibleClaimText(spec.title, spec.subtitle, spec.scenario),
+    )
+  ) {
+    issues.push(
+      "deck: positive run claims require evidenceState verified-run, which deck-level text cannot carry",
+    );
+  }
+  // A catalog entry no slide renders is text the claim scan above never
+  // reaches, and an entry the bank publishes but the deck never shows is a
+  // scenario the audience is not told about. The model requires every entry
+  // on an index slide; this repeats the check at the deck level so a schema
+  // relaxation cannot quietly reopen the gap.
+  const rendered = new Set(
+    spec.slides.flatMap((slide) =>
+      renderedCatalogEntries(slide, spec.catalog).map((entry) => entry.slug),
+    ),
+  );
+  for (const entry of spec.catalog) {
+    if (!rendered.has(entry.slug)) {
+      issues.push(`deck: catalog entry ${entry.slug} is never rendered`);
+    }
+  }
+  return issues;
 }
 
 export function validatePresentationContent(value: unknown): PresentationSpec {
@@ -304,6 +339,6 @@ export function validateCurrentPresentation(): PresentationSpec {
 if (isMainModule(import.meta.url)) {
   const validated = validateCurrentPresentation();
   process.stdout.write(
-    `Validated ${validated.slides.length} presentation slides for scenario ${validated.scenario.slug}.\n`,
+    `Validated ${validated.slides.length} presentation slides over ${validated.catalog.length} catalog scenarios (worked example ${validated.scenario.slug}).\n`,
   );
 }

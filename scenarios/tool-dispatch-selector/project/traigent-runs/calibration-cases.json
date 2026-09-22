@@ -1,0 +1,36 @@
+[
+  {
+    "name": "one-argument call - a door lock, written with the hub's own spelling",
+    "score_mode": "binary",
+    "expected": "{\"tool\": \"lock_door\", \"args\": {\"door\": \"front door\"}}",
+    "input_data": {
+      "request": "Lock the front door."
+    },
+    "metadata": {
+      "scoring_path": "tool-call-equality"
+    },
+    "probes": {
+      "good": "{\"tool\": \"lock_door\", \"args\": {\"door\": \"front door\"}}",
+      "equivalent_good": "{\"args\": {\"door\": \" Front Door\"}, \"tool\": \"Lock_Door\"}",
+      "partial": "{\"tool\": \"lock_door\", \"args\": {\"door\": \"back door\"}}",
+      "bad": "{\"tool\": \"start_scene\", \"args\": {\"scene\": \"front door\"}}"
+    }
+  },
+  {
+    "name": "two-argument call - a thermostat, with the room read from context",
+    "score_mode": "binary",
+    "expected": "{\"tool\": \"set_thermostat\", \"args\": {\"room\": \"nursery\", \"degrees_c\": 22}}",
+    "input_data": {
+      "request": "It's freezing in the nursery, make it 22."
+    },
+    "metadata": {
+      "scoring_path": "tool-call-equality"
+    },
+    "probes": {
+      "good": "{\"tool\": \"set_thermostat\", \"args\": {\"room\": \"nursery\", \"degrees_c\": 22}}",
+      "equivalent_good": "{\"args\": {\"degrees_c\": 22.0, \"room\": \"Nursery \"}, \"tool\": \"SET_THERMOSTAT\"}",
+      "partial": "{\"tool\": \"set_thermostat\", \"args\": {\"room\": \"nursery\", \"degrees_c\": 21}}",
+      "bad": "{\"tool\": \"get_weather\", \"args\": {\"day\": \"tomorrow\"}}"
+    }
+  }
+]

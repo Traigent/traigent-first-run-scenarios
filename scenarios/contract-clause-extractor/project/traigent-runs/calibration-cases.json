@@ -1,0 +1,53 @@
+[
+  {
+    "name": "plain clause - the same four fields in another key order and case",
+    "score_mode": "graded",
+    "expected": "{\"tenant\": \"Halvers Bicycle Repair Ltd\", \"term_months\": 36, \"notice_days\": 90, \"renewal\": \"auto\"}",
+    "input_data": {
+      "clause": "This Lease is made between Westbrook Leasing Limited as Landlord and Halvers Bicycle Repair Ltd as Tenant for the premises at Unit 3, 27 Corvane Industrial Way, Port Alder. The Term is 36 months beginning on the Commencement Date. Either party may end this Lease at the expiry of the Term by giving the other not less than 90 days written notice. If no such notice is served, the Lease renews automatically for a further period of 12 months on the same terms, and continues to do so at the end of each further period."
+    },
+    "metadata": {
+      "scoring_path": "field-bindings"
+    },
+    "probes": {
+      "good": "{\"tenant\": \"Halvers Bicycle Repair Ltd\", \"term_months\": 36, \"notice_days\": 90, \"renewal\": \"auto\"}",
+      "equivalent_good": "{\"renewal\": \"Auto\", \"notice_days\": \"90\", \"term_months\": 36, \"tenant\": \"halvers  bicycle repair ltd\"}",
+      "partial": "{\"tenant\": \"Halvers Bicycle Repair Ltd\", \"term_months\": 36, \"notice_days\": 30, \"renewal\": \"manual\"}",
+      "bad": "{\"tenant\": \"Westbrook Leasing Limited\", \"term_months\": 12, \"notice_days\": 30, \"renewal\": \"none\"}"
+    }
+  },
+  {
+    "name": "weeks of notice - a count written as digits in a string",
+    "score_mode": "graded",
+    "expected": "{\"tenant\": \"Dunmore Climbing Gym Ltd\", \"term_months\": 60, \"notice_days\": 42, \"renewal\": \"manual\"}",
+    "input_data": {
+      "clause": "The Landlord, Westbrook Leasing Limited, grants to Dunmore Climbing Gym Ltd a lease of the former warehouse at 8 Haulage Court, Coldharbour Green, for a Term of 60 months. The Tenant may request a renewal by serving written notice on the Landlord at least six weeks before the Term ends. A renewal takes effect only when the parties have signed a new lease; the Landlord may decline, and this Lease does not continue automatically beyond the Term."
+    },
+    "metadata": {
+      "scoring_path": "field-bindings"
+    },
+    "probes": {
+      "good": "{\"tenant\": \"Dunmore Climbing Gym Ltd\", \"term_months\": 60, \"notice_days\": 42, \"renewal\": \"manual\"}",
+      "equivalent_good": "{\"Tenant\": \"DUNMORE CLIMBING GYM LTD\", \"Term_Months\": \"60\", \"Notice_Days\": 42, \"Renewal\": \"Manual\"}",
+      "partial": "{\"tenant\": \"Dunmore Climbing Gym Ltd\", \"term_months\": 60, \"notice_days\": 6, \"renewal\": \"auto\"}",
+      "bad": "{\"tenant\": \"Westbrook Leasing Limited\", \"term_months\": 5, \"notice_days\": 6, \"renewal\": \"none\"}"
+    }
+  },
+  {
+    "name": "exception changes the renewal - the object padded with whitespace",
+    "score_mode": "graded",
+    "expected": "{\"tenant\": \"Windermount Software Ltd\", \"term_months\": 60, \"notice_days\": 180, \"renewal\": \"none\"}",
+    "input_data": {
+      "clause": "The fifth floor of Thistlewood House, 41 Thistlewood Parade, Marrowgate, is let by Westbrook Leasing Limited to Windermount Software Ltd for a Term of 60 months. This Lease renews automatically for a further 60 months at the end of the Term unless either party gives the other at least 180 days written notice, save that where the Premises are Redevelopment Premises the Lease is not renewable and ends on the expiry of the Term. The Premises are Redevelopment Premises, having been so designated in Schedule 6 on the date of this Lease."
+    },
+    "metadata": {
+      "scoring_path": "field-bindings"
+    },
+    "probes": {
+      "good": "{\"tenant\": \"Windermount Software Ltd\", \"term_months\": 60, \"notice_days\": 180, \"renewal\": \"none\"}",
+      "equivalent_good": "{ \"tenant\" : \"Windermount Software Ltd\" ,\n  \"term_months\" : 60 ,\n  \"notice_days\" : 180 ,\n  \"renewal\" : \"None\" }",
+      "partial": "{\"tenant\": \"Westbrook Leasing Limited\", \"term_months\": 60, \"notice_days\": 180, \"renewal\": \"auto\"}",
+      "bad": "{\"tenant\": \"Thistlewood House\", \"term_months\": 5, \"notice_days\": 6, \"renewal\": \"manual\"}"
+    }
+  }
+]

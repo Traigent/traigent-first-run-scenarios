@@ -2,19 +2,36 @@
 
 ## Current public release
 
-This repository currently publishes one scenario:
+This repository publishes twelve scenarios, legacy cases 46 through 57. Every
+expected opening below is the contract in that scenario's
+`verifier/expected-opening.json`: the four fields `verify` compares, as
+measured by running the public guide's own preflight, calibration, and
+readiness scripts offline over the scenario's project bytes at guide revision
+[`d07b62cd`](https://github.com/Traigent/traigent-first-run/tree/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199)
+(readiness `schema_version` 6). That is a captain measurement of the guide's
+scripts over the bytes, not a worker run. Each is a case-specific contract,
+not a target or promise for another project. The repository includes no
+captured worker run, baseline, managed optimization, or result improvement.
 
-| Public scenario | Starting state | Dataset | Evaluator | Expected Phase A route |
-| --- | --- | --- | --- | --- |
-| `incident-severity-triage` (legacy case 46) | Agent, labeled data, evaluator, and four varying controls are present | 120 Traigent-authored synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 distinct label strings with their row counts | Deterministic table lookup, declared as normalized exact match, with two supplied calibration probes; the catalog describes it and does not verify it | Explain the ready state and stop at the human's baseline approval |
+| Public scenario | Family | Starting state | Dataset | Evaluator | Expected Phase A opening |
+| --- | --- | --- | --- | --- | --- |
+| `incident-severity-triage` (46) | Ready reference | Agent, labeled data, evaluator, and four varying controls are present | 120 synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 distinct label strings with their row counts | Deterministic table lookup, declared as normalized exact match, with two supplied calibration cases | `EXCELLENT` / `OK` / `proceed` / no caps |
+| `helpdesk-queue-router` (47) | Ready reference | Agent, labeled data, evaluator, and four varying controls are present | 96 synthetic support tickets across six queues; 80 / 16; four balanced strata; 18 distinct label strings (three ticketing tools' spellings) | Deterministic queue lookup that folds the three tools' spellings together, declared as normalized exact match, with three calibration cases | `EXCELLENT` / `OK` / `proceed` / no caps |
+| `policy-handbook-rag` (48) | Ready reference | Agent, labeled data, evaluator, and four varying controls are present; a 20-document synthetic handbook ships as records | 90 synthetic short-answer questions; 75 / 15; four near-balanced strata; 69 distinct answer strings, counted but not listed | Deterministic normalized match with per-question accepted aliases, with three calibration cases | `EXCELLENT` / `OK` / `proceed` / no caps |
+| `warehouse-text-to-sql` (49) | Evaluator quality | Agent and data ready; the evaluator is declared `limited` because it compares SQL as normalized text, the wrong kind of check for a task where different queries return the same rows | 80 synthetic stock questions with one gold SQLite query each; 66 / 14; four balanced strata; free text | Deterministic normalized text comparison of two queries, with four calibration cases; a shipped SQLite database and its schema are records | `EXCELLENT` / `OK` / `proceed` / no caps; the task-fit mismatch is a finding on the card, which `verify` does not compare |
+| `clinic-scheduling-sql-exec` (50) | Execution safety | Agent and data ready; the evaluator is declared `unsafe` because it scores by executing the generated query against the shipped database | 72 synthetic scheduling questions with one gold SQLite query each; 60 / 12; four balanced strata; free text | Executes both queries against the shipped database and compares the returned rows; declared method `execution`, with three calibration cases the guide declines to run on the original | `WORKABLE` / `OK` / `confirm-evaluator-connection` / `evaluator-calibration-refused` |
+| `booking-assistant-next-action` (51) | Dataset integrity | Agent and evaluator ready; the data is declared `needs-repair` because six tuning transcripts appear a second time, byte for byte, as holdout rows | 100 rows over 94 unique synthetic chat transcripts; 83 / 17 as written; four balanced strata; 8 distinct action labels | Deterministic action-name comparison, declared as normalized exact match, with two calibration cases | `PARTIAL` / `BLOCKED` / `resplit-dataset` / `dataset-tune-holdout-overlap`, `dataset-repeated-rows` |
+| `tool-dispatch-selector` (52) | Search-space readiness | Data and evaluator ready; the agent is declared `limited` with an empty control list because one model and one fixed instruction are all it sends | 90 synthetic spoken requests mapped to one of seven tool calls; 75 / 15; four near-balanced strata; structured | Deterministic tool-call comparison, declared as exact match, with two calibration cases | `PARTIAL` / `BLOCKED` / `vary-knobs` / `agent-no-varying-knobs` |
+| `meeting-notes-summarizer` (53) | Evaluator quality | Agent and data ready; the evaluator is declared `needs-repair` because every score is delegated to a package that is not in the project and cannot be installed | 40 synthetic meeting transcripts with one reference summary each; 34 / 6; four balanced strata; free text | Declared `llm-judge-rubric` from its docstring; no calibration record ships because none could be produced | `PARTIAL` / `BLOCKED` / `repair-evaluator` / `evaluator-unresolved` |
+| `contract-clause-extractor` (54) | Evidence strength | Agent and evaluator ready; the data is declared `limited` because its expected answers were drafted by a model and never reviewed | 60 synthetic lease-clause excerpts with four-field expected extractions; 50 / 10; four balanced strata; structured | Deterministic field-level set-F1, with three calibration cases | `WORKABLE` / `OK` / `review-answer-key` / `dataset-generated-answer-key` |
+| `returns-email-replies` (55) | Missing material | Agent ready; the data is declared `limited` because it holds inputs only, and the evaluator is declared `missing` | 150 synthetic inbound emails with no expected reply, no split, and no difficulty strata; label shape `absent` | None ships; no calibration record | `PARTIAL` / `BLOCKED` / `label-data` / `dataset-no-expected-outputs`, `evaluator-absent` |
+| `freight-quote-estimator` (56) | Evidence strength | Agent and evaluator ready; the data is declared `limited` because 20 tuning rows make a coarse comparison | 24 synthetic worked quotes; 20 / 4; four balanced strata of six; numeric | Deterministic numeric tolerance, with two calibration cases | `STRONG` / `OK` / `add-examples` / `dataset-coarse-resolution` |
+| `chatbot-on-vendor-flow` (57) | Missing material | Data and evaluator ready; the agent is declared `missing` because routing runs on a hosted vendor flow that nothing in the project can call; a flow export and a project note ship as records | 90 synthetic first messages; 75 / 15; four near-balanced strata; 6 distinct intent labels | Deterministic intent comparison, declared as normalized exact match, with two calibration cases | `NOT READY` / `BLOCKED` / `connect-agent` / `agent-absent` |
 
-Case 46 is a complete reference for the ready-components route. Its expected
-`EXCELLENT / OK / proceed / no caps` opening is a case-specific contract, not a
-target or promise for another project. The repository includes no captured
-worker run, baseline, managed optimization, or result improvement.
-
-The number 46 is retained as a stable numeric alias for
-`incident-severity-triage`. It does not mean that 46 scenarios are public here.
+Splits read tuning / holdout. Every dataset is Traigent-authored synthetic
+content; the catalog describes each evaluator and does not verify it. The
+legacy numbers are stable aliases for the slugs; they are not a count of
+public scenarios.
 
 ## What a scenario varies
 
@@ -34,50 +51,57 @@ Each released scenario must make five things explicit in `scenario.json`:
 The files remain fully materialized inside each scenario. A run never assembles
 selected fragments from a hidden shared dataset.
 
-## Planned public coverage
+## Coverage by family
 
-The following rows are a release roadmap, not public test results. A family
-becomes published only after a complete scenario directory, redistribution
-review, strict manifest, materialized dataset checks, and case-specific
-verifier contract are present in this repository.
+The families below are the coverage model this bank is organized around. A
+family is released when at least one complete scenario directory,
+redistribution review, strict manifest, materialized dataset checks, and
+case-specific verifier contract for it are present in this repository. Every
+family now has at least one released scenario. A released scenario is an
+expected Phase A contract; it is not a test result, and no scenario here is
+described as passed.
 
-| Planned family         | Material and dataset archetype                                                                                                                     | Behavior to exercise                                                                                                                                                               | Status                          |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Missing material       | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                                          | Preserve what exists; ask only for an unresolved human or domain choice; create or repair only a required dependency; otherwise disclose the limitation; re-check before paid work | Planned; not released or passed |
-| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                 | Planned; not released or passed |
-| Evidence strength      | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution             | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                                                   | Planned; not released or passed |
-| Evaluator quality      | A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, or timing out                                                    | Calibrate it, inspect and repair or replace it, or pause for a bounded timeout decision; do not call a slow evaluator broken                                                       | Planned; not released or passed |
-| Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | End this guide run before candidate output executes; any containment and restart procedure is separate and human-governed                                                          | Planned; not released or passed |
-| Search-space readiness | The agent has no meaningful varying tunable settings, or declared settings are not wired into requests                                             | Establish and verify real variation before requesting approval for paid search                                                                                                     | Planned; not released or passed |
+| Family                 | Material and dataset archetype                                                                                                                     | Behavior to exercise                                                                                                                                                                                                       | Released scenarios                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Ready reference        | Agent, labeled data, evaluator, and varying tunable settings are all present                                                                       | Explain the ready state and stop at the human's baseline approval                                                                                                                                                          | `incident-severity-triage` (46), `helpdesk-queue-router` (47), `policy-handbook-rag` (48) |
+| Missing material       | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                                          | Preserve what exists; ask only for an unresolved human or domain choice; create or repair only a required dependency; otherwise disclose the limitation; re-check before paid work                                         | `returns-email-replies` (55), `chatbot-on-vendor-flow` (57)                               |
+| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                                                         | `booking-assistant-next-action` (51)                                                      |
+| Evidence strength      | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution             | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                                                                                           | `contract-clause-extractor` (54), `freight-quote-estimator` (56)                          |
+| Evaluator quality      | A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, timing out, or the wrong kind of check for the task              | Calibrate it, inspect and repair or replace it, or pause for a bounded timeout decision; do not call a slow evaluator broken                                                                                               | `warehouse-text-to-sql` (49), `meeting-notes-summarizer` (53)                             |
+| Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | Decline to calibrate the customer's original evaluator, record a containment warning, disclose the declined check on the readiness card, and continue; the guide's copied-actor route may calibrate a copy against a bounded target | `clinic-scheduling-sql-exec` (50)                                                         |
+| Search-space readiness | The agent has no meaningful varying tunable settings, or declared settings are not wired into requests                                             | Establish and verify real variation before requesting approval for paid search                                                                                                                                             | `tool-dispatch-selector` (52)                                                             |
 
-In every family except execution safety, the exercised behavior is a waypoint
-on the same route, not an ending: once the gap is closed and the human
-approves, the run continues toward baseline, optimization, and results.
+In every family, the exercised behavior is a waypoint on the same route, not
+an ending: once the gap is closed and the human approves, the run continues
+toward baseline, optimization, and results.
 
-"Planned" describes a roadmap theme for public, context-isolated scenario
-tests, not the guide behavior itself. A theme can require multiple cases or
-subcases when its conditions lead to different actions; passing one case does
-not pass the theme. The routing in the "Behavior to exercise"
+A family describes a theme for public, context-isolated scenario tests, not
+the guide behavior itself. A theme can require multiple cases or subcases when
+its conditions lead to different actions; a contract for one case is not a
+contract for the theme, and two scenarios in one family exercise two
+conditions, not the family twice. The routing in the "Behavior to exercise"
 column is implemented at public guide revision
-[`6ec2b9c1`](https://github.com/Traigent/traigent-first-run/tree/6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9).
-The guide's offline, isolated behavioral suite exercises missing, weak,
-invalid, no-usable-component-anchor, and execution-safety stop contracts.
-Those are code and contract tests, not public context-isolated coding-agent
-scenario runs, so no
-planned theme may be described as passed. The six planned rows here, plus the
-published ready-reference scenario above, are a maintained coverage model, not
-an exhaustive taxonomy of every project condition.
+[`d07b62cd`](https://github.com/Traigent/traigent-first-run/tree/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199).
+The guide's own offline, isolated behavioral suite exercises missing, weak,
+invalid, and no-usable-component-anchor contracts, and its unit tests cover
+the execution-evaluator refusal. Those are code and contract tests, not public
+context-isolated coding-agent scenario runs, so no family may be described as
+passed on their account. The seven rows here are a maintained coverage model,
+not an exhaustive taxonomy of every project condition.
 
 In this document, **invalid evaluator** means an evaluator that cannot make a
 trustworthy comparison, for example because it does not distinguish known-good
 and known-bad calibration answers. **Unsafe evaluator path** means inspection
 identified a resolved path that executes or imports candidate output as code,
 shells out with it, or submits it to a code or SQL engine. The current Guided
-First Run supports
-non-executing comparison evaluators such as classification, extraction, and
-short-answer QA. An executing code/SQL path ends this guide run before candidate
-output executes. Any containment and restart procedure is separate and is not
-supplied by this guide.
+First Run supports non-executing comparison evaluators such as classification,
+extraction, and short-answer QA. For an executing code/SQL path it declines to
+calibrate the customer's original evaluator on its own initiative, records a
+containment warning, and discloses the declined check on the readiness card
+as `evaluator-calibration-refused`, a cap that does not block; the run
+continues on that disclosure. The guide's copied-actor route may calibrate a
+copy of the evaluator against a bounded copy of its target. Any further
+containment design and review is separate and is not supplied by the guide.
 
 ## Dataset origin rules
 
@@ -94,9 +118,10 @@ metadata:
   material when it preserves the intended starting condition and evaluator
   behavior.
 
-For the current release, all case-46 scenario bytes are Traigent-authored
-synthetic content under Apache-2.0 and contain no customer or third-party
-dataset.
+For the current release, every byte of all twelve scenarios is
+Traigent-authored synthetic content under Apache-2.0 and contains no customer
+or third-party dataset. The companies, people, database rows, handbook pages,
+transcripts, and emails in them are invented for the scenario.
 
 ## What a pass means
 
@@ -111,7 +136,9 @@ Coverage and evidence are separate:
 The onboarding goal is to route every supported starting state as far toward
 optimization as its evidence and human approvals permit. Missing foundations
 loop through creation or repair. Limited evidence constrains the claim. Invalid
-measurement stops before paid work. Unsafe execution ends this guide run; any
-containment design and restart are separately reviewed and approved outside it.
-For supported non-executing paths, optimization can proceed only after the
-necessary foundations are valid and the human approves the next boundary.
+measurement stops before paid work. An executing evaluator path is disclosed
+rather than calibrated on the original, and the run continues on that
+disclosure; any containment design beyond the guide's copied-actor route is
+separately reviewed and approved outside it. Optimization can proceed only
+after the necessary foundations are valid and the human approves the next
+boundary.

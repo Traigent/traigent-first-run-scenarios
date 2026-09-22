@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "phase-a-opening",
+  "band": "WORKABLE",
+  "status": "OK",
+  "recommended_action": "confirm-evaluator-connection",
+  "caps": [
+    "evaluator-calibration-refused"
+  ],
+  "display": {
+    "overall": {
+      "score": 84,
+      "confidence": 0.67
+    },
+    "pillars": {
+      "agent": {
+        "score": 100,
+        "confidence": 0.77
+      },
+      "dataset": {
+        "score": 96,
+        "confidence": 0.8
+      },
+      "evaluation": {
+        "score": 59,
+        "confidence": 0.45
+      }
+    }
+  }
+}

@@ -7,8 +7,12 @@ for observing how a fresh coding agent begins the Guided First Run. The
 repository separates the files needed for reproducibility from the information
 withheld from the worker during an individual run.
 
-The current release publishes one scenario and its expected Phase A opening
-contract. It does not include a captured, verified worker run. Its values may be
+The current release publishes twelve scenarios, each with its expected
+Phase A opening contract. Every contract was measured by running the public
+guide's own preflight, calibration, and readiness scripts offline over that
+scenario's project bytes at the pinned guide revision; that is a captain
+measurement of the guide's scripts over the bytes, not a worker run. The
+release does not include a captured, verified worker run. Its values may be
 presented as **Scenario contract · no recorded run**, never as a completed
 result.
 
@@ -159,7 +163,10 @@ governed choice without being coached toward the expected result.
 
 The worker may use the first-run guide's static local checks. It may run the
 exact deterministic evaluator calibration only after the guide's safety gate
-admits that specific local path. This narrow allowance does not authorize
+admits that specific local path; where that gate declines the path because
+the evaluator would execute candidate code or SQL, the guide records the
+declined check on the readiness card and continues, and the worker calibrates
+nothing on the original. This narrow allowance does not authorize
 arbitrary project code, dependencies, additional project-originated remote
 services, credentials, project-provider or Traigent paid calls, customer-data
 egress, production mutation, a baseline, or an optimization. The separately

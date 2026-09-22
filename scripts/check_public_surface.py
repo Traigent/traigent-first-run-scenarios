@@ -438,9 +438,25 @@ def _repository_reference_findings(
     return findings
 
 
+# Binary formats a scenario may ship on purpose, recognised by the magic bytes
+# the format itself defines. A SQLite database carries NUL bytes on every page,
+# which the encoding check below would otherwise report as text of an unknown
+# encoding on every run. The file is still scanned: every decoded view goes
+# through the denylist, so a secret or a private path inside a database page is
+# found as readily as one in a text file. What the magic number settles is only
+# that the NUL bytes are the format, not an encoding nobody declared.
+_KNOWN_BINARY_MAGIC: tuple[bytes, ...] = (b"SQLite format 3\x00",)
+
+
+def _declares_known_binary_format(content: bytes) -> bool:
+    return content.startswith(_KNOWN_BINARY_MAGIC)
+
+
 def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
     findings: list[Finding] = []
     variants, supported_encoding = _decoded_variants(content)
+    if _declares_known_binary_format(content):
+        supported_encoding = True
     for text in variants:
         for line_number, line in enumerate(text.splitlines(), start=1):
             for rule in _RULES:

@@ -61,9 +61,9 @@ checkout.
 
 ## 3. Validate the scenario package
 
-The commands below use case `46`, today's released scenario. Substitute any
-case number shown by `scenario.py list`, and name the step-4 output path
-after the scenario you run.
+The commands below use case `46`, one of the twelve released scenarios.
+Substitute any case number shown by `scenario.py list`, and name the step-4
+output path after the scenario you run.
 
 ```bash
 python scenario.py list
@@ -158,7 +158,10 @@ or coaching.
 
 The captain may allow local inspection and the deterministic evaluator
 calibration only when the first-run guide admits the exact path through its
-safety gate. During Phase A, do not:
+safety gate. Where that gate declines the path because the evaluator would
+execute candidate code or SQL, the guide discloses the declined check on the
+readiness card and continues; do not calibrate the original evaluator on the
+guide's behalf. During Phase A, do not:
 
 - provide a Traigent or provider credential;
 - approve a paid or remote Traigent or model-provider request;

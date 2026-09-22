@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "slug": "freight-quote-estimator",
+  "legacy_id": 56,
+  "title": "Freight quote estimator with a small worked-quote history",
+  "summary": "A customer-shaped road-freight quoting project with a configurable LiteLLM agent, a stated tariff, a numeric-tolerance evaluator with calibration probes, and only 24 worked quotes to compare configurations on.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "prompt_style",
+          "units_hint",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "limited",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "numeric-tolerance",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 2
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "worked-quotes",
+        "state": "limited",
+        "path": "project/dataset.jsonl",
+        "task": "numeric-estimation",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 24,
+        "unique_inputs": 24,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 20,
+            "holdout": 4
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 6,
+            "medium": 6,
+            "hard": 6,
+            "very-hard": 6
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "numeric",
+          "surface_label_count": 0,
+          "label_counts": {}
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "fewer-than-thirty-tuning-rows",
+          "numeric-task"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "small-dataset-bounds-claim-strength",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    },
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ]
+  },
+  "tags": [
+    "numeric-estimation",
+    "numeric-tolerance-evaluator",
+    "freight-quoting",
+    "small-dataset",
+    "coarse-resolution",
+    "litellm-openrouter",
+    "synthetic-data"
+  ]
+}

@@ -507,7 +507,7 @@ describe("customer bundle", () => {
       "scenario-contract",
     ]);
     expect(manifest.deck.guide_contract_source_revisions).toEqual([
-      "6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9",
+      "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199",
     ]);
     expect(manifest.deck.schema_version).toBe(2);
     expect(manifest.deck).not.toHaveProperty("evidence_state");

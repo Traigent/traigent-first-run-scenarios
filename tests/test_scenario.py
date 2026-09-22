@@ -1837,6 +1837,39 @@ class ScenarioBankTests(unittest.TestCase):
         )
         self.assertIn("OK: named-dataset", output)
 
+    def test_a_declared_binary_record_is_read_as_no_label_surface(self) -> None:
+        """A database file is a record this check cannot read as rows.
+
+        The delimited-table reading takes the first decodable run of bytes
+        holding a separator for a header. A SQLite page can decode, hold a tab,
+        and carry a bare carriage return a few bytes later, which the CSV reader
+        refuses with an exception rather than a verdict -- so `check` crashed on
+        a scenario that shipped its database. The bytes below are that shape,
+        reduced to the three properties that produced it.
+        """
+
+        root = self.create_scenario("database-record", 177)
+        database = root / "project" / "stock.db"
+        database.write_bytes(
+            b"SQLite format 3\x00"
+            + b"\x00" * 40
+            + b"id\tname\tqty\n"
+            + b"1\tbolt\r4\n"
+            + b"\x00\xff\xfe" * 20
+            + b"\n"
+        )
+        manifest = valid_manifest("database-record", 177)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/stock.db"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a database")
+
+        status, output, error = self.run_cli("check", "database-record")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: database-record", output)
+
     def test_a_declared_record_with_a_line_too_long_to_read_is_refused(self) -> None:
         """A line this check cannot read is not a line it may vouch for."""
 

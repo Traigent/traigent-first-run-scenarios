@@ -11,6 +11,7 @@ import {
   coverageLabel,
   displayEyebrow,
   evidenceLabel,
+  type CatalogDetailView,
   type CatalogEntry,
   type PresentationSpec,
   type SlideSpec,
@@ -436,6 +437,8 @@ function addTableCell(
   height: number,
   header = false,
   accent = false,
+  bodyFontSize = 10.3,
+  reserveBottom = 0,
 ): void {
   slide.addShape(pptx.ShapeType.rect, {
     x,
@@ -452,7 +455,7 @@ function addTableCell(
     x: x + 0.1,
     y: y + 0.07,
     w: width - 0.2,
-    h: height - 0.12,
+    h: height - 0.12 - reserveBottom,
     margin: 0,
     color: accent
       ? theme.colors.blueBright
@@ -460,10 +463,10 @@ function addTableCell(
         ? theme.colors.muted
         : theme.colors.textSoft,
     fontFace: theme.fonts.sans,
-    fontSize: header ? 8.5 : 10.3,
+    fontSize: header ? 8.5 : bodyFontSize,
     bold: header || accent,
     charSpacing: header ? 0.45 : 0,
-    valign: "middle",
+    valign: reserveBottom > 0 ? "top" : "middle",
     breakLine: false,
   });
 }
@@ -660,11 +663,89 @@ function addCatalogCard(
   });
 }
 
+function addCatalogIndex(
+  pptx: PptxGenJS,
+  slide: PptxGenJS.Slide,
+  entries: readonly CatalogEntry[],
+): void {
+  const widths = [0.7, 3.75, 1.85, 1.85, 3.54];
+  const headers = [
+    "CASE",
+    "SCENARIO",
+    "FAMILY",
+    "EXPECTED BAND · STATUS",
+    "EXPECTED ACTION · CAPS",
+  ];
+  const headerHeight = 0.38;
+  const rowHeight = 0.52;
+  let x = CONTENT_X;
+  headers.forEach((header, index) => {
+    addTableCell(
+      pptx,
+      slide,
+      header,
+      x,
+      DETAIL_TOP,
+      widths[index]!,
+      headerHeight,
+      true,
+    );
+    x += widths[index]!;
+  });
+  entries.forEach((entry, rowIndex) => {
+    const y = DETAIL_TOP + headerHeight + rowIndex * rowHeight;
+    const values = [
+      String(entry.legacyId),
+      entry.label.replace(/^Case \d+: /, ""),
+      entry.family,
+      `${entry.expectedBand} · ${entry.expectedStatus}`,
+      `${entry.expectedAction} · ${
+        entry.expectedCaps.length === 0
+          ? "caps none"
+          : entry.expectedCaps.join(", ")
+      }`,
+    ];
+    let cellX = CONTENT_X;
+    values.forEach((value, columnIndex) => {
+      addTableCell(
+        pptx,
+        slide,
+        value,
+        cellX,
+        y,
+        widths[columnIndex]!,
+        rowHeight,
+        false,
+        columnIndex === 0,
+        8.6,
+        columnIndex === 1 ? 0.16 : 0,
+      );
+      if (columnIndex === 1) {
+        // The slug is the name `scenarios/` uses; it sits under the title in
+        // the same cell, smaller and muted, as the web deck renders it.
+        slide.addText(entry.slug, {
+          x: cellX + 0.1,
+          y: y + rowHeight - 0.22,
+          w: widths[columnIndex]! - 0.2,
+          h: 0.16,
+          margin: 0,
+          color: theme.colors.muted,
+          fontFace: theme.fonts.mono,
+          fontSize: 6.5,
+          valign: "bottom",
+          breakLine: false,
+        });
+      }
+      cellX += widths[columnIndex]!;
+    });
+  });
+}
+
 function addCatalog(
   pptx: PptxGenJS,
   slide: PptxGenJS.Slide,
   entry: CatalogEntry,
-  view: "setup-and-route" | "data-and-limits",
+  view: CatalogDetailView,
 ): void {
   const gap = 0.2;
   const halfWidth = (CONTENT_WIDTH - gap) / 2;
@@ -808,11 +889,33 @@ function addSlideContent(
   slideSpec: SlideSpec,
   catalog: CatalogEntry[],
 ): void {
+  if (slideSpec.kind === "catalog" && slideSpec.catalogView === "index") {
+    const entries = (slideSpec.catalogSlugs ?? []).map((slug) => {
+      const entry = catalog.find((candidate) => candidate.slug === slug);
+      if (entry === undefined) {
+        throw new PptxBuildError(
+          `Catalog index slide ${slideSpec.id} lists unknown entry ${slug}`,
+        );
+      }
+      return entry;
+    });
+    if (entries.length === 0) {
+      throw new PptxBuildError(
+        `Catalog index slide ${slideSpec.id} lists no entries`,
+      );
+    }
+    addCatalogIndex(pptx, slide, entries);
+    return;
+  }
   if (slideSpec.kind === "catalog") {
     const entry = catalog.find(
       (candidate) => candidate.slug === slideSpec.catalogSlug,
     );
-    if (entry === undefined || slideSpec.catalogView === undefined) {
+    if (
+      entry === undefined ||
+      slideSpec.catalogView === undefined ||
+      slideSpec.catalogView === "index"
+    ) {
       throw new PptxBuildError(
         `Catalog slide ${slideSpec.id} has no matching entry`,
       );

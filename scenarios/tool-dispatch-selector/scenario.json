@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "slug": "tool-dispatch-selector",
+  "legacy_id": 52,
+  "title": "Voice-request tool dispatch with nothing to tune",
+  "summary": "A customer-shaped smart-home dispatch project whose agent maps one spoken request to one of seven tool calls with a single fixed model and instruction, with labeled synthetic requests, a deterministic tool-call evaluator, and calibration probes, but no setting that varies.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "limited",
+        "path": "project/agent.py",
+        "controls": []
+      },
+      "data": {
+        "state": "ready",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "exact-match",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 2
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "voice-requests",
+        "state": "ready",
+        "path": "project/dataset.jsonl",
+        "task": "tool-call-selection",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 90,
+        "unique_inputs": 90,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 75,
+            "holdout": 15
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 23,
+            "medium": 23,
+            "hard": 22,
+            "very-hard": 22
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "structured",
+          "surface_label_count": 0,
+          "label_counts": {}
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "single-tool-call-per-request"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "agent-has-no-varying-settings",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    },
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ]
+  },
+  "tags": [
+    "tool-call",
+    "structured-output",
+    "exact-evaluator",
+    "labeled-data",
+    "no-search-space",
+    "smart-home",
+    "synthetic-data"
+  ]
+}

@@ -155,6 +155,33 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertIn("unsupported or ambiguous text encoding", result.stderr)
 
+    def test_a_sqlite_database_is_a_declared_binary_format(self) -> None:
+        """A database's NUL bytes are its format, not an undeclared encoding.
+
+        The bytes are still scanned: a leak inside a page is found through the
+        replacement view like any other, so the second half plants one.
+        """
+        self._pad_to_floor()
+        path = self.repo / "stock.db"
+        path.write_bytes(
+            b"SQLite format 3\x00" + bytes(64) + b"CREATE TABLE stock (id)\n"
+        )
+
+        result = self._run_guard()
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
+        planted_value = "/" + "home" + "/example-user/project"
+        path.write_bytes(
+            b"SQLite format 3\x00" + bytes(64) + planted_value.encode() + b"\n"
+        )
+
+        result = self._run_guard()
+        path.unlink()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("machine-specific POSIX home path", result.stderr)
+
     def test_a_bare_work_item_reference_is_rejected(self) -> None:
         """The form the owner-qualified patterns cannot see.
 

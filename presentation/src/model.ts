@@ -56,20 +56,43 @@ const scenarioCoverageRowSchema = z
   })
   .strict();
 
+const expectedBandSchema = z.enum([
+  "NOT READY",
+  "PARTIAL",
+  "WORKABLE",
+  "STRONG",
+  "EXCELLENT",
+]);
+
+const expectedStatusSchema = z.enum(["OK", "BLOCKED"]);
+
 const catalogEntrySchema = z
   .object({
     slug: z.string().min(1),
+    legacyId: z.number().int().positive(),
     label: z.string().min(1),
     publication: z.literal("published"),
+    // The deck's own grouping of the bank: which route family the scenario
+    // exercises. It is deck authorship, not a manifest field, so the index
+    // prints it beside the manifest-derived columns rather than among them.
+    family: z.string().min(1),
     startingState: z.string().min(1),
     components: z.array(z.string().min(1)).min(1).max(4),
     dataset: z.string().min(1),
     evaluator: z.string().min(1),
+    // The four fields `scenario.py verify` compares, copied from the
+    // expected-opening contract so the index can print them as columns.
+    expectedBand: expectedBandSchema,
+    expectedStatus: expectedStatusSchema,
+    expectedAction: z.string().min(1),
+    expectedCaps: z.array(z.string().min(1)),
     expectedRouting: z.string().min(1),
     testedLayer: z.string().min(1),
-    notProven: z.array(z.string().min(1)).min(1).max(4),
+    notProven: z.array(z.string().min(1)).min(1).max(6),
   })
   .strict();
+
+const CATALOG_DETAIL_VIEWS = ["setup-and-route", "data-and-limits"] as const;
 
 export const slideSchema = z
   .object({
@@ -95,8 +118,11 @@ export const slideSchema = z
     matrix: z.array(matrixRowSchema).min(1).max(5).optional(),
     testMatrix: z.array(testLayerRowSchema).min(1).max(4).optional(),
     scenarioMatrix: z.array(scenarioCoverageRowSchema).min(1).max(5).optional(),
-    catalogView: z.enum(["setup-and-route", "data-and-limits"]).optional(),
+    catalogView: z.enum(["index", ...CATALOG_DETAIL_VIEWS]).optional(),
+    // A detail view renders one entry; an index view renders the entries it
+    // lists, so the model can require every entry to appear exactly once.
     catalogSlug: z.string().min(1).optional(),
+    catalogSlugs: z.array(z.string().min(1)).min(1).max(6).optional(),
     evidenceState: evidenceStateSchema,
     sourceRevision: z
       .string()
@@ -112,18 +138,14 @@ export const presentationSchema = z
     schemaVersion: z.literal(2),
     title: z.string().min(1),
     subtitle: z.string().min(1),
+    // The worked example the walkthrough slides focus on. It must be one of
+    // the catalog entries; the catalog is the bank.
     scenario: z
       .object({
         slug: z.string().min(1),
         legacyId: z.number().int().positive(),
         title: z.string().min(1),
-        expectedBand: z.enum([
-          "NOT READY",
-          "PARTIAL",
-          "WORKABLE",
-          "STRONG",
-          "EXCELLENT",
-        ]),
+        expectedBand: expectedBandSchema,
         phase: z.literal("phase-a-opening"),
       })
       .strict(),
@@ -135,6 +157,7 @@ export const presentationSchema = z
     const ids = new Set<string>();
     const titles = new Set<string>();
     const catalogSlugs = new Set<string>();
+    const catalogLegacyIds = new Set<number>();
     for (const [entryIndex, entry] of value.catalog.entries()) {
       if (catalogSlugs.has(entry.slug)) {
         context.addIssue({
@@ -144,6 +167,33 @@ export const presentationSchema = z
         });
       }
       catalogSlugs.add(entry.slug);
+      if (catalogLegacyIds.has(entry.legacyId)) {
+        context.addIssue({
+          code: "custom",
+          message: `duplicate catalog case number ${entry.legacyId}`,
+          path: ["catalog", entryIndex, "legacyId"],
+        });
+      }
+      catalogLegacyIds.add(entry.legacyId);
+    }
+    const workedExample = value.catalog.find(
+      (entry) => entry.slug === value.scenario.slug,
+    );
+    if (workedExample === undefined) {
+      context.addIssue({
+        code: "custom",
+        message: `worked example ${value.scenario.slug} is not a catalog entry`,
+        path: ["scenario", "slug"],
+      });
+    } else if (
+      workedExample.legacyId !== value.scenario.legacyId ||
+      workedExample.expectedBand !== value.scenario.expectedBand
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: `worked example ${value.scenario.slug} disagrees with its catalog entry`,
+        path: ["scenario"],
+      });
     }
 
     for (const [index, slide] of value.slides.entries()) {
@@ -197,18 +247,75 @@ export const presentationSchema = z
           path: ["slides", index, "catalogSlug"],
         });
       }
+      for (const [slugIndex, slug] of (slide.catalogSlugs ?? []).entries()) {
+        if (!catalogSlugs.has(slug)) {
+          context.addIssue({
+            code: "custom",
+            message: `catalog slide references unknown slug ${slug}`,
+            path: ["slides", index, "catalogSlugs", slugIndex],
+          });
+        }
+      }
+      if (slide.catalogView === "index" && slide.catalogSlug !== undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "index catalog slides list entries; they do not name one",
+          path: ["slides", index, "catalogSlug"],
+        });
+      }
+      if (slide.catalogView !== "index" && slide.catalogSlugs !== undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "only index catalog slides may list entries",
+          path: ["slides", index, "catalogSlugs"],
+        });
+      }
+      if (slide.catalogView === "index" && slide.catalogSlugs === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "index catalog slides must list the entries they show",
+          path: ["slides", index, "catalogSlugs"],
+        });
+      }
     }
 
+    // Every entry appears on exactly one index slide: a scenario the bank
+    // publishes but the deck never lists would be a silent omission, and one
+    // listed twice would read as two scenarios.
+    const indexed = new Map<string, number>();
+    for (const [index, slide] of value.slides.entries()) {
+      if (slide.catalogView !== "index") continue;
+      for (const [slugIndex, slug] of (slide.catalogSlugs ?? []).entries()) {
+        if (indexed.has(slug)) {
+          context.addIssue({
+            code: "custom",
+            message: `catalog entry ${slug} is listed on more than one index slide`,
+            path: ["slides", index, "catalogSlugs", slugIndex],
+          });
+        }
+        indexed.set(slug, index);
+      }
+    }
     for (const [entryIndex, entry] of value.catalog.entries()) {
+      if (!indexed.has(entry.slug)) {
+        context.addIssue({
+          code: "custom",
+          message: `catalog entry ${entry.slug} is missing from every index slide`,
+          path: ["catalog", entryIndex, "slug"],
+        });
+      }
+      // The worked example always has both detail views. Any other entry
+      // with a detail slide has both too: half a card is a card that hides
+      // its limits.
       const views = new Set(
         value.slides
           .filter((slide) => slide.catalogSlug === entry.slug)
           .map((slide) => slide.catalogView),
       );
-      for (const requiredView of [
-        "setup-and-route",
-        "data-and-limits",
-      ] as const) {
+      if (views.size === 0 && entry.slug !== value.scenario.slug) {
+        continue;
+      }
+      for (const requiredView of CATALOG_DETAIL_VIEWS) {
         if (!views.has(requiredView)) {
           context.addIssue({
             code: "custom",
@@ -221,6 +328,9 @@ export const presentationSchema = z
   });
 
 export type EvidenceState = z.infer<typeof evidenceStateSchema>;
+export type ExpectedBand = z.infer<typeof expectedBandSchema>;
+export type CatalogView = NonNullable<SlideSpec["catalogView"]>;
+export type CatalogDetailView = (typeof CATALOG_DETAIL_VIEWS)[number];
 export type Metric = z.infer<typeof metricSchema>;
 export type JourneyStep = z.infer<typeof stepSchema>;
 export type MatrixRow = z.infer<typeof matrixRowSchema>;
@@ -238,7 +348,7 @@ export function coverageLabel(
   coverage: "published" | "coverage-target",
 ): string {
   return coverage === "published"
-    ? "Published here: the ready scenario"
+    ? "Published here: see the named case"
     : "Works in the guide today; test scenario planned";
 }
 

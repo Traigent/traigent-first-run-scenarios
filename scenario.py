@@ -64,6 +64,10 @@ MAX_SOURCE_CLASSIFY_BYTES = 1 << 22
 # The separators a delimited table is tried with when a record's bytes are not
 # a JSON row stream. A labelled CSV is a labelled dataset.
 _DELIMITER_CANDIDATES = (",", "\t", ";", "|")
+# Text a table line may not carry: the C0 controls other than tab and carriage
+# return, and DEL. A decoded line holding one came out of a binary file, not a
+# table; a carriage return is what a CRLF table leaves on every line.
+_CONTROL_BYTES = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 STARTING_CONDITIONS = {
     "all-components-ready",
@@ -80,13 +84,35 @@ COMPONENT_STATES = {
 DATASET_FORMATS = {"jsonl"}
 NORMALIZED_EXACT_MATCH_METHOD = "normalized-exact-match"
 EXACT_MATCH_METHOD = "exact-match"
-# ``method`` names how the shipped evaluator compares a predicted label with a
+# ``method`` names how the shipped evaluator compares a predicted answer with a
 # recorded one. That is a statement about what the evaluator does when it runs,
 # and this module never runs it, so nothing here is keyed on the value: no
 # count, no coverage claim, no gate. It is carried because a reader of the
 # catalog should see what the scenario says about itself, and it is checked
-# only for being one of the two published spellings.
-EVALUATOR_METHODS = {EXACT_MATCH_METHOD, NORMALIZED_EXACT_MATCH_METHOD}
+# only for being one of the published spellings. The first two are the
+# spellings the first scenario shipped with; the rest are the guide's own
+# ``--evaluator-method`` names, so a catalog can describe a scorer the way the
+# guide's readiness read will be told about it.
+GUIDE_EVALUATOR_METHODS = {
+    "composite",
+    "embedding",
+    "execution",
+    "fuzzy",
+    "llm-judge-pairwise",
+    "llm-judge-pointwise",
+    "llm-judge-rubric",
+    "numeric-tolerance",
+    "routing",
+    "schema",
+    "set-f1",
+    "sql-structure",
+    "state-transition",
+}
+EVALUATOR_METHODS = {
+    EXACT_MATCH_METHOD,
+    NORMALIZED_EXACT_MATCH_METHOD,
+    *GUIDE_EVALUATOR_METHODS,
+}
 MAPPED_LABEL_SHAPE = "mapped-labels"
 # The shapes whose rows carry a label string. ``mapped-labels`` lists every
 # distinct spelling that ships with the number of rows carrying it;
@@ -2512,7 +2538,10 @@ def _delimited_header(line: str) -> tuple[str, list[str]] | None:
     """Choose the separator this line reads as a table header under, if any."""
 
     for delimiter in _DELIMITER_CANDIDATES:
-        header = next(csv.reader([line], delimiter=delimiter), [])
+        try:
+            header = next(csv.reader([line], delimiter=delimiter), [])
+        except csv.Error:
+            continue
         if len(header) < 2 or any(not name.strip() for name in header):
             continue
         if len(set(header)) != len(header):
@@ -2558,6 +2587,12 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
                     line = raw_line.decode("utf-8")
                 except UnicodeDecodeError:
                     continue
+                if _CONTROL_BYTES.search(line):
+                    # A run of bytes out of a binary file that happens to
+                    # decode. It is not a line of any table, and handing it to
+                    # the CSV reader was how a shipped SQLite database crashed
+                    # this scan on a bare carriage return.
+                    continue
                 stripped = line.strip()
                 if stripped.startswith("#"):
                     continue
@@ -2587,7 +2622,13 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
             break
     if delimiter is None:
         return
-    for record in csv.reader(stream, delimiter=delimiter):
+    for line in stream:
+        try:
+            record = next(csv.reader([line], delimiter=delimiter), [])
+        except csv.Error:
+            # One line the reader cannot parse is one line that is not a row
+            # of this table; the rest of the table is still read.
+            continue
         if len(record) != len(header):
             continue
         yield dict(zip(header, record))

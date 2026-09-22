@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "phase-a-opening",
+  "band": "PARTIAL",
+  "status": "BLOCKED",
+  "recommended_action": "repair-evaluator",
+  "caps": [
+    "evaluator-unresolved"
+  ],
+  "display": {
+    "overall": {
+      "score": 40,
+      "confidence": 0.65
+    },
+    "pillars": {
+      "agent": {
+        "score": 100,
+        "confidence": 0.77
+      },
+      "dataset": {
+        "score": 91,
+        "confidence": 0.8
+      },
+      "evaluation": {
+        "score": 0,
+        "confidence": 0.4
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scope": "phase-a-opening",
+  "band": "PARTIAL",
+  "status": "BLOCKED",
+  "recommended_action": "label-data",
+  "caps": [
+    "dataset-no-expected-outputs",
+    "evaluator-absent"
+  ],
+  "display": {
+    "overall": {
+      "score": 30,
+      "confidence": 0.59
+    },
+    "pillars": {
+      "agent": {
+        "score": 100,
+        "confidence": 0.77
+      },
+      "dataset": {
+        "score": 18,
+        "confidence": 0.65
+      },
+      "evaluation": {
+        "score": 0,
+        "confidence": 0.4
+      }
+    }
+  }
+}
