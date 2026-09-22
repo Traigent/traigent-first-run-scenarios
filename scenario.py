@@ -64,6 +64,8 @@ MAX_SOURCE_CLASSIFY_BYTES = 1 << 22
 # The separators a delimited table is tried with when a record's bytes are not
 # a JSON row stream. A labelled CSV is a labelled dataset.
 _DELIMITER_CANDIDATES = (",", "\t", ";", "|")
+# How much of a declared record is sniffed to decide whether it is text at all.
+_BINARY_SNIFF_BYTES = 1 << 13
 
 STARTING_CONDITIONS = {
     "all-components-ready",
@@ -92,11 +94,13 @@ EXACT_MATCH_METHOD = "exact-match"
 GUIDE_EVALUATOR_METHODS = {
     "composite",
     "embedding",
+    "exact",
     "execution",
     "fuzzy",
     "llm-judge-pairwise",
     "llm-judge-pointwise",
     "llm-judge-rubric",
+    "normalized-exact",
     "numeric-tolerance",
     "routing",
     "schema",
@@ -286,6 +290,23 @@ class _TooManyColumns(Exception):
 
 class _TooDeeplyNested(Exception):
     """Internal signal that a row nests objects deeper than can be walked."""
+
+
+class _UnreadableTable(Exception):
+    """Internal signal that a table was recognised and none of it could be read.
+
+    The delimited reading drops a line it cannot use, in three places: a line
+    that is not UTF-8, a record the CSV reader refuses, and a record whose
+    width disagrees with the header. Each drop is correct on its own -- one bad
+    line is not a reason to abandon a table. What was wrong was that nothing
+    counted them, so a file whose every data line was dropped produced the same
+    answer as a file with no labels in it: the empty list. This carries the
+    reason instead, and the caller turns it into a refusal.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
 
 
 class _DottedColumnName(Exception):
@@ -2546,6 +2567,75 @@ def _delimited_header(line: str) -> tuple[str, list[str]] | None:
     return None
 
 
+def _header_repeats_a_name(line: str) -> bool:
+    """True when a line reads as a header under some separator but repeats a name.
+
+    A table keyed by column name cannot be read when two columns share one: the
+    second value lands on the first's key. Stepping over the line was worse
+    than incomplete -- the search simply carried on and took a later DATA line
+    as the header, so a record whose header was ``id,severity,severity`` was
+    reported as carrying a column named after one row's value.
+    """
+
+    for delimiter in _DELIMITER_CANDIDATES:
+        try:
+            header = next(csv.reader([line], delimiter=delimiter), [])
+        except csv.Error:
+            continue
+        if len(header) < 2 or any(not name.strip() for name in header):
+            continue
+        if len(set(header)) != len(header):
+            return True
+    return False
+
+
+def _is_binary_record(path: Path) -> bool:
+    """Say whether a declared record is bytes rather than text.
+
+    Asked of the file once, not of each line. A NUL byte is the sniff every
+    tool reaches for: UTF-8 text does not carry one, and the binary containers
+    a scenario ships -- a SQLite database, an archive, an image -- all do.
+
+    This was written, deleted as unproven, and reinstated in one sitting, which
+    is worth recording. Deleting it was right at the time: the reading then
+    answered every unreadable file with "no label surface", so nothing changed
+    when the sniff was removed and no test could see it. It became load-bearing
+    the moment the reading started refusing what it could not read, because a
+    database's pages do decode far enough to offer a header and then nothing
+    that parses -- exactly the shape the refusal is for. Without this, `check`
+    refuses a scenario for shipping its own database.
+    """
+
+    try:
+        with path.open("rb") as handle:
+            return b"\x00" in handle.read(_BINARY_SNIFF_BYTES)
+    except OSError:
+        # The read that follows opens the same file and turns its own failure
+        # into a refusal naming the path. Answering "binary" here would turn an
+        # unreadable file into a clean verdict instead.
+        return False
+
+
+def _unreadable_table_detail(dropped: dict[str, int]) -> str:
+    """Name what a recognised table lost, in the order that explains it best."""
+
+    if dropped["undecodable"]:
+        return (
+            "reads as a delimited table whose data lines are not UTF-8, so "
+            "none of its rows could be read"
+        )
+    if dropped["unparsable"]:
+        return (
+            "reads as a delimited table whose data lines the CSV reader "
+            "refuses, so none of its rows could be read"
+        )
+    return (
+        "reads as a delimited table with a quoted field that is never closed, "
+        "so the rest of the file is read as part of it and none of its rows "
+        "could be read"
+    )
+
+
 def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator[Any]:
     """Yield a delimited table's data lines as rows keyed by its header.
 
@@ -2574,6 +2664,9 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
     labelled table plus one ragged line would report nothing.
     """
 
+    dropped = {"undecodable": 0, "unparsable": 0, "swallowed": 0}
+    seen = {"lines": 0}
+
     def lines() -> Iterator[str]:
         try:
             for raw_line in _iter_file_lines(path):
@@ -2582,6 +2675,7 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
                 try:
                     line = raw_line.decode("utf-8")
                 except UnicodeDecodeError:
+                    dropped["undecodable"] += 1
                     continue
                 stripped = line.strip()
                 if stripped.startswith("#"):
@@ -2589,9 +2683,11 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
                 try:
                     value = json.loads(stripped)
                 except ValueError:
+                    seen["lines"] += 1
                     yield line
                     continue
                 if not isinstance(value, (dict, list)):
+                    seen["lines"] += 1
                     yield line
         except _OversizedLine as exc:
             raise _oversized_line_error(scenario, path, field) from exc
@@ -2610,8 +2706,16 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
         if chosen is not None:
             delimiter, header = chosen
             break
+        if _header_repeats_a_name(line):
+            raise _UnreadableTable(
+                "reads as a delimited table whose header repeats a column "
+                "name, so its rows cannot be keyed by column"
+            )
     if delimiter is None:
         return
+    rows = 0
+    records = 0
+    after_header = seen["lines"]
     reader = csv.reader(stream, delimiter=delimiter)
     while True:
         try:
@@ -2619,6 +2723,8 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
         except StopIteration:
             break
         except csv.Error:
+            records += 1
+            dropped["unparsable"] += 1
             # One record the reader cannot parse is one record that is not a
             # row of this table; the reader picks up at the next line, so the
             # rest of the table is still read. Parsing each physical line on
@@ -2627,9 +2733,21 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
             # column sits after such a field would report no label surface at
             # all, which is the failure this scan exists to prevent.
             continue
+        records += 1
         if len(record) != len(header):
             continue
+        rows += 1
         yield dict(zip(header, record))
+    # A record that swallowed more than one physical line and still did not fit
+    # the header is the signature of a quoted field opened and never closed:
+    # the reader raises nothing and reads the rest of the file as part of it.
+    # A line of prose that merely looked like a header fails the width test one
+    # line at a time, and that is honestly "this file is not a table" rather
+    # than "this table could not be read".
+    if rows == 0 and records and seen["lines"] - after_header > records:
+        dropped["swallowed"] += 1
+    if rows == 0 and any(dropped.values()):
+        raise _UnreadableTable(_unreadable_table_detail(dropped))
 
 
 def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[str]:
@@ -2647,6 +2765,12 @@ def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[st
     states the limit rather than leaving it implied.
     """
 
+    if _is_binary_record(path):
+        # A record that is bytes has no line, no header and no column, so there
+        # is no label surface here to name. The public-surface guard is what
+        # reads a binary artifact for leaked text; this check reads tables.
+        return []
+
     try:
         try:
             json_columns = _closed_label_columns(
@@ -2657,6 +2781,14 @@ def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[st
         delimited_columns = _closed_label_columns(
             _iter_delimited_rows(scenario, path, field)
         )
+    except _UnreadableTable as exc:
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"{path.relative_to(scenario.root).as_posix()} {exc.detail}; a "
+            "record whose rows cannot be read is a record whose label surface "
+            "cannot be ruled out",
+        ) from exc
     except _TooManyColumns as exc:
         raise _catalog_materialized_error(
             scenario,

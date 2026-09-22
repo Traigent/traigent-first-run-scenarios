@@ -1936,6 +1936,130 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertIn("carry a closed label surface", error)
         self.assertIn("severity", error)
 
+    def test_a_table_this_check_cannot_decode_is_refused_not_vouched_for(
+        self,
+    ) -> None:
+        """ "I could not read this" may not be spelled "there is nothing here".
+
+        The scan drops a line it cannot use in three places, and for a while
+        nothing counted the drops, so a file whose every data line was dropped
+        produced the empty list -- the same answer as a file with no labels.
+        A latin-1 CSV, which is what every European spreadsheet exports by
+        default, walked its answer key past the check that way: the ASCII
+        header was read, all twenty data lines failed to decode, and the
+        record was declared clean.
+        """
+
+        root = self.create_scenario("latin-one-table", 180)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = b"".join(
+            b"%d,note\xe9%d,%s\n" % (index, index, b"SEV1" if index % 2 else b"SEV2")
+            for index in range(20)
+        )
+        records.write_bytes(b"id,note,severity\n" + rows)
+        manifest = valid_manifest("latin-one-table", 180)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a latin-1 table")
+
+        status, output, error = self.run_cli("check", "latin-one-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("are not UTF-8", error)
+        self.assertIn("cannot be ruled out", error)
+
+    def test_a_quote_that_is_never_closed_is_refused(self) -> None:
+        """The CSV reader raises nothing for this; it swallows the file.
+
+        A quote opening a field and never closed makes every later line part
+        of that one field. The reader reports no error, the single record it
+        finally returns is the wrong width, and the table is silently empty.
+        """
+
+        root = self.create_scenario("swallowed-table", 181)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f"{index},note{index},{'SEV1' if index % 2 else 'SEV2'}\n"
+            for index in range(1, 21)
+        )
+        records.write_text('id,note,severity\n0,"open,SEV2\n' + rows, encoding="utf-8")
+        manifest = valid_manifest("swallowed-table", 181)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a swallowed table")
+
+        status, output, error = self.run_cli("check", "swallowed-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("never closed", error)
+
+    def test_a_header_repeating_a_column_name_is_refused(self) -> None:
+        """Stepping over it took a DATA line as the header instead.
+
+        A table keyed by column name cannot be read when two columns share
+        one. The search used to carry on to the next line that qualified --
+        which was row one -- and then reported columns named after that row's
+        values, so the answer was wrong rather than merely incomplete.
+        """
+
+        root = self.create_scenario("repeated-column", 182)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f"{index},{'SEV1' if index % 2 else 'SEV2'},SEV1\n" for index in range(20)
+        )
+        records.write_text("id,severity,severity\n" + rows, encoding="utf-8")
+        manifest = valid_manifest("repeated-column", 182)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a repeated column name")
+
+        status, output, error = self.run_cli("check", "repeated-column")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("repeats a column name", error)
+
+    def test_prose_that_reads_as_a_header_is_not_a_table_that_failed(self) -> None:
+        """The refusal must not fire on a document that is simply not a table.
+
+        One sentence carrying two commas reads as a three-column header, and
+        the lines after it are prose of every other width. That is honestly
+        "this file is not a table", not "this table could not be read" -- and
+        the first draft of the refusal got it wrong, turning a shipped
+        handbook page into a failed check.
+        """
+
+        root = self.create_scenario("handbook-page", 183)
+        page = root / "project" / "handbook.md"
+        page.write_text(
+            "# Remote and hybrid working\n\n"
+            "Office-based roles are hybrid: you must work at least 3 days per\n"
+            "week from your contracted site. Operational roles, meaning\n"
+            "drivers, warehouse operatives and yard staff, are not eligible\n"
+            "for remote working because the work cannot be done away from the\n"
+            "site.\n",
+            encoding="utf-8",
+        )
+        manifest = valid_manifest("handbook-page", 183)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/handbook.md"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a handbook page")
+
+        status, output, error = self.run_cli("check", "handbook-page")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: handbook-page", output)
+
     def test_a_declared_record_with_a_line_too_long_to_read_is_refused(self) -> None:
         """A line this check cannot read is not a line it may vouch for."""
 
