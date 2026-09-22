@@ -1870,6 +1870,72 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(0, status, error)
         self.assertIn("OK: database-record", output)
 
+    def test_a_stray_control_byte_does_not_hide_a_table_s_label_column(self) -> None:
+        """One control character in a row is not a reason to drop the row.
+
+        The database above is read as no label surface because the file is
+        bytes. An earlier answer to it dropped any decoded line carrying a C0
+        control byte, which is the same question asked one level too low: a
+        text table with one vertical tab per line lost every data line and so
+        reported no label column at all. A record could then ship its answer
+        key past this check by carrying one stray byte per row.
+        """
+
+        root = self.create_scenario("noisy-table", 178)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f"{index},note\x0b{index},{'SEV1' if index % 2 else 'SEV2'}\n"
+            for index in range(20)
+        )
+        records.write_text("id,note,severity\n" + rows, encoding="utf-8")
+        manifest = valid_manifest("noisy-table", 178)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a noisy table")
+
+        status, output, error = self.run_cli("check", "noisy-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("severity", error)
+
+    def test_a_quoted_field_spanning_lines_does_not_hide_the_column_after_it(
+        self,
+    ) -> None:
+        """A table is parsed as a stream, because RFC4180 rows span lines.
+
+        Parsing each physical line on its own survives a line the reader
+        chokes on, and splits every quoted field that carries a newline. The
+        column after such a field then lands in a record of the wrong width
+        and is dropped -- so a labelled table whose note field wraps reported
+        no label surface, and the record shipped its answer key.
+        """
+
+        root = self.create_scenario("wrapped-table", 179)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f'{index},"line one of {index}\nline two of {index}",'
+            f"{'SEV1' if index % 2 else 'SEV2'}\n"
+            for index in range(20)
+        )
+        records.write_text("id,note,severity\n" + rows, encoding="utf-8")
+        manifest = valid_manifest("wrapped-table", 179)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a wrapped table")
+
+        status, output, error = self.run_cli("check", "wrapped-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("severity", error)
+
     def test_a_declared_record_with_a_line_too_long_to_read_is_refused(self) -> None:
         """A line this check cannot read is not a line it may vouch for."""
 

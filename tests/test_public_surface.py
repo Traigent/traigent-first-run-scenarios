@@ -6,9 +6,11 @@ import io
 import shutil
 import subprocess
 import sys
+import sqlite3
 import tarfile
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 from unittest import mock
 
@@ -155,6 +157,23 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertIn("unsupported or ambiguous text encoding", result.stderr)
 
+    @staticmethod
+    def _sqlite_database(destination: Path, value: str) -> None:
+        """Write a real database, so the guard is asked about a real format."""
+
+        connection = sqlite3.connect(destination)
+        try:
+            connection.execute("CREATE TABLE stock (id INTEGER, note TEXT)")
+            # The note leads with a word, not with the value: the home-path
+            # rule refuses a match glued to an alphanumeric byte, and a page
+            # record happens to put one immediately before its payload.
+            connection.execute(
+                "INSERT INTO stock VALUES (1, ?)", (f"copied from {value}",)
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
     def test_a_sqlite_database_is_a_declared_binary_format(self) -> None:
         """A database's NUL bytes are its format, not an undeclared encoding.
 
@@ -163,24 +182,42 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         """
         self._pad_to_floor()
         path = self.repo / "stock.db"
-        path.write_bytes(
-            b"SQLite format 3\x00" + bytes(64) + b"CREATE TABLE stock (id)\n"
-        )
+        self._sqlite_database(path, "a bolt, in stock")
 
         result = self._run_guard()
 
         self.assertEqual(0, result.returncode, result.stderr)
 
         planted_value = "/" + "home" + "/example-user/project"
-        path.write_bytes(
-            b"SQLite format 3\x00" + bytes(64) + planted_value.encode() + b"\n"
-        )
+        path.unlink()
+        self._sqlite_database(path, planted_value)
 
         result = self._run_guard()
         path.unlink()
 
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertIn("machine-specific POSIX home path", result.stderr)
+
+    def test_wearing_the_magic_bytes_is_not_declaring_the_format(self) -> None:
+        """The exemption is earned by the format, not by the first line.
+
+        Sixteen bytes are a prefix, not a file. A blob in an encoding the
+        decoded views do not cover is exactly what the encoding finding exists
+        for, and suppressing it for anything that starts with the magic would
+        let that blob past by prefixing itself.
+        """
+        self._pad_to_floor()
+        path = self.repo / "not-really.db"
+        payload = zlib.compress(b"a page of content nobody can decode here" * 8)
+        path.write_bytes(b"SQLite format 3\x00" + payload)
+
+        result = self._run_guard()
+        path.unlink()
+
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn(
+            "unsupported or ambiguous text encoding requires review", result.stderr
+        )
 
     def test_a_bare_work_item_reference_is_rejected(self) -> None:
         """The form the owner-qualified patterns cannot see.

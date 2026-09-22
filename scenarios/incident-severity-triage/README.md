@@ -25,6 +25,7 @@ The worker-visible project contains exactly these files:
 - `agent.py`
 - `dataset.jsonl`
 - `evaluator.py`
+- `requirements.txt`
 - `traigent-runs/calibration-cases.json`
 
 The catalog declares 120 unique labeled reports: 100 tuning and 20 holdout,

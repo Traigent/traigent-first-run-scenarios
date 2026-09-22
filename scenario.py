@@ -64,10 +64,6 @@ MAX_SOURCE_CLASSIFY_BYTES = 1 << 22
 # The separators a delimited table is tried with when a record's bytes are not
 # a JSON row stream. A labelled CSV is a labelled dataset.
 _DELIMITER_CANDIDATES = (",", "\t", ";", "|")
-# Text a table line may not carry: the C0 controls other than tab and carriage
-# return, and DEL. A decoded line holding one came out of a binary file, not a
-# table; a carriage return is what a CRLF table leaves on every line.
-_CONTROL_BYTES = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 STARTING_CONDITIONS = {
     "all-components-ready",
@@ -2587,12 +2583,6 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
                     line = raw_line.decode("utf-8")
                 except UnicodeDecodeError:
                     continue
-                if _CONTROL_BYTES.search(line):
-                    # A run of bytes out of a binary file that happens to
-                    # decode. It is not a line of any table, and handing it to
-                    # the CSV reader was how a shipped SQLite database crashed
-                    # this scan on a bare carriage return.
-                    continue
                 stripped = line.strip()
                 if stripped.startswith("#"):
                     continue
@@ -2622,12 +2612,20 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
             break
     if delimiter is None:
         return
-    for line in stream:
+    reader = csv.reader(stream, delimiter=delimiter)
+    while True:
         try:
-            record = next(csv.reader([line], delimiter=delimiter), [])
+            record = next(reader)
+        except StopIteration:
+            break
         except csv.Error:
-            # One line the reader cannot parse is one line that is not a row
-            # of this table; the rest of the table is still read.
+            # One record the reader cannot parse is one record that is not a
+            # row of this table; the reader picks up at the next line, so the
+            # rest of the table is still read. Parsing each physical line on
+            # its own would survive the same bad line, and would also split
+            # every quoted field that spans lines -- a table whose label
+            # column sits after such a field would report no label surface at
+            # all, which is the failure this scan exists to prevent.
             continue
         if len(record) != len(header):
             continue

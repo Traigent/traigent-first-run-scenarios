@@ -98,6 +98,9 @@
         ]
       }
     ],
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ],
     "expected_route": {
       "rationale": "all-required-components-ready",
       "verifier_contract": "verifier/expected-opening.json"

@@ -51,9 +51,36 @@ def normalise(query):
             pieces.append(f"'{inner}'")
         else:
             pieces.append(token.casefold())
-    joined = " ".join(pieces)
-    # Spaces next to punctuation carry no meaning, so remove them on both sides.
-    return re.sub(r"\s*([(),=<>*+\-/])\s*", r"\1", joined)
+    return _join(pieces)
+
+
+# Characters that carry no meaning of their own about spacing: a comma is a
+# comma whether or not it is written with a space after it.
+PUNCTUATION = set("(),=<>*+-/|!")
+
+
+def _punctuation(token):
+    """True when the whole token is punctuation, so spaces around it are noise."""
+    return all(character in PUNCTUATION for character in token)
+
+
+def _join(pieces):
+    """Put the tokens back together, dropping the spaces next to punctuation.
+
+    The spacing decision is made between tokens rather than by a pass over the
+    finished string. A pass over the string cannot tell a comma in the query
+    from a comma inside a string literal: it removed the space in
+    `\'dried fruit, nuts\'` too, so that literal and `\'dried fruit,nuts\'` -
+    which name different rows - compared equal and a wrong query scored 1.0.
+    The tokenizer already knows which pieces are literals; this keeps that
+    knowledge instead of throwing it away one line later.
+    """
+    text = ""
+    for index, piece in enumerate(pieces):
+        if index and not _punctuation(piece) and not _punctuation(pieces[index - 1]):
+            text += " "
+        text += piece
+    return text
 
 
 def score(output, expected, input_data=None, metadata=None):

@@ -4,7 +4,7 @@ This public scenario models a working project that has no search space. Its
 agent turns one spoken request to a fictional smart-home hub ("Quillon Home")
 into one of seven tool calls, its labeled dataset covers requests from the
 obvious to the deliberately misleading, and its evaluator compares the chosen
-tool and its arguments exactly. What the project lacks is anything to vary: the
+tool and its arguments after normalizing both sides. What the project lacks is anything to vary: the
 agent names one model as a plain constant, sends one fixed instruction, passes
 no temperature, and accepts a `config` argument it never reads. The data and
 the evaluator are ready; the agent is real and correct and still offers the
