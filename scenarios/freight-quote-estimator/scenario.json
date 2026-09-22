@@ -36,6 +36,7 @@
         "state": "ready",
         "path": "project/evaluator.py",
         "method": "numeric-tolerance",
+        "guide_evaluator_method": "numeric-tolerance",
         "calibration": {
           "path": "project/traigent-runs/calibration-cases.json",
           "case_count": 2

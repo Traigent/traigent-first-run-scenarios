@@ -36,6 +36,7 @@
         "state": "ready",
         "path": "project/evaluator.py",
         "method": "set-f1",
+        "guide_evaluator_method": "set-f1",
         "calibration": {
           "path": "project/traigent-runs/calibration-cases.json",
           "case_count": 3

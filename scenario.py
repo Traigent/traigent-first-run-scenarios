@@ -229,6 +229,13 @@ COMPONENT_KEYS = {"agent", "data", "evaluator"}
 AGENT_COMPONENT_KEYS = {"controls", "path", "state"}
 DATA_COMPONENT_KEYS = {"paths", "state"}
 EVALUATOR_COMPONENT_KEYS = {"calibration", "method", "path", "state"}
+# Optional for the same reason `guide_task_kind` is: the first scenario's pinned
+# manifest predates it. It records the `--evaluator-method` the guide was actually
+# given, beside the catalog's own spelling of the same thing. Case 52 is why it
+# exists: its catalog spelling was corrected in a review commit without the
+# opening being re-measured, and the published evaluation pillar then described a
+# run nobody could reproduce from the manifest beside it.
+OPTIONAL_EVALUATOR_KEYS = {"guide_evaluator_method"}
 CALIBRATION_KEYS = {"case_count", "path"}
 DATASET_KEYS = {
     "difficulty_strata",
@@ -1273,6 +1280,7 @@ def _validate_evaluator_component(
         field,
         value,
         EVALUATOR_COMPONENT_KEYS,
+        optional_keys=OPTIONAL_EVALUATOR_KEYS,
     )
     state = _require_enum_string(
         manifest_path,
@@ -1286,6 +1294,15 @@ def _validate_evaluator_component(
         component["path"],
         allow_none=True,
     )
+    # Validated and not carried: nothing downstream reads it. It is recorded so a
+    # reader can re-derive the measurement, not so this module can use it.
+    if component.get("guide_evaluator_method") is not None:
+        _require_enum_string(
+            manifest_path,
+            f"{field}.guide_evaluator_method",
+            component["guide_evaluator_method"],
+            GUIDE_EVALUATOR_METHODS,
+        )
     raw_method = component["method"]
     method = (
         None

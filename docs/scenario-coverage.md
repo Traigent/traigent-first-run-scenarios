@@ -103,6 +103,29 @@ continues on that disclosure. The guide's copied-actor route may calibrate a
 copy of the evaluator against a bounded copy of its target. Any further
 containment design and review is separate and is not supplied by the guide.
 
+## What the published contracts assume
+
+Each `verifier/expected-opening.json` is what the guide's own scripts returned for
+that project's bytes at `d07b62cd`, measured by a captain rather than produced by a
+worker run. Two inputs shape it that the project files do not contain, and both are
+part of the opening the guide asks a worker to perform:
+
+- **The agent read.** The guide is given a statement of the agent's settings
+  (`--agent-knobs`). Without one the agent pillar reads 0 and every contract here is
+  wrong -- a reproduction that omits it gets `NOT READY` / `connect-agent` on a ready
+  project.
+- **The row review.** `readiness.py` withholds STRONG and EXCELLENT until a read of
+  the expected answers has entered (`--row-review`); `SKILL.md` lists writing that
+  review among the opening's own steps for any project that has rows. The four
+  contracts that publish EXCELLENT are readings taken WITH that review, because the
+  rows behind them were in fact read. A reproduction that skips it gets the same
+  scores and a held band -- `WORKABLE` with `review-answer-key` -- which is the hold
+  doing its job, not a mismatch.
+
+Both are stated here because the repository does not yet commit either document, so
+a contract cannot be re-derived from this repository alone. That is a known gap and
+the honest description of it is this paragraph, not silence.
+
 ## Where two scenarios read the same
 
 The opening contract this repository publishes is four fields -- band, status,
@@ -117,7 +140,7 @@ That is not four copies of one scenario. They are a closed-label classifier, a
 routing agent, a retrieval agent over a twenty-document handbook, and a
 text-to-SQL agent over a shipped SQLite database -- four agent types, four
 datasets, four evaluators. What they share is the one reading the guide gives a
-project with nothing wrong with it, and there is only one of those. Case 49
+project with nothing that caps it, and there is only one of those. Case 49
 carries a task-fit warning on its card that the contract does not compare,
 which is why it sits in a different family from the other three.
 

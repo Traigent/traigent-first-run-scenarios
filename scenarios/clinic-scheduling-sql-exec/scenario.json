@@ -36,6 +36,7 @@
         "state": "unsafe",
         "path": "project/evaluator.py",
         "method": "execution",
+        "guide_evaluator_method": "execution",
         "calibration": {
           "path": "project/traigent-runs/calibration-cases.json",
           "case_count": 3

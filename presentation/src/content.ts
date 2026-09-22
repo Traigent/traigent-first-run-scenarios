@@ -184,6 +184,10 @@ const scenarioManifestSchema = z
                 state: z.string().min(1),
                 path: z.string().min(1).nullable(),
                 method: z.string().min(1).nullable(),
+                // The `--evaluator-method` the guide was actually given when this
+                // opening was measured, beside the catalog's own spelling of it.
+                // Optional: the first scenario's pinned manifest predates it.
+                guide_evaluator_method: z.string().min(1).optional(),
                 calibration: z
                   .object({
                     path: z.string().min(1).nullable(),

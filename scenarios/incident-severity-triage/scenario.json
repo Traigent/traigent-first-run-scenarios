@@ -36,6 +36,7 @@
         "state": "ready",
         "path": "project/evaluator.py",
         "method": "normalized-exact-match",
+        "guide_evaluator_method": "normalized-exact",
         "calibration": {
           "path": "project/traigent-runs/calibration-cases.json",
           "case_count": 2
