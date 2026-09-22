@@ -1,0 +1,41 @@
+{
+  "reviewer": "assistant",
+  "draw": {
+    "method": "random.sample over 1-based source lines of project/dataset.jsonl",
+    "seed": 56,
+    "reviewed": 5,
+    "provided": 24
+  },
+  "rows": [
+    {
+      "id": "line-1",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Recomputed from the published tariff: chargeable 180 kg, 45 + 162 + 75.25 = 282 at standard class with no surcharge."
+    },
+    {
+      "id": "line-16",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Recomputed: dimensional weight 687 kg beats the actual 120, giving 45 + 618.3 + 129.5 = 793."
+    },
+    {
+      "id": "line-17",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Recomputed: dimensional 252 kg, subtotal 305.05, express multiplier 1.5, rounds to 458."
+    },
+    {
+      "id": "line-18",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Recomputed: dimensional 432 kg, 45 + 388.8 + 73.5 = 507 at standard class."
+    },
+    {
+      "id": "line-21",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Recomputed: dimensional 423 kg, subtotal 45 + 380.7 + 45.5 = 471.2, hazardous +20% then residential +30 gives 595.44, which rounds to 595."
+    }
+  ]
+}

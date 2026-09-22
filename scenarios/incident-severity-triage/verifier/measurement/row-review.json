@@ -1,0 +1,41 @@
+{
+  "reviewer": "assistant",
+  "draw": {
+    "method": "random.sample over 1-based source lines of project/dataset.jsonl",
+    "seed": 46,
+    "reviewed": 5,
+    "provided": 120
+  },
+  "rows": [
+    {
+      "id": "line-6",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "A date picker refusing 29 February is a real defect with an obvious workaround, which is what SEV3 names on this ladder."
+    },
+    {
+      "id": "line-10",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "A stretched empty-state illustration on wide monitors is presentational only, and Low is the bottom class of this ticket system's vocabulary."
+    },
+    {
+      "id": "line-52",
+      "origin": "collected",
+      "verdict": "unsure",
+      "note": "A checklist ticking a step that has not been done is a correctness defect shown to the user, and SEV4 is the bottom class; the only ladder this scenario ships is the one inside agent.py's `rubric` prompt style -- SEV3 limited impact with a workaround, SEV4 cosmetic -- and a prompt the optimizer tunes over is not a statement of how the labels were decided, so there is no published rule to adjudicate this against. On that ladder SEV3 fits at least as well."
+    },
+    {
+      "id": "line-76",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "One integration's retry storm starving every other queue degrades service for unrelated tenants, which is the major-degradation class SEV2."
+    },
+    {
+      "id": "line-114",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "A partner rejected by our idempotency window because their clock runs eight minutes fast is a live integration failure for that partner, so P2 on this system's scale is sensible."
+    }
+  ]
+}

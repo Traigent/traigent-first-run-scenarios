@@ -162,6 +162,25 @@ _RULES = (
         ),
     ),
     Rule(
+        # The rule above anchors the two home roots at a segment boundary, so it
+        # cannot see a home directory that has been FLATTENED into one segment --
+        # a scratch or session directory names itself after the path it shadows,
+        # with the separators rewritten as hyphens, and the root then sits in the
+        # middle of a segment where the anchor cannot reach it. Eleven recorded
+        # command lines shipped that shape past a green guard, carrying a username
+        # and a session id, under a note claiming the paths were neutralised.
+        # The pattern is assembled from fragments for the same reason every other
+        # one here is: a rule written out whole is the thing it forbids.
+        "flattened home path in a scratch or session directory",
+        re.compile(
+            _fragments(
+                r"(?:^|[/\\])-(?:ho",
+                "me|Us",
+                r"ers)-[A-Za-z0-9._-]+",
+            )
+        ),
+    ),
+    Rule(
         "machine-specific superuser path",
         re.compile(_fragments(r"(?<![A-Za-z0-9_])/r", r"oot(?:/|\\)")),
     ),

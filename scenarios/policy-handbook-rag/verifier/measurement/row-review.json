@@ -1,0 +1,41 @@
+{
+  "reviewer": "assistant",
+  "draw": {
+    "method": "random.sample over 1-based source lines of project/dataset.jsonl",
+    "seed": 48,
+    "reviewed": 5,
+    "provided": 90
+  },
+  "rows": [
+    {
+      "id": "line-17",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The Safety policy states 'The speed limit in the yard is 10 mph', so the expected answer is the handbook's own words."
+    },
+    {
+      "id": "line-41",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The handbook says 'Complete the following training within your first 30 days' and names security awareness, health and safety, and data protection."
+    },
+    {
+      "id": "line-69",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The expenses policy says claims over £500 and up to £5,000 are approved by your department head, and £3,000 falls in that band."
+    },
+    {
+      "id": "line-71",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The Flights section says flights of 6 hours or more may be booked in premium economy, and 9 hours is over that threshold."
+    },
+    {
+      "id": "line-72",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The mileage policy gives 25 pence per mile after the first 10,000 business miles in a tax year, which is the band the last 2,000 of 12,000 fall in."
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5"
+      ],
+      "source_lines": [
+        14,
+        82
+      ],
+      "evidence": "agent.py:14 MODELS lists the two alternatives, agent.py:92-93 reads the choice from config and checks it is in MODELS, agent.py:95 hands it to call_model, and agent.py:82 passes it as model= on the Messages request."
+    },
+    "tone": {
+      "values": [
+        "warm",
+        "concise",
+        "formal"
+      ],
+      "source_lines": [
+        16,
+        69
+      ],
+      "evidence": "agent.py:16 TONES holds the three instruction texts and agent.py:69 indexes it with the tone read from config into the prompt lines that agent.py:73 returns and agent.py:86 sends."
+    },
+    "length": {
+      "values": [
+        "short",
+        "full"
+      ],
+      "source_lines": [
+        32,
+        70
+      ],
+      "evidence": "agent.py:32 LENGTHS holds the two instruction texts and agent.py:70 indexes it with the length read from config into the prompt lines that agent.py:73 returns and agent.py:86 sends."
+    },
+    "temperature": {
+      "low": 0.0,
+      "high": 0.6,
+      "source_lines": [
+        37,
+        84
+      ],
+      "evidence": "agent.py:37 TEMPERATURES lists the two literal values, agent.py:78-79 reads the choice from config and checks it with in, and agent.py:84 passes it as temperature= on the Messages request."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        56,
+        73,
+        85,
+        86
+      ],
+      "evidence": "agent.py:56 SYSTEM_PROMPT carries the desk instructions and the policy paragraph and reaches the request at :85 as system=; agent.py:73 returns the tone text, the length text and the customer email joined as the user turn that :86 sends. No worked examples ride with either."
+    },
+    "output-contract": {
+      "present": false,
+      "source_lines": [
+        88,
+        95
+      ],
+      "evidence": "agent.py:88 returns the first text block of the reply as written and agent.py:95 returns it unread, so nothing pins the draft's shape."
+    },
+    "control-flow": {
+      "loop": false,
+      "bounded": true,
+      "source_lines": [
+        92,
+        95
+      ],
+      "evidence": "agent.py:92-95 is one straight-line pass: read the model, one request through call_model, one return; no loop in run or in the two helpers it calls."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        81,
+        86
+      ],
+      "evidence": "agent.py:81-86 is a plain messages.create with no tools argument; the agent declares and reaches no tools."
+    }
+  }
+}

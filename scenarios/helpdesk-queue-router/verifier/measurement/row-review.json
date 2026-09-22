@@ -1,0 +1,41 @@
+{
+  "reviewer": "assistant",
+  "draw": {
+    "method": "random.sample over 1-based source lines of project/dataset.jsonl",
+    "seed": 47,
+    "reviewed": 5,
+    "provided": 96
+  },
+  "rows": [
+    {
+      "id": "line-9",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "A third-party timesheet feed that stopped importing after an API key rotation is a connector fault, which is the Integrations queue."
+    },
+    {
+      "id": "line-46",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "A report that times out only on the widest range while the rest of the app is fine is scoped to the export feature, not an outage, so Data Export is right."
+    },
+    {
+      "id": "line-56",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "One new user lacking a button the rest of the team has is a permissions question, which is what this vendor spells ACC."
+    },
+    {
+      "id": "line-59",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Every notification failing for all users with the queue counter stuck is a platform failure, and OUT is this vendor's outage spelling."
+    },
+    {
+      "id": "line-71",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Login failing worldwide with the public status page also down is unambiguously an outage, and outage-incident is the older tracker's spelling of the same queue that OUT is the legacy short code for."
+    }
+  ]
+}

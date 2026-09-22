@@ -44,7 +44,7 @@ jobs:
         run: ruff check scenario.py scripts tests
 
       - name: Type-check production Python
-        run: mypy --strict scenario.py scripts/check_public_surface.py
+        run: mypy --strict scenario.py scripts/check_public_surface.py scripts/reproduce_openings.py
 
       # The spelling scope comes from the git index rather than a written-out
       # path list. A renamed or newly added file stays covered, where a stale

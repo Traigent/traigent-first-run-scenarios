@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import random
 import os
 import shutil
 import subprocess
@@ -1849,6 +1850,140 @@ class ScenarioBankTests(unittest.TestCase):
             "warehouse-text-to-sql",
         ),
     )
+
+    def test_the_recorded_invocation_agrees_with_the_manifest(self) -> None:
+        """The two disagreeing is exactly how case 52 published a wrong number.
+
+        `83d2d03` measured case 52 with `--evaluator-method exact`; a later
+        review commit corrected the catalog's declared method and did not
+        re-measure, so the manifest described one run and the contract recorded
+        another. The argv comes from the run and the manifest from an editor,
+        which is what makes this comparison worth making rather than a
+        tautology.
+        """
+
+        checked = 0
+        for manifest_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
+        ):
+            slug = manifest_path.parent.name
+            invocation_path = (
+                manifest_path.parent / "verifier" / "measurement" / "invocation.json"
+            )
+            self.assertTrue(invocation_path.is_file(), f"{slug} records no invocation")
+            invocation = json.loads(invocation_path.read_text(encoding="utf-8"))
+            readiness = invocation["steps"].get("readiness") or []
+            catalog = json.loads(manifest_path.read_text(encoding="utf-8"))["catalog"]
+            evaluator = catalog["components"].get("evaluator") or {}
+            profile = (catalog.get("datasets") or [{}])[0]
+            for flag, declared in (
+                ("--evaluator-method", evaluator.get("guide_evaluator_method")),
+                ("--task-kind", profile.get("guide_task_kind")),
+            ):
+                passed = (
+                    readiness[readiness.index(flag) + 1] if flag in readiness else None
+                )
+                with self.subTest(scenario=slug, flag=flag):
+                    self.assertEqual(
+                        declared,
+                        passed,
+                        f"{slug}: the manifest says {declared!r} and the recorded "
+                        f"invocation passed {passed!r}",
+                    )
+                    checked += 1
+        self.assertGreaterEqual(checked, 24, "no invocation was compared")
+
+    def test_a_committed_row_review_names_rows_that_exist(self) -> None:
+        """A review of rows that are not there is the defect guide #391 filed.
+
+        `preflight.py` added row-id digests because a review "could name forty-
+        eight rows that do not exist and be counted as a read of forty-eight
+        rows that do". The ids here are positional, so they are checkable
+        against the dataset's own line count, and the draw is recorded so a
+        redraw after an inconvenient verdict is not invisible.
+        """
+
+        reviewed = 0
+        for review_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob(
+                "*/verifier/measurement/row-review.json"
+            )
+        ):
+            slug = review_path.parents[2].name
+            review = json.loads(review_path.read_text(encoding="utf-8"))
+            lines = [
+                line
+                for line in (review_path.parents[2] / "project" / "dataset.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+                if line.strip()
+            ]
+            with self.subTest(scenario=slug):
+                self.assertEqual("assistant", review["reviewer"])
+                draw = review["draw"]
+                self.assertEqual(len(review["rows"]), draw["reviewed"])
+                self.assertEqual(len(lines), draw["provided"])
+                self.assertIn("method", draw)
+                # The seed is checked by REPRODUCING the draw, not by being
+                # present. A recorded seed that does not yield the recorded rows
+                # means they were chosen some other way, which is the thing the
+                # record exists to rule out.
+                generator = random.Random(draw["seed"])
+                self.assertEqual(
+                    sorted(
+                        generator.sample(range(1, len(lines) + 1), draw["reviewed"])
+                    ),
+                    sorted(
+                        int(str(row["id"]).removeprefix("line-"))
+                        for row in review["rows"]
+                    ),
+                    f"{slug}: the recorded seed does not yield the recorded rows",
+                )
+                for row in review["rows"]:
+                    number = int(str(row["id"]).removeprefix("line-"))
+                    self.assertTrue(
+                        1 <= number <= len(lines),
+                        f"{slug}: {row['id']} is not a line of the dataset",
+                    )
+                    self.assertGreater(
+                        len(row["note"]), 40, f"{slug}: {row['id']} has no real note"
+                    )
+                notes = {row["note"] for row in review["rows"]}
+                self.assertEqual(
+                    len(notes),
+                    len(review["rows"]),
+                    f"{slug}: repeated notes are a tally, not a read",
+                )
+                reviewed += 1
+        # Not "at least one". The rule the documents state is that every scenario
+        # whose band sits above the guide's answer-key hold ships a review, and a
+        # floor of one cannot see four of them go missing -- deleting a
+        # load-bearing review was green in every gate this repository runs.
+        # Derived from the bands rather than written down, so it follows the bank.
+        above_hold = sorted(
+            manifest_path.parent.name
+            for manifest_path in (scenario.REPOSITORY_ROOT / "scenarios").glob(
+                "*/scenario.json"
+            )
+            if json.loads(
+                (manifest_path.parent / "verifier" / "expected-opening.json").read_text(
+                    encoding="utf-8"
+                )
+            )["band"]
+            in ("STRONG", "EXCELLENT")
+        )
+        shipping = sorted(
+            review_path.parents[2].name
+            for review_path in (scenario.REPOSITORY_ROOT / "scenarios").glob(
+                "*/verifier/measurement/row-review.json"
+            )
+        )
+        self.assertEqual(
+            above_hold,
+            shipping,
+            "the scenarios shipping a row review are not the ones whose band needs one",
+        )
+        self.assertGreater(reviewed, 0, "no committed row review was read")
 
     def test_the_scenarios_sharing_a_contract_are_the_ones_written_down(self) -> None:
         """A thirteenth scenario landing on an existing contract is a decision.

@@ -1,0 +1,41 @@
+{
+  "reviewer": "assistant",
+  "draw": {
+    "method": "random.sample over 1-based source lines of project/dataset.jsonl",
+    "seed": 49,
+    "reviewed": 5,
+    "provided": 80
+  },
+  "rows": [
+    {
+      "id": "line-9",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The question asks for products above a unit price with their prices, and the recorded query selects exactly those two columns under that filter."
+    },
+    {
+      "id": "line-15",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The question names the oils category and unit costs, and the recorded query filters on that category and selects that column."
+    },
+    {
+      "id": "line-42",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Counting order lines per customer largest first is a join, a COUNT grouped by customer and a descending order, which is what the recorded query does."
+    },
+    {
+      "id": "line-45",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Order value is quantity times unit price summed per order, ordered highest first, and the recorded query computes that product and sorts on it."
+    },
+    {
+      "id": "line-53",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Delayed shipments per affected supplier, most first, is an inner join on the delayed status with a count and a descending order, as recorded."
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "openrouter/openai/gpt-4o-mini",
+        "openrouter/anthropic/claude-3.5-haiku",
+        "openrouter/google/gemini-2.0-flash-001"
+      ],
+      "source_lines": [
+        12,
+        51
+      ],
+      "evidence": "agent.py:12 MODELS lists the three OpenRouter ids, agent.py:66-67 reads config['model'] and checks it against MODELS, agent.py:72 hands it to call_model, and agent.py:51 passes it as model= on litellm.completion."
+    },
+    "length": {
+      "values": [
+        "brief",
+        "full"
+      ],
+      "source_lines": [
+        18,
+        41
+      ],
+      "evidence": "agent.py:18 LENGTHS maps each length to an instruction sentence and agent.py:41 indexes LENGTHS by config['length'] into the prompt list that agent.py:45 returns and agent.py:52 sends as the user message."
+    },
+    "style": {
+      "values": [
+        "prose",
+        "bullets"
+      ],
+      "source_lines": [
+        23,
+        42
+      ],
+      "evidence": "agent.py:23 STYLES maps each style to an instruction sentence and agent.py:42 indexes STYLES by config['style'] into the prompt list that agent.py:45 returns and agent.py:52 sends as the user message."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.7
+      ],
+      "source_lines": [
+        28,
+        53
+      ],
+      "evidence": "agent.py:28 TEMPERATURES lists the two literal values, agent.py:69-70 reads config['temperature'] and checks it with in, agent.py:72 hands it to call_model, and agent.py:53 passes it as temperature=temperature on litellm.completion."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        30,
+        44,
+        52
+      ],
+      "evidence": "agent.py:30 TASK holds the instruction text and carries no worked examples; agent.py:44 joins it with the length and style sentences and the transcript; agent.py:52 passes that prompt as the user message."
+    },
+    "output-contract": {
+      "present": false,
+      "source_lines": [
+        55,
+        62
+      ],
+      "evidence": "agent.py:55 returns the reply text unread and agent.py:62 only strips it, so nothing pins the summary's shape beyond the empty-reply check at agent.py:60."
+    },
+    "control-flow": {
+      "loop": false,
+      "bounded": true,
+      "source_lines": [
+        65,
+        72
+      ],
+      "evidence": "agent.py:65-72 is one straight-line function with no loop: two settings are read and checked, one request is made through call_model, and its cleaned text is returned."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        50,
+        54
+      ],
+      "evidence": "agent.py:50-54 makes one litellm.completion call with model, messages and temperature only; no tools argument is declared or reached."
+    }
+  }
+}

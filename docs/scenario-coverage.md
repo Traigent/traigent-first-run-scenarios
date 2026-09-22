@@ -122,9 +122,34 @@ part of the opening the guide asks a worker to perform:
   scores and a held band -- `WORKABLE` with `review-answer-key` -- which is the hold
   doing its job, not a mismatch.
 
-Both are stated here because the repository does not yet commit either document, so
-a contract cannot be re-derived from this repository alone. That is a known gap and
-the honest description of it is this paragraph, not silence.
+Both are committed, per scenario, under `verifier/measurement/`:
+
+- `agent-read.json` — the statement of the agent's settings, with the source
+  lines and the evidence for each. Authored, as the guide requires: it is a read
+  of the agent, and another honest read could move a pillar by a few points.
+- `row-review.json` — the five rows the opening asks for, actually read, with a
+  per-row sentence saying why the expected output is or is not sensible, and the
+  draw's seed and method recorded so a redraw is not invisible. It also records
+  `reviewed` against `provided`: on case 46 that is 5 of 120, and the guide's
+  own card says so — *"the coding assistant sampled 5 of 120 provided rows … a
+  sample, so unreviewed answers are assumed sound rather than verified."* Four
+  scenarios publish `caps: []`, and that sentence is what bounds it. One of the
+  twenty-five reviewed rows is recorded `unsure` -- case 46's line 52 -- and the
+  guide never scores an `unsure`, so it costs that contract nothing; a `no` on the
+  same row would have capped it at 70 and moved the band. The verdict is recorded
+  where the reader meets the scenario as well as here, because the cheapest
+  available answer and the recorded answer being the same answer is a thing a
+  reader should be told rather than left to discover.
+- `invocation.json` — the three commands the measurement ran, with this
+  machine's paths replaced by `$GUIDE`, `$PROJECT` and `$MEASURE`.
+
+Only the five scenarios whose band sits above the answer-key hold ship a review,
+because that is where it is load-bearing; the other seven record that none was
+passed. `scripts/reproduce_openings.py` re-measures every scenario from those
+artifacts and compares the result with the published contract. It reads and never
+writes, and it has no mode that does.
+
+    GUIDE=~/code/traigent-first-run python3 scripts/reproduce_openings.py
 
 ## Where two scenarios read the same
 

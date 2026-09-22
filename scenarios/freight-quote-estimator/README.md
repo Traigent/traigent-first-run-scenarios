@@ -165,6 +165,21 @@ and split, and nothing in them needs repair. What the opening is expected to do
 with that is the verifier's business; this README does not restate the
 contract's values.
 
+## What the published opening rests on
+
+`verifier/expected-opening.json` is what the guide returned for this project's
+bytes at the pinned revision, and two of its inputs are committed beside it under
+`verifier/measurement/`: the read of the agent's settings, and the row review.
+
+The guide withholds its top two bands until a read of the expected answers has
+entered, so this scenario's band depends on that review. It covers 5 of the
+24 rows -- the five the opening asks for, drawn at random with the seed the
+document records -- and the guide's own card says what that means: *a sample, so
+unreviewed answers are assumed sound rather than verified*.
+
+`scripts/reproduce_openings.py` re-runs the measurement from those files and
+compares the result with the contract.
+
 ## Context-isolated execution
 
 For a recorded run, start a fresh worker with only a materialized copy of

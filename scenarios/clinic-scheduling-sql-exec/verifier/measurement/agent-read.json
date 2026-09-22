@@ -1,0 +1,88 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "gpt-4o-mini",
+        "gpt-4o",
+        "gpt-4.1-mini"
+      ],
+      "source_lines": [
+        20,
+        119
+      ],
+      "evidence": "agent.py:20 MODELS lists the three alternatives, agent.py:127-128 reads the choice from config and checks it against the table, and agent.py:119 passes it as model= on the chat.completions.create request inside call_model, whose reply agent.py:133 returns."
+    },
+    "prompt_style": {
+      "values": [
+        "direct",
+        "planned"
+      ],
+      "source_lines": [
+        22,
+        92
+      ],
+      "evidence": "agent.py:22 PROMPT_STYLES holds the two instruction wordings and agent.py:92 indexes it with the config read config.get(\"prompt_style\") inside build_prompt, whose joined text agent.py:133 hands to the request as its user message (agent.py:120)."
+    },
+    "schema_context": {
+      "values": [
+        "table_list",
+        "full_ddl"
+      ],
+      "source_lines": [
+        27,
+        93
+      ],
+      "evidence": "agent.py:27 SCHEMA_CONTEXT holds the two schema quotations (table names, full DDL) and agent.py:93 indexes it with the config read config.get(\"schema_context\") inside build_prompt, whose joined text agent.py:133 hands to the request as its user message (agent.py:120)."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.7
+      ],
+      "source_lines": [
+        78,
+        121
+      ],
+      "evidence": "agent.py:78 TEMPERATURES lists the two literal values, agent.py:130-131 reads the choice from config and checks it with `in`, and agent.py:121 passes it as temperature= on the chat.completions.create request inside call_model."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        90,
+        120
+      ],
+      "evidence": "agent.py:90-96 assembles the instruction, the schema text and the question into one prompt with no worked examples; agent.py:120 places it as the user message of the request."
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        23,
+        133
+      ],
+      "evidence": "agent.py:23-24 instruct the model to answer with one SQLite SELECT statement, and agent.py:133 passes the reply through strip_code_fence so the returned value is the SQL text alone."
+    },
+    "control-flow": {
+      "loop": true,
+      "bounded": true,
+      "source_lines": [
+        106,
+        118
+      ],
+      "evidence": "run itself is straight-line (agent.py:126-133, one request via call_model at :118), and the one iteration on its path is agent.py:106, a comprehension over the fence-split reply inside strip_code_fence, bounded by that finite list; nothing retries the request."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        118,
+        122
+      ],
+      "evidence": "agent.py:118-122 is a plain chat completion that declares no tools and no function schema."
+    }
+  }
+}
