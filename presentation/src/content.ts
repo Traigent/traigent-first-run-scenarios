@@ -442,9 +442,11 @@ function catalogEntryFor(entry: BankScenario): CatalogEntry {
     family: entry.family,
     startingState: `${sentenceCase(manifest.catalog.starting_condition)}: agent ${humanize(agent.state)}, data ${humanize(data.state)}, evaluator ${humanize(evaluator.state)} - the states the manifest declares for the material the worker receives.`,
     components: [
-      agent.controls.length > 0
-        ? `Agent (${agent.state}): ${agent.controls.length} tunable settings - ${agent.controls.map(humanize).join(", ")}`
-        : `Agent (${agent.state}): no varying setting declared`,
+      agent.state === "missing"
+        ? `Agent (${agent.state}): no agent in the project`
+        : agent.controls.length > 0
+          ? `Agent (${agent.state}): ${agent.controls.length} tunable settings - ${agent.controls.map(humanize).join(", ")}`
+          : `Agent (${agent.state}): no varying setting declared`,
       `Dataset (${data.state}): ${row.rows} rows / ${row.unique_inputs} unique inputs`,
       `Evaluator (${evaluator.state}): ${humanize(evaluator.method ?? "no evaluator method declared")}`,
       calibrationCount > 0
@@ -1177,7 +1179,7 @@ const rawPresentation = {
       eyebrow: "FROM STARTING STATE TO NEXT ACTION",
       title:
         "The goal is justified movement toward optimization - not the same score for everyone.",
-      body: "The guide routes every condition below toward optimization, creating or repairing what is missing with the user's approval - every route works today. The next slide shows one worked example: a project that starts ready. The same flow carries a broken or half-ready project to the same finish line.",
+      body: "The guide routes every condition below toward optimization, creating or repairing what is missing with the user's approval - every route is implemented at the pinned guide revision. The next slide shows one worked example: a project that starts ready. The same flow carries a broken or half-ready project to the same finish line.",
       bullets: [
         "Ready → explain readiness; stop at baseline approval",
         "Missing or invalid material → preserve, resolve the human choice, create or repair, then re-check",

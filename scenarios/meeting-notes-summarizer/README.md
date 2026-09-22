@@ -71,11 +71,11 @@ transcript's speaker turns separated by `\n`:
 ```
 
 - `input` - a 150-300 word transcript of an engineering meeting at Corvid
-  Analytics, a fictional analytics company, with three or four speakers named
-  by first name only. Every transcript contains at least one decision with an
-  owner and one or two digressions (badge readers, cake, a lost umbrella) that
-  a summary must leave out. Product names (Magpie, Kestrel, Rookery, Perch,
-  Talon) are the company's own components and recur across rows.
+  Analytics, a fictional analytics company, with three speakers named by first
+  name only. Every transcript contains at least one decision with an owner and
+  one or two digressions (badge readers, cake, a lost umbrella) that a summary
+  must leave out. Product names (Magpie, Kestrel, Rookery, Perch, Talon) are
+  the company's own components and recur across rows.
 - `output` - the reference summary: two or three sentences naming every
   decision and its owner, no digression, and, where the meeting reversed
   itself, only the final position. This is free text, so the catalog's

@@ -113,6 +113,11 @@ metadata:
 - A row-level value such as `provenance: real` simulates what the fictional user
   declares to the readiness scorer. It does not claim that the repository row
   came from a customer or third party.
+- In-world prose in a shipped project document - `project/PROJECT.md` calling
+  its rows "90 real first messages from the last quarter", for instance - is
+  the fictional customer's own declaration and stands on the same footing as a
+  row-level `provenance` value. It says what that customer believes about their
+  data; it makes no claim about the repository bytes.
 - Third-party content must not be copied merely because a dataset name or
   provenance label appears in an earlier test. Use Traigent-authored clean-room
   material when it preserves the intended starting condition and evaluator
