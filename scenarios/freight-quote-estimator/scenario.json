@@ -48,6 +48,7 @@
         "state": "limited",
         "path": "project/dataset.jsonl",
         "task": "numeric-estimation",
+        "guide_task_kind": "numeric",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

@@ -43,6 +43,7 @@
         "state": "ready",
         "path": "project/dataset.jsonl",
         "task": "tool-call-selection",
+        "guide_task_kind": "structured",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

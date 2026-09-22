@@ -95,6 +95,17 @@ guide's vocabulary, not a string that can be passed to `readiness.py`
 unchanged -- drop the suffix if you are passing one through. No count and no
 gate is derived from it.
 
+`datasets[].task` and `datasets[].guide_task_kind` are the same pair of ideas,
+and the second is NOT decoration. `task` is this catalog's own description and
+is free to read `tool-call-selection` or `queue-routing`; `guide_task_kind` is
+one of the ten names the guide's `TASK_KINDS` accepts, and it is the string the
+guide was actually given when that scenario's opening was measured. The declared
+task kind changes what the readiness read reports, so a contract that does not
+record it cannot be re-derived -- the value used to live only in the notes of
+whoever ran the measurement. It is optional in the schema because the first
+scenario's pinned manifest predates it; every scenario in the tree carries it,
+and a test holds that rather than this paragraph.
+
 **Not established here, on purpose:** whether the shipped evaluator actually
 distinguishes the classes a scenario is built around, and what a constant answer
 would score against it. Establishing that means running the evaluator, or

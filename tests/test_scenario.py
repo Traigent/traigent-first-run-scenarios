@@ -95,6 +95,7 @@ def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
                     "state": "ready",
                     "path": "project/input.txt",
                     "task": "closed-label-classification",
+                    "guide_task_kind": "closed-label",
                     "format": "jsonl",
                     "input_field": "input",
                     "label_field": "output",
@@ -1836,6 +1837,89 @@ class ScenarioBankTests(unittest.TestCase):
             f"log looks like, and declaring it is honest: {error}",
         )
         self.assertIn("OK: named-dataset", output)
+
+    # The scenarios whose published contract is identical to another's, recorded so
+    # the set is a claim the suite checks rather than four identical table cells a
+    # reader has to interpret. `docs/scenario-coverage.md` says why they coincide.
+    SHARED_OPENING_CONTRACTS = (
+        (
+            "helpdesk-queue-router",
+            "incident-severity-triage",
+            "policy-handbook-rag",
+            "warehouse-text-to-sql",
+        ),
+    )
+
+    def test_the_scenarios_sharing_a_contract_are_the_ones_written_down(self) -> None:
+        """A thirteenth scenario landing on an existing contract is a decision.
+
+        The contract is four fields, so two scenarios that differ in agent type,
+        dataset and evaluator can still read the same. Four of the twelve do, on
+        purpose -- "nothing is wrong with this project" is one reading and there
+        is only one of it. An accidental fifth should not look the same as those
+        four.
+        """
+
+        by_contract: dict[tuple[object, ...], list[str]] = {}
+        for manifest_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
+        ):
+            slug = manifest_path.parent.name
+            contract = json.loads(
+                (manifest_path.parent / "verifier" / "expected-opening.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            key = (
+                contract["band"],
+                contract["status"],
+                contract["recommended_action"],
+                tuple(sorted(contract.get("caps") or [])),
+            )
+            by_contract.setdefault(key, []).append(slug)
+        self.assertGreaterEqual(len(by_contract), 1, "no contract was read")
+        found = sorted(
+            tuple(sorted(slugs)) for slugs in by_contract.values() if len(slugs) > 1
+        )
+        self.assertEqual(
+            sorted(tuple(sorted(g)) for g in self.SHARED_OPENING_CONTRACTS),
+            found,
+            "the scenarios sharing a published contract are not the recorded ones",
+        )
+
+    def test_every_shipped_scenario_names_the_guide_task_kind_it_was_measured_with(
+        self,
+    ) -> None:
+        """The declared task kind changes what the readiness read reports.
+
+        A contract that does not record it cannot be re-derived: the value
+        lived only in the notes of the captain who measured it, while the
+        catalog carried its own word for the same thing -- `tool-call-selection`
+        where the guide was actually told `structured`. The key is optional in
+        the schema because the first scenario's pinned manifest predates it;
+        every scenario in the tree carries it, and that is this test's job.
+        """
+
+        root = scenario.REPOSITORY_ROOT / "scenarios"
+        checked = 0
+        missing = []
+        for manifest_path in sorted(root.glob("*/scenario.json")):
+            catalog = json.loads(manifest_path.read_text(encoding="utf-8"))["catalog"]
+            for profile in catalog.get("datasets") or []:
+                checked += 1
+                kind = profile.get("guide_task_kind")
+                if kind is None:
+                    missing.append(manifest_path.parent.name)
+                    continue
+                self.assertIn(
+                    kind,
+                    scenario.GUIDE_TASK_KINDS,
+                    f"{manifest_path.parent.name} names a kind the guide does not take",
+                )
+        self.assertEqual([], missing, "scenarios shipping no guide task kind")
+        # Without this the whole test passes on an empty glob: no profile read,
+        # no name missing, green.
+        self.assertGreaterEqual(checked, 12, "no dataset profile was read")
 
     def test_a_declared_binary_record_is_read_as_no_label_surface(self) -> None:
         """A database file is a record this check cannot read as rows.

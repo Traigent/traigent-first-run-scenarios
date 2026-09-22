@@ -202,6 +202,10 @@ const scenarioManifestSchema = z
                 state: z.string().min(1),
                 path: z.string().min(1).nullable(),
                 task: z.string().min(1).nullable(),
+                // The guide's own word for the same task, recorded because the
+                // declared kind changes what the readiness read reports. Optional:
+                // the first scenario's pinned manifest predates it.
+                guide_task_kind: z.string().min(1).optional(),
                 format: z.string().min(1).nullable(),
                 input_field: z.string().min(1).nullable(),
                 label_field: z.string().min(1).nullable(),

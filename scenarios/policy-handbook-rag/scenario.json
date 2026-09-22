@@ -48,6 +48,7 @@
         "state": "ready",
         "path": "project/dataset.jsonl",
         "task": "short-answer-qa",
+        "guide_task_kind": "short-answer",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

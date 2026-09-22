@@ -48,6 +48,7 @@
         "state": "ready",
         "path": "project/dataset.jsonl",
         "task": "queue-routing",
+        "guide_task_kind": "routing",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

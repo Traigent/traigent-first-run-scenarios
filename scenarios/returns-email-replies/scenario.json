@@ -48,6 +48,7 @@
         "state": "limited",
         "path": "project/dataset.jsonl",
         "task": "free-text-reply-drafting",
+        "guide_task_kind": "free-text",
         "format": "jsonl",
         "input_field": "input",
         "label_field": null,

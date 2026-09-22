@@ -48,6 +48,7 @@
         "state": "limited",
         "path": "project/dataset.jsonl",
         "task": "structured-extraction",
+        "guide_task_kind": "extraction",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

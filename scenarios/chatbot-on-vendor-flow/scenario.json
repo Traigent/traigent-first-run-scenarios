@@ -43,6 +43,7 @@
         "state": "ready",
         "path": "project/dataset.jsonl",
         "task": "intent-routing",
+        "guide_task_kind": "routing",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

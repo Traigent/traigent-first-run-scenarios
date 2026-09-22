@@ -48,6 +48,7 @@
         "state": "ready",
         "path": "project/dataset.jsonl",
         "task": "text-to-sql",
+        "guide_task_kind": "code-sql",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

@@ -48,6 +48,7 @@
         "state": "ready",
         "path": "project/dataset.jsonl",
         "task": "free-text-summarization",
+        "guide_task_kind": "free-text",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",

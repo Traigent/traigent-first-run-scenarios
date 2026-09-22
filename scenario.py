@@ -91,6 +91,25 @@ EXACT_MATCH_METHOD = "exact-match"
 # spellings the first scenario shipped with; the rest are the guide's own
 # ``--evaluator-method`` names, so a catalog can describe a scorer the way the
 # guide's readiness read will be told about it.
+# The guide's `--task-kind` vocabulary, from `TASK_KINDS` in its `readiness.py`. A
+# dataset profile carries BOTH words: `task` is this catalog's own description, which
+# is free to say `tool-call-selection` where the guide says `structured`, and
+# `guide_task_kind` is the string the guide was actually given when the scenario's
+# opening was measured. The second is not decoration -- the declared task kind changes
+# what the readiness read reports, so a contract that does not record it cannot be
+# re-derived, and the value lived only in the measuring captain's notes.
+GUIDE_TASK_KINDS = {
+    "closed-label",
+    "code",
+    "code-sql",
+    "extraction",
+    "free-text",
+    "numeric",
+    "routing",
+    "short-answer",
+    "structured",
+    "tool",
+}
 GUIDE_EVALUATOR_METHODS = {
     "composite",
     "embedding",
@@ -226,7 +245,12 @@ DATASET_KEYS = {
     "task",
     "unique_inputs",
 }
-OPTIONAL_DATASET_KEYS = {"passthrough_fields"}
+# Optional, and deliberately: it was added after the first scenario's opening was
+# recorded, and the contract-match example re-verifies that scenario's manifest at
+# the revision it was pinned to. Requiring the key retroactively would invalidate
+# committed evidence for a field that evidence predates. Every scenario shipped
+# since carries it, which a test holds rather than the reader.
+OPTIONAL_DATASET_KEYS = {"passthrough_fields", "guide_task_kind"}
 OPTIONAL_CATALOG_KEYS = {"non_dataset_files"}
 COUNT_DIMENSION_KEYS = {"counts", "field"}
 LABEL_SHAPE_KEYS = {
@@ -1379,6 +1403,16 @@ def _validate_dataset_profile(
         f"{field}.task",
         dataset["task"],
     )
+    guide_task_kind = (
+        _require_enum_string(
+            manifest_path,
+            f"{field}.guide_task_kind",
+            dataset["guide_task_kind"],
+            GUIDE_TASK_KINDS,
+        )
+        if "guide_task_kind" in dataset
+        else None
+    )
     input_field = _require_field_path(
         manifest_path,
         f"{field}.input_field",
@@ -1511,6 +1545,7 @@ def _validate_dataset_profile(
         "state": state,
         "path": path,
         "task": task,
+        "guide_task_kind": guide_task_kind,
         "format": dataset_format,
         "input_field": input_field,
         "label_field": label_field,

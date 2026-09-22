@@ -204,19 +204,19 @@
     "dataset": {
       "type": "object",
       "required": [
-        "id",
-        "state",
-        "path",
-        "task",
+        "difficulty_strata",
         "format",
+        "id",
         "input_field",
         "label_field",
-        "rows",
-        "unique_inputs",
-        "splits",
-        "difficulty_strata",
         "label_shape",
-        "limitations"
+        "limitations",
+        "path",
+        "rows",
+        "splits",
+        "state",
+        "task",
+        "unique_inputs"
       ],
       "properties": {
         "id": {
@@ -290,6 +290,21 @@
           "items": {
             "$ref": "#/$defs/fieldPath"
           }
+        },
+        "guide_task_kind": {
+          "type": "string",
+          "enum": [
+            "closed-label",
+            "code",
+            "code-sql",
+            "extraction",
+            "free-text",
+            "numeric",
+            "routing",
+            "short-answer",
+            "structured",
+            "tool"
+          ]
         }
       },
       "allOf": [

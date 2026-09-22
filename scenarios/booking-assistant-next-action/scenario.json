@@ -49,6 +49,7 @@
         "state": "needs-repair",
         "path": "project/dataset.jsonl",
         "task": "closed-label-classification",
+        "guide_task_kind": "closed-label",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",
