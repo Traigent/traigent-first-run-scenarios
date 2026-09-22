@@ -18,6 +18,8 @@ import meetingNotesManifest from "../../scenarios/meeting-notes-summarizer/scena
 import meetingNotesOpening from "../../scenarios/meeting-notes-summarizer/verifier/expected-opening.json";
 import policyHandbookManifest from "../../scenarios/policy-handbook-rag/scenario.json";
 import policyHandbookOpening from "../../scenarios/policy-handbook-rag/verifier/expected-opening.json";
+import regexRuleManifest from "../../scenarios/regex-rule-authoring/scenario.json";
+import regexRuleOpening from "../../scenarios/regex-rule-authoring/verifier/expected-opening.json";
 import returnsEmailManifest from "../../scenarios/returns-email-replies/scenario.json";
 import returnsEmailOpening from "../../scenarios/returns-email-replies/verifier/expected-opening.json";
 import toolDispatchManifest from "../../scenarios/tool-dispatch-selector/scenario.json";
@@ -134,6 +136,13 @@ const SCENARIO_BANK = [
     family: "Missing material",
     manifest: chatbotVendorFlowManifest,
     opening: chatbotVendorFlowOpening,
+  },
+  {
+    slug: "regex-rule-authoring",
+    legacyId: 58,
+    family: "Dataset integrity",
+    manifest: regexRuleManifest,
+    opening: regexRuleOpening,
   },
 ] as const satisfies readonly {
   slug: string;
@@ -518,6 +527,7 @@ const NUMBER_WORDS = [
   "ten",
   "eleven",
   "twelve",
+  "thirteen",
 ] as const;
 const numberWord = (value: number): string =>
   NUMBER_WORDS[value] ?? String(value);
@@ -540,11 +550,13 @@ const ceiling45Cases = casesWithCap(
   "agent-no-varying-knobs",
 );
 const generatedKeyCases = casesWithCap("dataset-generated-answer-key");
+const unsoundAnswerCases = casesWithCap("dataset-unsound-expected-outputs");
 const executionRefusalCases = casesWithCap("evaluator-calibration-refused");
 for (const [label, cases] of [
   ["no-cap", noCapCases],
   ["ceiling-45", ceiling45Cases],
   ["generated-answer-key", generatedKeyCases],
+  ["unsound-answers", unsoundAnswerCases],
   ["calibration-refused", executionRefusalCases],
 ] as const) {
   if (cases.length === 0) {
@@ -794,7 +806,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - EVIDENCE CAPS",
       title: "Generated data still runs - it only caps the top score.",
-      body: "Nothing stops here: the run continues end to end. Rows declared as generated, or an answer key written by a model, only cap how high the score can go until real rows arrive - a caveat for the summary, not a blocker.",
+      body: "Nothing stops here: the run continues end to end. Rows declared as generated, an answer key written by a model, or an answer a reader found does not answer its own question all cap how high the score can go until the evidence is settled - a caveat for the summary, not a blocker.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -812,6 +824,12 @@ const rawPresentation = {
             "Ceiling 74; compare cautiously and obtain human review before trusting the margin",
           coverage: "published",
         },
+        {
+          startingPoint: `The answers were read, and one of them does not answer its own question (${caseList(unsoundAnswerCases)})`,
+          safestNextStep:
+            "Ceiling 70; put the row and the reason to the customer, and edit nothing until they answer",
+          coverage: "published",
+        },
       ],
       evidenceState: "guide-contract",
       sourceRevision: guideRevision,
@@ -819,6 +837,7 @@ const rawPresentation = {
       notes: [
         "A fully generated dataset caps at 65, so STRONG and EXCELLENT are arithmetically unreachable until the evidence changes. No scenario in the bank declares every row generated; that row stays a coverage target.",
         "These caps read the fictional user's row declarations. Repository authorship is a separate contract: every scenario in the bank is Traigent-authored synthetic content whose in-world provenance values simulate a user declaration.",
+        `The 70 ceiling is the one cap on this slide that no declaration can raise: it comes from the coding assistant's own read of five drawn rows, so ${caseList(unsoundAnswerCases)} reaches it only because something actually read a row and said what was wrong with it.`,
       ],
     },
     {
@@ -1318,7 +1337,7 @@ const rawPresentation = {
       evidence: [bankEvidence],
       notes: [
         "Read the family column as the deck's grouping and the other columns as the manifest's and the contract's own values.",
-        "The ready references are three because a ready project is the shortest route; the bank exists for the other nine.",
+        `The ready references are ${numberWord(readyCases.length)} because a ready project is the shortest route; the bank exists for the other ${numberWord(gapScenarioCount)}.`,
         "Case 49 is a ready-looking opening with a warning inside it: the card flags SQL compared as text as a task-fit concern without capping the score, which is why the deck files it under evaluator quality.",
       ],
     },

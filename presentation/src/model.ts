@@ -121,8 +121,14 @@ export const slideSchema = z
     catalogView: z.enum(["index", ...CATALOG_DETAIL_VIEWS]).optional(),
     // A detail view renders one entry; an index view renders the entries it
     // lists, so the model can require every entry to appear exactly once.
+    //
+    // The bound is slide capacity, and it is raised only against the
+    // browser-fit gate: at thirteen scenarios the bank splits seven and six,
+    // and `npm run fit:browser` is what established that a seven-row index
+    // table still fits. Raise it again the same way - measure, do not assume -
+    // or split the bank across a third index slide instead.
     catalogSlug: z.string().min(1).optional(),
-    catalogSlugs: z.array(z.string().min(1)).min(1).max(6).optional(),
+    catalogSlugs: z.array(z.string().min(1)).min(1).max(7).optional(),
     evidenceState: evidenceStateSchema,
     sourceRevision: z
       .string()

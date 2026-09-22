@@ -6,7 +6,7 @@ opening run. It does not authorize a credentialed optimization.
 In this guide, **captain** means the human test operator who prepares the run,
 controls the worker handoff and stop point, and retains evidence.
 
-The repository releases twelve scenarios, each with its expected opening
+The repository releases thirteen scenarios, each with its expected opening
 contract, as reviewed, versioned files — not recorded worker results. Until a
 fresh run is captured and verified, describe an opening as **expected**, not
 **verified**. Every step below works the same way for any scenario

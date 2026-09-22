@@ -28,8 +28,8 @@ cannot be closed, and continues; a pause is where a human decides, not where
 the journey ends. That holds for the execution-safety family too: where the
 evaluator path would execute candidate code or SQL, the guide declines to
 calibrate the customer's original evaluator, discloses the declined check on
-the readiness card, and continues. Twelve scenarios are published: three
-declare every component ready, and nine declare a gap.
+the readiness card, and continues. Thirteen scenarios are published: three
+declare every component ready, and ten declare a gap.
 
 **Phase A** is the guide's opening: the coding agent inspects what exists,
 explains the readiness state, and stops at the first question or decision that
@@ -69,14 +69,14 @@ code or SQL, the guide declines to calibrate the customer's original
 evaluator, records a containment warning, discloses the declined check on
 the readiness card as `evaluator-calibration-refused`, and continues. This
 repository tracks public, context-isolated scenario coverage for those route
-families. Twelve public scenarios are published today, at least one per
+families. Thirteen public scenarios are published today, at least one per
 family. This is a governed path toward optimization, not a promise that
 every project can optimize immediately or earn an Excellent opening; the
 full claims model is in [docs/methodology.md](docs/methodology.md).
 
 ## Scenarios in this repository
 
-**Released today: twelve scenarios, cases 46 through 57.** Every family in
+**Released today: thirteen scenarios, cases 46 through 58.** Every family in
 the coverage model further down has at least one released scenario. A
 scenario is released only when its complete directory and validated manifest
 are checked in here. A release is files you can read and pin to a Git
@@ -174,7 +174,7 @@ opening pauses for a human, not how far the scenario can go.
 
 Five steps take a scenario from clone to a verified opening. This is the
 minimal path; [GUIDE.md](GUIDE.md) is the complete, authoritative procedure.
-Case `46` below is one of the twelve published scenarios; the same steps run
+Case `46` below is one of the thirteen published scenarios; the same steps run
 any case `scenario.py list` shows, with an output path named after the
 scenario you run.
 
@@ -257,7 +257,7 @@ the scenario package), **isolate** (prepare a
 fresh copy of the chosen scenario outside any workspace an agent has seen),
 **run the guide** (a blinded worker follows the Traigent Guided First Run inside that
 copy), and **verify** (compare its opening against the published contract).
-This flow is per-scenario, not specific to case 46: each of the twelve
+This flow is per-scenario, not specific to case 46: each of the thirteen
 published scenarios is prepared, run, and verified through these same steps,
 and a later scenario joins the catalog the same way. Every Phase A opening —
 whether the contract reads `proceed` or `BLOCKED` — ends at the first
@@ -266,7 +266,7 @@ route's.
 
 ```mermaid
 flowchart TD
-    A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run,<br/>then pick a published scenario (case 46 shown; any of the twelve works)"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
+    A["Clone both repos side by side:<br/>traigent-first-run-scenarios + traigent-first-run,<br/>then pick a published scenario (case 46 shown; any of the thirteen works)"] --> B["scenario.py check 46<br/>validate catalog + expected opening contract<br/>(reads files as data; runs nothing)"]
     B --> C["scenario.py prepare 46<br/>--guide-src ../traigent-first-run --output ../incident-triage-run"]
     C --> D["customer-project/ from tracked Git blobs only,<br/>plus a generated run.json; the verifier, expected opening,<br/>and scenario manifest stay outside"]
     D --> E["One fresh coding-agent session opened in customer-project/,<br/>given only the handoff printed by prepare"]
@@ -323,8 +323,8 @@ skills/traigent-first-run-scenarios Bundled agent skill for this repository
 presentation/                       Shared browser and PowerPoint presentation
 ```
 
-Twelve scenario directories are checked in, `incident-severity-triage`
-through `chatbot-on-vendor-flow`. Each is fully materialized. A run never
+Thirteen scenario directories are checked in, `incident-severity-triage`
+through `regex-rule-authoring`. Each is fully materialized. A run never
 assembles fragments from a hidden shared dataset. This keeps each published
 starting point independently reviewable, resettable, and reproducible.
 
@@ -359,7 +359,7 @@ made automatically.
 ## Content origin and licensing
 
 Each scenario's `scenario.json` records its structured catalog plus the
-origin and license of the files published here. All twelve scenarios are
+origin and license of the files published here. All thirteen scenarios are
 Traigent-authored synthetic content: every company, person, database row,
 handbook page, transcript, and email in them is invented for the scenario.
 That is distinct from a row-level `provenance` value inside the simulated

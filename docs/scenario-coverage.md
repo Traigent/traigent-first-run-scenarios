@@ -2,7 +2,7 @@
 
 ## Current public release
 
-This repository publishes twelve scenarios, legacy cases 46 through 57. Every
+This repository publishes thirteen scenarios, legacy cases 46 through 58. Every
 expected opening below is the contract in that scenario's
 `verifier/expected-opening.json`: the four fields `verify` compares, as
 measured by running the public guide's own preflight, calibration, and
@@ -27,6 +27,7 @@ captured worker run, baseline, managed optimization, or result improvement.
 | `returns-email-replies` (55) | Missing material | Agent ready; the data is declared `limited` because it holds inputs only, and the evaluator is declared `missing` | 150 synthetic inbound emails with no expected reply, no split, and no difficulty strata; label shape `absent` | None ships; no calibration record | `PARTIAL` / `BLOCKED` / `label-data` / `dataset-no-expected-outputs`, `evaluator-absent` |
 | `freight-quote-estimator` (56) | Evidence strength | Agent and evaluator ready; the data is declared `limited` because 20 tuning rows make a coarse comparison | 24 synthetic worked quotes; 20 / 4; four balanced strata of six; numeric | Deterministic numeric tolerance, with two calibration cases | `STRONG` / `OK` / `add-examples` / `dataset-coarse-resolution` |
 | `chatbot-on-vendor-flow` (57) | Missing material | Data and evaluator ready; the agent is declared `missing` because routing runs on a hosted vendor flow that nothing in the project can call; a flow export and a project note ship as records | 90 synthetic first messages; 75 / 15; four near-balanced strata; 6 distinct intent labels | Deterministic intent comparison, declared as normalized exact match, with two calibration cases | `NOT READY` / `BLOCKED` / `connect-agent` / `agent-absent` |
+| `regex-rule-authoring` (58) | Dataset integrity | Agent and evaluator ready; the data is declared `limited` because a read of five of its answers found one that does not answer its own question and one it could not settle | 32 synthetic redaction-rule descriptions with one hand-written regular expression each; 24 / 8; four balanced strata of eight; free text | Deterministic normalized text comparison that never compiles either side, with three calibration cases | `WORKABLE` / `OK` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution` |
 
 Splits read tuning / holdout. Every dataset is Traigent-authored synthetic
 content; the catalog describes each evaluator and does not verify it. The
@@ -65,7 +66,7 @@ described as passed.
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Ready reference        | Agent, labeled data, evaluator, and varying tunable settings are all present                                                                       | Explain the ready state and stop at the human's baseline approval                                                                                                                                                          | `incident-severity-triage` (46), `helpdesk-queue-router` (47), `policy-handbook-rag` (48) |
 | Missing material       | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                                          | Preserve what exists; ask only for an unresolved human or domain choice; create or repair only a required dependency; otherwise disclose the limitation; re-check before paid work                                         | `returns-email-replies` (55), `chatbot-on-vendor-flow` (57)                               |
-| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                                                         | `booking-assistant-next-action` (51)                                                      |
+| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                                                         | `booking-assistant-next-action` (51), `regex-rule-authoring` (58)          |
 | Evidence strength      | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution             | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                                                                                           | `contract-clause-extractor` (54), `freight-quote-estimator` (56)                          |
 | Evaluator quality      | A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, timing out, or the wrong kind of check for the task              | Calibrate it, inspect and repair or replace it, or pause for a bounded timeout decision; do not call a slow evaluator broken                                                                                               | `warehouse-text-to-sql` (49), `meeting-notes-summarizer` (53)                             |
 | Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | Decline to calibrate the customer's original evaluator, record a containment warning, disclose the declined check on the readiness card, and continue; the guide's copied-actor route may calibrate a copy against a bounded target | `clinic-scheduling-sql-exec` (50)                                                         |
@@ -133,19 +134,27 @@ Both are committed, per scenario, under `verifier/measurement/`:
   `reviewed` against `provided`: on case 46 that is 5 of 120, and the guide's
   own card says so — *"the coding assistant sampled 5 of 120 provided rows … a
   sample, so unreviewed answers are assumed sound rather than verified."* Four
-  scenarios publish `caps: []`, and that sentence is what bounds it. One of the
-  twenty-five reviewed rows is recorded `unsure` -- case 46's line 52 -- and the
-  guide never scores an `unsure`, so it costs that contract nothing; a `no` on the
-  same row would have capped it at 70 and moved the band. The verdict is recorded
-  where the reader meets the scenario as well as here, because the cheapest
-  available answer and the recorded answer being the same answer is a thing a
-  reader should be told rather than left to discover.
+  scenarios publish `caps: []`, and that sentence is what bounds it. Of the
+  thirty reviewed rows, twenty-seven are recorded `yes`, two `unsure` and one
+  `no`. The guide never scores an `unsure`, so case 46's line 52 costs that
+  contract nothing and case 58's line 14 costs its contract nothing either; the
+  one `no`, case 58's line 13, is what raises
+  `dataset-unsound-expected-outputs` on that scenario and caps it at 70. The
+  verdicts are recorded where the reader meets the scenario as well as here,
+  because the cheapest available answer and the recorded answer being the same
+  answer is a thing a reader should be told rather than left to discover.
 - `invocation.json` — the three commands the measurement ran, with this
   machine's paths replaced by `$GUIDE`, `$PROJECT` and `$MEASURE`.
 
-Only the five scenarios whose band sits above the answer-key hold ship a review,
-because that is where it is load-bearing; the other seven record that none was
-passed. `scripts/reproduce_openings.py` re-measures every scenario from those
+Six scenarios ship a review, because those are the six whose published contract
+cannot be re-derived without one; the other seven record that none was passed.
+Five of the six publish a band above the answer-key hold, which the guide
+withholds until a read of the answers enters. The sixth is case 58, whose band
+is below the hold and whose `caps` carry
+`dataset-unsound-expected-outputs` -- a cap `readiness.py` builds out of the
+review's own verdicts and out of nothing else. Measured rather than assumed:
+the same inputs without `--row-review` return the same band, status and action,
+and drop that cap. `scripts/reproduce_openings.py` re-measures every scenario from those
 artifacts and compares the result with the published contract. It reads and never
 writes, and it has no mode that does.
 
@@ -155,7 +164,7 @@ writes, and it has no mode that does.
 
 The opening contract this repository publishes is four fields -- band, status,
 recommended action and caps -- so scenarios that differ in every other way can
-land on the same one. Four of the twelve do:
+land on the same one. Four of the thirteen do:
 
 - `incident-severity-triage` (46), `helpdesk-queue-router` (47),
   `policy-handbook-rag` (48) and `warehouse-text-to-sql` (49) all read
@@ -171,7 +180,7 @@ which is why it sits in a different family from the other three.
 
 It is written down here because a reader comparing four identical right-hand
 cells cannot otherwise tell a deliberate coincidence from a copy-paste, and
-because a thirteenth scenario landing on an existing contract should be a
+because a new scenario landing on an existing contract should be a
 decision rather than an accident. `tests/test_scenario.py` pins the set.
 
 ## Dataset origin rules
@@ -194,7 +203,7 @@ metadata:
   material when it preserves the intended starting condition and evaluator
   behavior.
 
-For the current release, every byte of all twelve scenarios is
+For the current release, every byte of all thirteen scenarios is
 Traigent-authored synthetic content under Apache-2.0 and contains no customer
 or third-party dataset. The companies, people, database rows, handbook pages,
 transcripts, and emails in them are invented for the scenario.

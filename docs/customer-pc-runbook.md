@@ -61,7 +61,7 @@ checkout.
 
 ## 3. Validate the scenario package
 
-The commands below use case `46`, one of the twelve released scenarios.
+The commands below use case `46`, one of the thirteen released scenarios.
 Substitute any case number shown by `scenario.py list`, and name the step-4
 output path after the scenario you run.
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import random
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -146,6 +146,28 @@ def expected_opening() -> dict[str, object]:
             },
         },
     }
+
+
+# The guide withholds these two bands until a read of the answers enters, so a
+# scenario published on one of them was measured with a review.
+BANDS_ABOVE_THE_ANSWER_KEY_HOLD = ("STRONG", "EXCELLENT")
+
+# The one cap `readiness.py` builds out of a row review's verdicts. Its share
+# test runs over what the reviewer read, so no other input can raise it, and a
+# published opening carrying it was measured with a review whatever its band.
+REVIEW_DERIVED_CAP = "dataset-unsound-expected-outputs"
+
+
+def _opening_needs_a_row_review(opening: dict[str, object]) -> bool:
+    """Whether this published opening is one a review has to be committed for.
+
+    Asked of the contract rather than of a list, so the answer follows the bank
+    instead of being maintained beside it.
+    """
+    caps = opening.get("caps") or []
+    return (
+        opening["band"] in BANDS_ABOVE_THE_ANSWER_KEY_HOLD or REVIEW_DERIVED_CAP in caps
+    )
 
 
 class ScenarioBankTests(unittest.TestCase):
@@ -1955,22 +1977,36 @@ class ScenarioBankTests(unittest.TestCase):
                     f"{slug}: repeated notes are a tally, not a read",
                 )
                 reviewed += 1
-        # Not "at least one". The rule the documents state is that every scenario
-        # whose band sits above the guide's answer-key hold ships a review, and a
-        # floor of one cannot see four of them go missing -- deleting a
+        # Not "at least one". The rule is that a scenario commits a review
+        # exactly when its published opening cannot be reproduced without one,
+        # and a floor of one cannot see four of them go missing -- deleting a
         # load-bearing review was green in every gate this repository runs.
-        # Derived from the bands rather than written down, so it follows the bank.
-        above_hold = sorted(
+        # Derived from the contracts rather than written down, so it follows the
+        # bank.
+        #
+        # Two ways an opening depends on a review, and both are compared fields:
+        #
+        # - the band sits above the guide's answer-key hold, which withholds
+        #   STRONG and EXCELLENT until a read of the answers enters;
+        # - the caps carry the one condition only a reader can produce.
+        #   `readiness.py` builds `dataset-unsound-expected-outputs` from the
+        #   review's own verdicts and from nothing else, so a scenario that
+        #   publishes it and ships no review publishes a cap it cannot re-derive.
+        #   Measured on regex-rule-authoring rather than assumed: the same
+        #   inputs without `--row-review` return the same band, status and
+        #   action, and drop that cap.
+        needs_review = sorted(
             manifest_path.parent.name
             for manifest_path in (scenario.REPOSITORY_ROOT / "scenarios").glob(
                 "*/scenario.json"
             )
-            if json.loads(
-                (manifest_path.parent / "verifier" / "expected-opening.json").read_text(
-                    encoding="utf-8"
+            if _opening_needs_a_row_review(
+                json.loads(
+                    (
+                        manifest_path.parent / "verifier" / "expected-opening.json"
+                    ).read_text(encoding="utf-8")
                 )
-            )["band"]
-            in ("STRONG", "EXCELLENT")
+            )
         )
         shipping = sorted(
             review_path.parents[2].name
@@ -1979,20 +2015,21 @@ class ScenarioBankTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            above_hold,
+            needs_review,
             shipping,
-            "the scenarios shipping a row review are not the ones whose band needs one",
+            "the scenarios shipping a row review are not the ones whose opening "
+            "needs one",
         )
         self.assertGreater(reviewed, 0, "no committed row review was read")
 
     def test_the_scenarios_sharing_a_contract_are_the_ones_written_down(self) -> None:
-        """A thirteenth scenario landing on an existing contract is a decision.
+        """A new scenario landing on an existing contract is a decision.
 
         The contract is four fields, so two scenarios that differ in agent type,
-        dataset and evaluator can still read the same. Four of the twelve do, on
-        purpose -- "nothing is wrong with this project" is one reading and there
-        is only one of it. An accidental fifth should not look the same as those
-        four.
+        dataset and evaluator can still read the same. Four of the thirteen do,
+        on purpose -- "nothing is wrong with this project" is one reading and
+        there is only one of it. An accidental fifth should not look the same as
+        those four.
         """
 
         by_contract: dict[tuple[object, ...], list[str]] = {}

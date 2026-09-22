@@ -43,10 +43,10 @@ describe("presentation content validation", () => {
         .slice(coreSlideCount)
         .every((slide) => slide.section === "appendix"),
     ).toBe(true);
-    expect(scenarioBankSize).toBe(12);
-    expect(validated.catalog).toHaveLength(12);
+    expect(scenarioBankSize).toBe(13);
+    expect(validated.catalog).toHaveLength(13);
     expect(validated.catalog.map((entry) => entry.legacyId)).toEqual([
-      46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57,
+      46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58,
     ]);
     expect(validated.slides.every((slide) => slide.notes.length > 0)).toBe(
       true,
@@ -125,7 +125,7 @@ describe("presentation content validation", () => {
     expect(matrix.map((row) => row.setup.split(":")[0])).toEqual([
       "Cases 46, 47, 48",
       "Cases 55, 57",
-      "Case 51",
+      "Cases 51, 58",
       "Cases 54, 56",
       "Cases 49, 53",
       "Case 50",
@@ -140,7 +140,7 @@ describe("presentation content validation", () => {
       .filter((slide) => slide.id.startsWith("readiness-ceilings-"))
       .flatMap((slide) => slide.matrix ?? []);
 
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     const byCeiling = (ceiling: string) =>
       rows.find((row) => row.safestNextStep.includes(ceiling))!;
     expect(byCeiling("Ceiling 25").coverage).toBe("coverage-target");
@@ -149,6 +149,8 @@ describe("presentation content validation", () => {
     expect(byCeiling("Ceiling 45").startingPoint).toContain("Case 52");
     expect(byCeiling("Ceiling 74").coverage).toBe("published");
     expect(byCeiling("Ceiling 74").startingPoint).toContain("Case 54");
+    expect(byCeiling("Ceiling 70").coverage).toBe("published");
+    expect(byCeiling("Ceiling 70").startingPoint).toContain("Case 58");
     expect(rows[0]!.coverage).toBe("published");
     expect(rows[0]!.startingPoint).toContain("Cases 46, 47, 48, 49");
   });

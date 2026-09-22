@@ -13,13 +13,13 @@ been recorded or verified.
 
 The first 9 slides form the presales/CTO core story. The remaining 17 slides
 are a clearly marked technical appendix with stage detail, scoring mechanics,
-the scenario families, and a two-slide index of the twelve-scenario bank.
+the scenario families, and a two-slide index of the thirteen-scenario bank.
 
 ## Source of truth
 
 `src/content.ts` is the canonical slide content. It reads every published
-scenario manifest and expected-opening contract under `scenarios/` - twelve
-today, cases 46 to 57 - and derives one catalog entry per scenario from those
+scenario manifest and expected-opening contract under `scenarios/` - thirteen
+today, cases 46 to 58 - and derives one catalog entry per scenario from those
 files. The manifest schema accepts only the slugs in the bank table at the top
 of the module, and a manifest whose case number disagrees with that table fails
 the build. Case 46, the ready reference, is the worked example the walkthrough
@@ -57,7 +57,7 @@ three commands.
   only `band`, `status`, `recommended_action`, and `caps`. It executes no
   verifier code.
 
-The current deck has the published expectation for each of the twelve
+The current deck has the published expectation for each of the thirteen
 scenarios but no referenced captured worker result for any of them. An expected
 opening is a captain measurement of the guide's own scripts over the project
 bytes at the pinned guide revision: a contract to verify a run against, not a

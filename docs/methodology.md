@@ -7,7 +7,7 @@ for observing how a fresh coding agent begins the Guided First Run. The
 repository separates the files needed for reproducibility from the information
 withheld from the worker during an individual run.
 
-The current release publishes twelve scenarios, each with its expected
+The current release publishes thirteen scenarios, each with its expected
 Phase A opening contract. Every contract was measured by running the public
 guide's own preflight, calibration, and readiness scripts offline over that
 scenario's project bytes at the pinned guide revision; that is a captain

@@ -286,21 +286,37 @@ Everything else that counts them is manual, and this is the list:
 2. `presentation/src/content.ts` -- two imports (the manifest and the contract)
    and one `SCENARIO_BANK` row naming the slug, the legacy id and a family from
    the closed list already there.
-3. `presentation/src/model.ts` -- **the index slides hold six scenarios each**,
-   and `catalogSlugs` is bounded at six. The deck splits the bank in half for
-   its two index slides, so the thirteenth scenario makes one half seven and
-   `npm run validate` fails with `slides.NN.catalogSlugs :: Too big: expected
-   array to have <=6 items`. That is the right failure -- loud, precise, before
-   anything publishes -- but it is a slide-capacity decision, not a typo: add a
-   third index slide, or raise the bound and check the slide still fits the
-   browser gate.
-4. The count in prose. "Twelve" is written out in `README.md`,
+3. `presentation/src/model.ts` -- **the index slides hold seven scenarios
+   each**, and `catalogSlugs` is bounded at seven. The deck splits the bank in
+   half for its two index slides, so the fifteenth scenario makes one half eight
+   and `npm run validate` fails with `slides.NN.catalogSlugs :: Too big:
+   expected array to have <=7 items`. That is the right failure -- loud,
+   precise, before anything publishes -- but it is a slide-capacity decision,
+   not a typo: add a third index slide, or raise the bound and check the slide
+   still fits. The bound was six until case 58 made one half seven; it was
+   raised against `npm run fit:browser`, which is the gate that decides whether
+   a wider table still fits, so raise it that way or not at all.
+4. The pinned counts in `presentation/tests/validate-content.test.ts` --
+   `scenarioBankSize`, the catalog length, and the legacy-id list. They are pins
+   so that adding a scenario is a decision; the failure names the number to use.
+   The family-row assertion changes too when the new scenario joins a family
+   that already has cases listed.
+5. The count in prose. "Thirteen" is written out in `README.md`,
    `docs/scenario-coverage.md`, `docs/methodology.md`, `GUIDE.md` and
-   `docs/customer-pc-runbook.md`. The deck derives its own count; the markdown
-   does not.
-5. The measured opening. `verifier/expected-opening.json` records what the
+   `docs/customer-pc-runbook.md`, and `presentation/README.md` carries it as
+   `thirteen-scenario bank`. The deck derives its own count; the markdown does
+   not. `docs/scenario-coverage.md` also carries a row per scenario, a family
+   table, and a tally of the committed row reviews -- all three by hand.
+6. The measured opening. `verifier/expected-opening.json` records what the
    guide at the pinned revision returned for the project as shipped -- it is
    measured, never authored, and a scenario whose bytes change is re-measured.
+   Commit the measurement beside it under `verifier/measurement/`:
+   `agent-read.json`, `invocation.json`, and `row-review.json` when the contract
+   depends on a review -- either because the band sits above the answer-key hold
+   or because `caps` carries `dataset-unsound-expected-outputs`, which
+   `readiness.py` builds out of a review's verdicts and out of nothing else.
+   `tests/test_scenario.py` derives that set from the contracts, so a review
+   that is needed and missing, or shipped and unnecessary, fails.
 
 ## Validate the final change
 
