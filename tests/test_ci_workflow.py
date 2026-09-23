@@ -997,5 +997,105 @@ class DerivedScopeStepShapeTests(unittest.TestCase):
         )
 
 
+REPLAY_SCRIPT = "scripts/reproduce_openings.py"
+# Running the replay, as opposed to type-checking or linting its source.
+RUNS_REPLAY = re.compile(r"(?<![\w./-])python3?\s+scripts/reproduce_openings\.py\b")
+DRIFT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "guide-drift.yml"
+READ_ONLY = {"contents": "read"}
+PINNED_ACTION = re.compile(r"^[\w.-]+/[\w.-]+@[0-9a-f]{40}$")
+
+
+def action_pins(workflow: dict[str, Any]) -> dict[str, set[str]]:
+    pins: dict[str, set[str]] = {}
+    for job in jobs_of(workflow).values():
+        for step in steps_of(job):
+            uses = step.get("uses")
+            if isinstance(uses, str):
+                action, _, revision = uses.partition("@")
+                pins.setdefault(action, set()).add(revision)
+    return pins
+
+
+class ReplayPrivilegeTests(unittest.TestCase):
+    """A job that replays a contribution runs its code, so it holds nothing.
+
+    Replaying a recorded measurement runs the scenario's own evaluator, and on a
+    pull request the runner itself comes from the contribution. What keeps that
+    safe in CI is that the job has nothing to lose: read-only permission it
+    states itself, no secret, and actions pinned to a commit.
+    """
+
+    def workflows(self) -> dict[str, tuple[str, dict[str, Any]]]:
+        found = {}
+        for path in sorted((REPOSITORY_ROOT / ".github" / "workflows").glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            found[path.name] = (text, WorkflowReader(text).read())
+        return found
+
+    def test_every_replay_job_is_read_only_and_given_no_secret(self) -> None:
+        replaying = []
+        for name, (text, workflow) in self.workflows().items():
+            for job_id, job in jobs_of(workflow).items():
+                scripts = [str(step.get("run", "")) for step in steps_of(job)]
+                if not any(RUNS_REPLAY.search(script) for script in scripts):
+                    continue
+                replaying.append(f"{name}:{job_id}")
+                with self.subTest(job=f"{name}:{job_id}"):
+                    self.assertEqual(READ_ONLY, workflow.get("permissions"))
+                    self.assertEqual(
+                        READ_ONLY,
+                        job.get("permissions"),
+                        "a job that runs contributed code states its own "
+                        "permission, so widening the workflow's cannot widen it",
+                    )
+                    self.assertNotIn("secrets.", text)
+                    for step in steps_of(job):
+                        uses = step.get("uses")
+                        if uses is not None:
+                            self.assertRegex(str(uses), PINNED_ACTION)
+                        with_ = step.get("with")
+                        if isinstance(with_, dict) and "persist-credentials" in with_:
+                            self.assertEqual("false", with_["persist-credentials"])
+        self.assertEqual(
+            ["ci.yml:reproduce", "guide-drift.yml:drift"], sorted(replaying)
+        )
+
+    def test_the_drift_run_replays_the_head_of_the_guide_weekly(self) -> None:
+        workflow = WorkflowReader(
+            DRIFT_WORKFLOW_PATH.read_text(encoding="utf-8")
+        ).read()
+        triggers = workflow.get("on")
+        self.assertIsInstance(triggers, dict)
+        assert isinstance(triggers, dict)
+        self.assertEqual({"schedule", "workflow_dispatch"}, set(triggers))
+        self.assertTrue(triggers["schedule"] and "cron" in triggers["schedule"][0])
+
+        steps = steps_of(jobs_of(workflow)["drift"])
+        guide = [
+            step["with"]
+            for step in steps
+            if isinstance(step.get("with"), dict)
+            and step["with"].get("repository") == "Traigent/traigent-first-run"
+        ]
+        self.assertEqual(1, len(guide), steps)
+        self.assertEqual("first-run-guide", guide[0].get("ref"))
+        replays = [str(step["run"]) for step in steps if "run" in step]
+        self.assertEqual(1, len(replays), replays)
+        self.assertIn(f"{REPLAY_SCRIPT} --against-head", replays[0])
+        self.assertIn(
+            f'GUIDE="${{GITHUB_WORKSPACE}}/{guide[0].get("path")}"', replays[0]
+        )
+
+    def test_the_drift_run_pins_its_actions_where_ci_does(self) -> None:
+        pinned = action_pins(read_workflow())
+        drift = action_pins(
+            WorkflowReader(DRIFT_WORKFLOW_PATH.read_text(encoding="utf-8")).read()
+        )
+        self.assertTrue(drift)
+        for action, revisions in drift.items():
+            with self.subTest(action=action):
+                self.assertEqual(pinned.get(action), revisions)
+
+
 if __name__ == "__main__":
     unittest.main()

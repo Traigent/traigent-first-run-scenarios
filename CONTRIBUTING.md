@@ -324,6 +324,12 @@ Everything else that counts them is manual, and this is the list:
    command then carries `--calibration-scope-refused` - is named under
    `refusals` in `invocation.json` with the message it refused with, and
    `scripts/reproduce_openings.py` requires the same refusal on every replay.
+   `scenario.py check` holds `invocation.json` to the commands a replay may
+   run: `$PYTHON -S`, one of the guide's three first-run scripts, and only the
+   flags `REPLAY_STEPS` in `scenario.py` lists for it, every value a bound
+   placeholder, a path inside the project, or a plain word. A measurement that
+   needs another flag adds it to that table by name, after checking the
+   guide's argument parser at the pinned revision accepts it.
 7. A contract that depends on the draw. When a scenario's opening turns on
    whether the worker's read finds an unsound answer, and a five-row draw can
    miss every unsound row, publish both openings: declare
@@ -334,6 +340,29 @@ Everything else that counts them is manual, and this is the list:
    Bind the read in `invocation.json` as `$ROW_REVIEW`. `scenario.py check`
    grades both committed reads against the verdicts, and
    `scripts/reproduce_openings.py` measures both contracts.
+8. A project that does not name its own test. A worker receives every file
+   under `project/`, so `check` reads each one's name and bytes for what
+   would tell it what is being measured. The text is folded first: a
+   lower-case letter or digit followed by a capital gains a hyphen
+   (`expectedOpening`), everything is lower-cased, and runs of `_`, `.` and
+   `-` become one hyphen; whitespace is left alone. Then:
+   - the scenario's slug and each cap its contract expects are refused as a
+     whole token -- `told-apart`, `told_apart`, `toldApart` -- but not as
+     words in a sentence, so a project may describe its own task;
+   - `expected-opening` is refused as a whole token with one separator or
+     none (`expected_opening`, `expectedOpening`, `expected.opening`,
+     `expectedopening`), but not inside a longer word such as `unexpected`,
+     and not written with a space. That is a trade-off: "the expected opening
+     balance" is ordinary prose in a finance project, so a sentence naming the
+     contract in words is not caught. The same words inside an identifier are
+     refused on purpose: `expected_opening_balance` folds to a token that
+     begins `expected-opening`, and a name that starts like the contract file
+     is the leak this rule exists for, so rename the variable;
+   - `verifier` is refused only as a path segment, `verifier/` or `verifier\`
+     not preceded by part of a name (a letter, a digit, `_`, `.` or `-`):
+     after `=`, `(`, `:`, a quote, a slash or whitespace it is a directory,
+     while `sql_verifier/` is a different directory and the bare word,
+     ordinary in a project that checks things, is left alone.
 
 ## Validate the final change
 
@@ -357,8 +386,9 @@ The last command needs a clean guide checkout on the revision the scenarios
 were measured at; CI checks one out and runs it on every change.
 
 `check` validates catalog paths and declared dataset/calibration facts, then the
-strict expected-opening structure and value ranges. Fix the contract rather
-than weakening validation or substituting a different result.
+strict expected-opening structure and value ranges, that no project file names
+what is being measured, and the replay record. Fix the contract rather than
+weakening validation or substituting a different result.
 
 If preparation behavior or worker-visible content changed, use a reviewed local
 guide checkout and a new output path after committing the final selected
@@ -386,6 +416,58 @@ refused for every other scenario.
 
 Keep complete command output and final exit statuses. Do not use a successful
 catalog check as evidence that a worker run passed.
+
+## Replaying a contribution
+
+`scripts/reproduce_openings.py` does not only read a contribution; it runs it.
+Calibration calls the scenario's own evaluator, so replaying a pull request
+executes code its author wrote, as the user who runs the replay. That cannot be
+designed away: the evaluator is exactly what the measurement measures. Neither
+the runner nor `scenario.py` is a sandbox, and the replay is bounded instead:
+
+- Before anything runs, each record passes the validator `scenario.py check`
+  uses, described in step 6 of "Adding a scenario". A record naming another
+  executable, script, flag or path is refused with the scenario, the step and
+  the token.
+- A scenario containing a symbolic link is refused before its project is
+  copied, so the copy cannot reach a file outside the scenario.
+- Each step gets a minimal environment and an empty home directory of its own,
+  removed afterwards, and runs as the leader of a process group of its own
+  under a budget: the guide's own 900-second calibration ceiling plus a minute
+  for calibration, and a minute for preflight and readiness, which only read
+  files. When the step ends, finished or past its budget, every process still
+  in its group is killed. A process that leaves the group with `setsid()` is
+  not reached and can outlive the replay; that is one reason the replay runs
+  where there is nothing to take, below.
+- CI replays with read-only repository permission, stated on the job itself,
+  and with no secret. On a pull request the runner also comes from the
+  contribution, so the job is kept holding nothing worth taking.
+
+Maintainers replay a contribution on their own machine with trunk's runner and
+trunk's `scenario.py`, never the copies in the pull request, which a
+contribution can change too. Take only the contribution's scenarios into a
+disposable trunk worktree, check them, then replay:
+
+```bash
+git fetch origin main
+git worktree add --detach ../replay origin/main
+cd ../replay
+git fetch origin pull/NUMBER/head
+git checkout FETCH_HEAD -- scenarios
+python scenario.py check
+GUIDE=/path/to/traigent-first-run python scripts/reproduce_openings.py
+```
+
+Run it as a user whose files and environment hold no credentials: the
+evaluator can read whatever that user can.
+
+The weekly `guide-drift` workflow replays the same records against the head of
+the guide's default branch with `--against-head`, which accepts a checkout on
+any revision and prints the revision it used. A contract the guide measured is
+MATCH or DRIFT -- a step that ran and produced nothing counts as drift -- and
+one refused before the guide ran stays COULD NOT READ. Against a moved guide, a
+drift is a warning that the guide has moved since the scenarios were measured,
+not a defect in a scenario; re-measure at the new revision to move the pin.
 
 If presentation content changes, also run from `presentation/`:
 

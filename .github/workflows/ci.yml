@@ -172,9 +172,16 @@ jobs:
   # pin is a copy that drifts. The records must agree on exactly one revision,
   # and the script itself refuses a checkout on any other revision or with
   # local changes, and fails when it measured nothing.
+  # Replaying runs each scenario's evaluator, and on a pull request both the
+  # scenarios and the runner come from the contribution. So the job states its
+  # own read-only permission rather than inheriting one a later edit could
+  # widen, and it is given no secret: there is nothing here for the code it
+  # runs to take.
   reproduce:
     name: Re-measure published openings
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Check out repository

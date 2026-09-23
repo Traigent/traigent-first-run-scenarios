@@ -1,0 +1,50 @@
+name: Guide drift
+
+# The pinned re-measurement in ci.yml says the scenarios reproduce at the guide
+# revision they were measured at. This says whether they still would at the head
+# of the guide's default branch, so a guide change that moves an opening is seen
+# before the pin is moved rather than after. A red run here is a warning that
+# the guide has moved, not a defect in a scenario; the script prints the guide
+# revision it used and which contracts drifted.
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guide-drift
+  cancel-in-progress: true
+
+jobs:
+  # Replaying runs each scenario's evaluator, so the job holds read-only
+  # permission of its own and is given no secret.
+  drift:
+    name: Re-measure against the guide's head
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+
+      - name: Check out the head of the guide's default branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: Traigent/traigent-first-run
+          ref: first-run-guide
+          path: .guide
+          persist-credentials: false
+
+      - name: Re-measure every published contract against the guide's head
+        run: GUIDE="${GITHUB_WORKSPACE}/.guide" python scripts/reproduce_openings.py --against-head
