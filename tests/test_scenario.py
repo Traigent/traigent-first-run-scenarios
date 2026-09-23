@@ -7,6 +7,7 @@ import io
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -156,6 +157,10 @@ BANDS_ABOVE_THE_ANSWER_KEY_HOLD = ("STRONG", "EXCELLENT")
 # test runs over what the reviewer read, so no other input can raise it, and a
 # published opening carrying it was measured with a review whatever its band.
 REVIEW_DERIVED_CAP = "dataset-unsound-expected-outputs"
+
+# The heading a scenario README puts its difficulty rubric under. Matched as a
+# literal so a scenario without one is skipped rather than guessed at.
+RUBRIC_HEADING = "### Difficulty rubric"
 
 
 def _opening_needs_a_row_review(opening: dict[str, object]) -> bool:
@@ -2057,6 +2062,95 @@ class ScenarioBankTests(unittest.TestCase):
             sorted(tuple(sorted(g)) for g in self.SHARED_OPENING_CONTRACTS),
             found,
             "the scenarios sharing a published contract are not the recorded ones",
+        )
+
+    def test_a_readme_rubric_illustrates_a_stratum_with_a_row_from_it(self) -> None:
+        """A worked example in prose is a claim about the data beside it.
+
+        `scenario.py check` pins every COUNT a README states -- rows, splits,
+        strata, calibration cases -- and pins no example. So a rubric could
+        define `easy` and then illustrate it with a rule the same rubric calls
+        `hard`, four lines apart, and every gate in this repository stayed
+        green. That shipped: case 58 held up an alternation-in-a-group as its
+        easy exemplar while its own `hard` bullet names exactly that shape.
+
+        Only the examples that RESOLVE are compared. A rubric section
+        legitimately backticks things that are not rows -- a field name, a
+        metadata key -- and a gate demanding every backtick be a dataset row
+        would teach contributors to stop backticking. Running it across the
+        bank is what shaped the rest: three scenarios carry a rubric and two of
+        them label structured outputs, where the rubric grades a feature of the
+        INPUT and quotes no answer at all. Those must not go red for having
+        nothing to resolve, so the per-bullet floor applies only to a rubric
+        that quotes answers -- and the bank-wide floor below is what stops the
+        whole test passing on zero work.
+        """
+
+        root = scenario.REPOSITORY_ROOT / "scenarios"
+        rubrics_read = 0
+        rubrics_quoting_answers = 0
+        for manifest_path in sorted(root.glob("*/scenario.json")):
+            readme = manifest_path.parent / "README.md"
+            if not readme.is_file():
+                continue
+            text = readme.read_text(encoding="utf-8")
+            if RUBRIC_HEADING not in text:
+                continue
+            rubrics_read += 1
+            slug = manifest_path.parent.name
+            section = text.split(RUBRIC_HEADING, 1)[1].split("\n## ", 1)[0]
+            dataset = manifest_path.parent / "project" / "dataset.jsonl"
+            # Only a textual answer can be quoted in prose. A structured answer
+            # is indexed by nothing here, so its rubric resolves no example and
+            # is carried past the per-bullet floor below.
+            stratum_of: dict[str, set[str]] = {}
+            for line in dataset.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                answer = row["output"]
+                if isinstance(answer, str):
+                    stratum_of.setdefault(answer, set()).add(
+                        row["metadata"]["difficulty"]
+                    )
+            bullet: str | None = None
+            resolved: dict[str, int] = {}
+            for line in section.splitlines():
+                heading = re.match(r"- \*\*([\w-]+)\*\*", line.strip())
+                if heading:
+                    bullet = heading.group(1)
+                    resolved.setdefault(bullet, 0)
+                if bullet is None:
+                    continue
+                for example in re.findall(r"`([^`]+)`", line):
+                    strata = stratum_of.get(example)
+                    if strata is None:
+                        continue
+                    resolved[bullet] += 1
+                    with self.subTest(scenario=slug, example=example):
+                        self.assertEqual(
+                            {bullet},
+                            strata,
+                            f"{slug}: the rubric illustrates {bullet!r} with "
+                            f"{example!r}, which the dataset labels "
+                            f"{'/'.join(sorted(strata))}",
+                        )
+            self.assertTrue(resolved, f"{slug}: the rubric section names no stratum")
+            if not any(resolved.values()):
+                continue
+            rubrics_quoting_answers += 1
+            for name, count in sorted(resolved.items()):
+                self.assertGreater(
+                    count,
+                    0,
+                    f"{slug}: the rubric defines {name!r} and illustrates it "
+                    "with no rule that appears in the dataset",
+                )
+        self.assertGreater(rubrics_read, 0, "no README rubric was read")
+        self.assertGreater(
+            rubrics_quoting_answers,
+            0,
+            "no rubric quoted an answer, so nothing was actually compared",
         )
 
     def test_every_shipped_scenario_names_the_guide_task_kind_it_was_measured_with(
