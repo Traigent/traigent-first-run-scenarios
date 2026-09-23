@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "dataset": "project/dataset.jsonl",
+  "question": "Is this expected output a sensible answer to this input, under the method that will grade it?",
+  "convention": "Every rule is read as a masking rule applied by searching a log line, which is how the desk uses the file. A rule without anchors or word boundaries is the file's convention and is sound unless its own description asks for the text to stand alone.",
+  "rows": {
+    "line-1": {
+      "class": "contestable",
+      "reason": "\"On its own\" can be read as asking for the year to stand alone, which \\d{4} does not enforce inside a longer number, or as naming the shape, which it does."
+    },
+    "line-2": {
+      "class": "contestable",
+      "reason": "The rule accepts both lengths the description names, but a search tries the three-digit branch first, so masking #a1b2c3 would cover only #a1b."
+    },
+    "line-3": {
+      "class": "sound",
+      "reason": "The description says any values, so four unbounded one-to-three digit groups separated by dots is the rule it asks for."
+    },
+    "line-4": {
+      "class": "sound",
+      "reason": "One or two capitals then one or two digits is the outward code as described."
+    },
+    "line-5": {
+      "class": "sound",
+      "reason": "The literal word Bearer, one space, then a token class covering the characters such tokens use."
+    },
+    "line-6": {
+      "class": "sound",
+      "reason": "Three numeric parts separated by dots, as described."
+    },
+    "line-7": {
+      "class": "sound",
+      "reason": "Anchored at both ends around optional whitespace, which is a line that is entirely whitespace, including an empty one."
+    },
+    "line-8": {
+      "class": "sound",
+      "reason": "The literal SID followed by exactly eight digits."
+    },
+    "line-9": {
+      "class": "sound",
+      "reason": "Four, two and two digits joined by hyphens is the ISO shape the description spells out."
+    },
+    "line-10": {
+      "class": "sound",
+      "reason": "A double quote, any run of non-quote characters, and a closing quote, which is a quoted string with no escapes."
+    },
+    "line-11": {
+      "class": "contestable",
+      "reason": "The shape and the optional seconds are right, but a 24-hour clock names a range and \\d{2}:\\d{2} also accepts 27:95; a reader may hold the rule to the range or to the shape."
+    },
+    "line-12": {
+      "class": "sound",
+      "reason": "One @ between runs that exclude @ and whitespace, with at least one dot after it."
+    },
+    "line-13": {
+      "class": "unsound",
+      "reason": "The description says a single number is a list of one, and \\d+,\\d+ requires a comma, so it never matches 1; the row's own must_reject of 1 writes the mistake down."
+    },
+    "line-14": {
+      "class": "contestable",
+      "reason": "The description stops at the drive letter and colon while the rule also demands a backslash; C: satisfies the sentence and not the rule, and nothing says which the desk meant."
+    },
+    "line-15": {
+      "class": "sound",
+      "reason": "Hyphenated lower-case groups of 8-4-4-4-12 with the version nibble fixed at 4 and the variant nibble in 8-b."
+    },
+    "line-16": {
+      "class": "unsound",
+      "reason": "The description asks for ERROR standing alone as a whole word and the rule has no word boundaries, so it finds ERRORS, which the row's own must_reject says it must not."
+    },
+    "line-17": {
+      "class": "sound",
+      "reason": "Bracketed alternation of exactly the four levels named."
+    },
+    "line-18": {
+      "class": "sound",
+      "reason": "An optional minus, digits, and an optional decimal part."
+    },
+    "line-19": {
+      "class": "sound",
+      "reason": "Lower-case letters, an equals sign, then a run with no whitespace."
+    },
+    "line-20": {
+      "class": "sound",
+      "reason": "An optional slash and a tag name directly followed by the closing bracket, which leaves no room for attributes."
+    },
+    "line-21": {
+      "class": "unsound",
+      "reason": "The description says the frame always begins the line and the rule has no ^, so it finds two spaces and at in the middle of a line, which the row's own must_reject says it must not."
+    },
+    "line-22": {
+      "class": "sound",
+      "reason": "Digits followed by one of h, m or s."
+    },
+    "line-23": {
+      "class": "sound",
+      "reason": "A word followed by any number of single-space-separated words."
+    },
+    "line-24": {
+      "class": "unsound",
+      "reason": "The description says any mix of upper and lower case and the rule is the lower-case literal with no case-insensitive flag, so it misses PASSWORD, which the row's own must_reject records as intended."
+    },
+    "line-25": {
+      "class": "sound",
+      "reason": "A single quote, a run without one, and a closing quote, found anywhere in the line as described."
+    },
+    "line-26": {
+      "class": "sound",
+      "reason": "The rule keys on the literal token, allows whitespace around the colon, and puts the value in the one capturing group, which is what capturing only the value means."
+    },
+    "line-27": {
+      "class": "sound",
+      "reason": "Thirteen to sixteen digits with nothing between them."
+    },
+    "line-28": {
+      "class": "contestable",
+      "reason": "The rule refuses . and .. by refusing any leading dot, which also refuses a segment such as .bashrc that the description does not exclude."
+    },
+    "line-29": {
+      "class": "sound",
+      "reason": "The scheme group is optional and ends in ://, the host class matches a dotted name, and the one-or-more quantifier is why the empty string is rejected."
+    },
+    "line-30": {
+      "class": "sound",
+      "reason": "A captured word, one space, and a backreference to it, bounded as whole words."
+    },
+    "line-31": {
+      "class": "sound",
+      "reason": "A hash and everything after it to the end of the line."
+    },
+    "line-32": {
+      "class": "sound",
+      "reason": "Quoted content where each character is either not a quote or backslash, or a backslash escaping any one character, which admits an escaped quote."
+    }
+  }
+}

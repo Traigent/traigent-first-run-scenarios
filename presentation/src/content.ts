@@ -20,6 +20,7 @@ import policyHandbookManifest from "../../scenarios/policy-handbook-rag/scenario
 import policyHandbookOpening from "../../scenarios/policy-handbook-rag/verifier/expected-opening.json";
 import regexRuleManifest from "../../scenarios/regex-rule-authoring/scenario.json";
 import regexRuleOpening from "../../scenarios/regex-rule-authoring/verifier/expected-opening.json";
+import regexRuleSoundReadOpening from "../../scenarios/regex-rule-authoring/verifier/expected-opening-sound-read.json";
 import returnsEmailManifest from "../../scenarios/returns-email-replies/scenario.json";
 import returnsEmailOpening from "../../scenarios/returns-email-replies/verifier/expected-opening.json";
 import toolDispatchManifest from "../../scenarios/tool-dispatch-selector/scenario.json";
@@ -143,6 +144,7 @@ const SCENARIO_BANK = [
     family: "Dataset integrity",
     manifest: regexRuleManifest,
     opening: regexRuleOpening,
+    soundReadOpening: regexRuleSoundReadOpening,
   },
 ] as const satisfies readonly {
   slug: string;
@@ -150,6 +152,7 @@ const SCENARIO_BANK = [
   family: Family;
   manifest: unknown;
   opening: unknown;
+  soundReadOpening?: unknown;
 }[];
 
 const SCENARIO_SLUGS = SCENARIO_BANK.map((entry) => entry.slug) as [
@@ -272,6 +275,16 @@ const scenarioManifestSchema = z
           .object({
             rationale: z.string().min(1),
             verifier_contract: z.string().min(1),
+            // Present when the opening turns on what the worker's read of the
+            // answers found; the second contract covers a read that finds
+            // every answer sound.
+            read_dependent: z
+              .object({
+                row_verdicts: z.string().min(1),
+                sound_read_contract: z.string().min(1),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
         evidence: z
@@ -337,11 +350,21 @@ interface BankScenario {
   family: Family;
   scenario: ScenarioManifest;
   expected: ExpectedOpening;
+  soundReadExpected: ExpectedOpening | null;
 }
 
 const bank: readonly BankScenario[] = SCENARIO_BANK.map((entry) => {
   const scenario = scenarioManifestSchema.parse(entry.manifest);
   const expected = expectedOpeningSchema.parse(entry.opening);
+  const soundRead = "soundReadOpening" in entry ? entry.soundReadOpening : null;
+  if (
+    (soundRead === null) !==
+    (scenario.catalog.expected_route.read_dependent === undefined)
+  ) {
+    throw new Error(
+      `Scenario bank row ${entry.legacyId} ${entry.slug} must import a sound-read contract exactly when its manifest declares one`,
+    );
+  }
   if (scenario.slug !== entry.slug || scenario.legacy_id !== entry.legacyId) {
     throw new Error(
       `Scenario bank row ${entry.legacyId} ${entry.slug} does not match its manifest ${scenario.legacy_id} ${scenario.slug}`,
@@ -353,6 +376,8 @@ const bank: readonly BankScenario[] = SCENARIO_BANK.map((entry) => {
     family: entry.family,
     scenario,
     expected,
+    soundReadExpected:
+      soundRead === null ? null : expectedOpeningSchema.parse(soundRead),
   };
 });
 
@@ -483,7 +508,11 @@ function catalogEntryFor(entry: BankScenario): CatalogEntry {
     expectedStatus: opening.status,
     expectedAction: opening.recommended_action,
     expectedCaps: [...opening.caps],
-    expectedRouting: `Case-specific opening contract: ${expectedRouteSummary(opening)}. Rationale: ${humanize(manifest.catalog.expected_route.rationale)}.`,
+    expectedRouting: `Case-specific opening contract: ${expectedRouteSummary(opening)}. Rationale: ${humanize(manifest.catalog.expected_route.rationale)}.${
+      entry.soundReadExpected === null
+        ? ""
+        : ` A read of the answers that finds every one sound opens instead at ${expectedRouteSummary(entry.soundReadExpected)}.`
+    }`,
     testedLayer: `${manifest.catalog.evidence.demonstrates.map(sentenceCase).join("; ")}. No recorded coding-agent run is supplied in this release.`,
     notProven: manifest.catalog.evidence.does_not_demonstrate
       .map(sentenceCase)

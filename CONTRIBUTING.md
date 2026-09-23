@@ -305,8 +305,11 @@ Everything else that counts them is manual, and this is the list:
    `docs/scenario-coverage.md`, `docs/methodology.md`, `GUIDE.md` and
    `docs/customer-pc-runbook.md`, and `presentation/README.md` carries it as
    `thirteen-scenario bank`. The deck derives its own count; the markdown does
-   not. `docs/scenario-coverage.md` also carries a row per scenario, a family
-   table, and a tally of the committed row reviews -- all three by hand.
+   not. `README.md` and `docs/scenario-coverage.md` each carry a row per
+   scenario and a family table; `tests/test_scenario.py` checks both against
+   the bank, the families the deck's `SCENARIO_BANK` gives, and - in the README
+   - each contract's band, status, action and caps. The tally of committed row
+   reviews in `docs/scenario-coverage.md` is still kept by hand.
 6. The measured opening. `verifier/expected-opening.json` records what the
    guide at the pinned revision returned for the project as shipped -- it is
    measured, never authored, and a scenario whose bytes change is re-measured.
@@ -317,6 +320,16 @@ Everything else that counts them is manual, and this is the list:
    `readiness.py` builds out of a review's verdicts and out of nothing else.
    `tests/test_scenario.py` derives that set from the contracts, so a review
    that is needed and missing, or shipped and unnecessary, fails.
+7. A contract that depends on the draw. When a scenario's opening turns on
+   whether the worker's read finds an unsound answer, and a five-row draw can
+   miss every unsound row, publish both openings: declare
+   `expected_route.read_dependent` in the manifest, give a verdict and a reason
+   for every row in `verifier/row-verdicts.json`, and commit the sound read
+   beside the published one as `verifier/measurement/row-review-sound-read.json`
+   with its measured contract in `verifier/expected-opening-sound-read.json`.
+   Bind the read in `invocation.json` as `$ROW_REVIEW`. `scenario.py check`
+   grades both committed reads against the verdicts, and
+   `scripts/reproduce_openings.py` measures both contracts.
 
 ## Validate the final change
 
@@ -326,14 +339,18 @@ For every scenario change, run:
 python -m pip install -r requirements-dev.txt
 black --check scenario.py scripts tests
 ruff check scenario.py scripts tests
-mypy --strict scenario.py scripts/check_public_surface.py
+mypy --strict scenario.py scripts/check_public_surface.py scripts/reproduce_openings.py
 python scenario.py list
 python scenario.py show CASE
 python scenario.py check CASE
 python scenario.py check
 python -m unittest discover -s tests -p 'test_*.py' -v
 python scripts/check_public_surface.py
+GUIDE=/path/to/traigent-first-run python scripts/reproduce_openings.py
 ```
+
+The last command needs a clean guide checkout on the revision the scenarios
+were measured at; CI checks one out and runs it on every change.
 
 `check` validates catalog paths and declared dataset/calibration facts, then the
 strict expected-opening structure and value ranges. Fix the contract rather
@@ -355,6 +372,13 @@ python scenario.py verify CASE \
   --run-record /path/to/run.json \
   --result /path/to/opening-result.json
 ```
+
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
 
 Keep complete command output and final exit statuses. Do not use a successful
 catalog check as evidence that a worker run passed.

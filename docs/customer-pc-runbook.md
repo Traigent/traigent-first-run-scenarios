@@ -190,6 +190,13 @@ scenario Git revision in `run.json`, and compares only `band`, `status`,
 caps are condition slugs; full captured cap objects are compared by their
 `condition` fields. It reports every mismatch and does not execute the verifier.
 
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
+
 A matching result may be labeled **Verified run evidence** only when the report
 also retains the captured result, both repository revisions, `run.json`, worker
 and session identity, environment and isolation boundary, exact handoff and

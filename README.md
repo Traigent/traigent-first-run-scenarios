@@ -105,6 +105,7 @@ optimization.
 | `returns-email-replies` (55)         | Missing material       | Reply drafting from 150 logged emails; no expected outputs, no evaluator, no calibration record                                     | PARTIAL · BLOCKED · `label-data` · `dataset-no-expected-outputs`, `evaluator-absent`                      |
 | `freight-quote-estimator` (56)       | Evidence strength      | Numeric estimation with a tolerance scorer over 24 worked quotes                                                                    | STRONG · OK · `add-examples` · `dataset-coarse-resolution`                                                |
 | `chatbot-on-vendor-flow` (57)        | Missing material       | Intent routing on a hosted vendor flow; labeled rows and a calibratable evaluator, but no local agent                               | NOT READY · BLOCKED · `connect-agent` · `agent-absent`                                                    |
+| `regex-rule-authoring` (58)          | Dataset integrity      | Regular-expression authoring against a hand-written answer key in which four answers do not answer their own question              | WORKABLE · OK · `review-answer-key` · `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; a read that finds every answer sound opens STRONG · OK · `proceed` · `dataset-coarse-resolution` |
 
 Each scenario's primary dataset is declared and checked as data rather than
 presentation copy:
@@ -159,7 +160,7 @@ scenario is an expected Phase A contract, not a test result.
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
 | Ready reference        | Agent, labeled data, evaluator, and varying tunable settings are all present                                                                       | Explain the ready state and stop at the human's baseline approval                                                                                                                                      | `incident-severity-triage` (46), `helpdesk-queue-router` (47), `policy-handbook-rag` (48) |
 | Missing material       | Agent, dataset, expected outputs, or evaluator absent while other material remains usable                                                          | Preserve what exists; ask only for an unresolved human or domain choice; create or repair only a required dependency; otherwise disclose the limitation; re-check before paid work                     | `returns-email-replies` (55), `chatbot-on-vendor-flow` (57)                         |
-| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                                     | `booking-assistant-next-action` (51)                                                |
+| Dataset integrity      | Malformed or unknown row shape, missing labels, empty or overlapping splits, duplicates, or leakage                                                | Repair invalid comparison material; do not optimize against evidence that cannot support the claim                                                                                                     | `booking-assistant-next-action` (51), `regex-rule-authoring` (58)                   |
 | Evidence strength      | Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer key; small comparison sets or coarse outcome resolution             | Label a bounded demonstration honestly, request human review where required, and limit the claim                                                                                                       | `contract-clause-extractor` (54), `freight-quote-estimator` (56)                    |
 | Evaluator quality      | A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, timing out, or the wrong kind of check for the task              | Calibrate it, inspect and repair or replace it, or pause for a bounded timeout decision; do not call a slow evaluator broken                                                                           | `warehouse-text-to-sql` (49), `meeting-notes-summarizer` (53)                       |
 | Execution safety       | Inspection identifies that the resolved evaluator path would execute candidate code or SQL, shell out with it, or submit it to an execution engine | Decline to calibrate the customer's original evaluator, record a containment warning, disclose the declined check on the card, and continue; a copied-actor route may calibrate a copy against a bounded target | `clinic-scheduling-sql-exec` (50)                                                   |
@@ -242,6 +243,13 @@ the contract loaded via local Git at the revision recorded in `run.json`,
 reading the result as data. A `PASS` means the four fields matched the
 contract at that recorded revision — nothing more; [GUIDE.md](GUIDE.md)
 states the exact claim boundary.
+
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
 
 From there the route continues, not the exercise: with your approvals,
 credentials, and cost boundaries in place, the same `customer-project/`

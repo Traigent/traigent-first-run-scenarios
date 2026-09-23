@@ -195,7 +195,9 @@ or an improvement in quality, cost, speed, or any business metric.
 The captain saves the exact machine-readable opening object returned or written
 by the guide outside the worker project. `scenario.py verify` validates the
 project and contract inventories against the scenario Git revision recorded in
-`run.json`, reads that revision's `verifier/expected-opening.json`, parses the
+`run.json`, reads that revision's `verifier/expected-opening.json` (for
+`regex-rule-authoring`, the contract for the read the worker gave, after grading
+that read against the scenario's row verdicts), parses the
 captured result as strict JSON, and compares four top-level fields:
 
 - `band`

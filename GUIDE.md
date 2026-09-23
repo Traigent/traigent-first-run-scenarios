@@ -168,6 +168,13 @@ recorded in `run.json`, and compares these top-level semantic fields:
 - `recommended_action`
 - `caps`
 
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
+
 Expected `caps` are condition slugs. When captured readiness contains full cap
 objects, verification compares their `condition` fields and ignores
 display-only cap details. It reports every mismatch and never imports or

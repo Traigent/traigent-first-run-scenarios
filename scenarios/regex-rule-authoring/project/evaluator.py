@@ -11,7 +11,10 @@ Two expressions count as the same rule when they match after the tidying below,
 which covers the ways one pattern gets typed differently and nothing more:
 
 - surrounding whitespace is dropped;
-- a redundant pair of outer parentheses is dropped, once;
+- a redundant pair of outer parentheses is dropped, once: a `(?:...)` group
+  always, and a plain `(...)` group only when nothing inside it captures, since
+  wrapping a rule that captures its value moves that value to another group.
+  A named group or a lookaround is part of the rule and stays;
 - `[0-9]` and `\\d` are the same class, as are `[A-Za-z0-9_]` and `\\w`;
 - a `{1}` repeat is dropped.
 
@@ -31,6 +34,51 @@ _SYNONYMS = (
 _REDUNDANT_REPEAT = re.compile(r"\{1\}")
 
 
+def _groups(text):
+    """(start, end) of every group, skipping escapes and character classes."""
+    groups, open_at, in_class, position = [], [], False, 0
+    while position < len(text):
+        character = text[position]
+        if character == "\\":
+            position += 2
+            continue
+        if in_class:
+            in_class = character != "]"
+        elif character == "[":
+            in_class = True
+            if text.startswith("^", position + 1):
+                position += 1
+            if text.startswith("]", position + 1):
+                position += 1
+        elif character == "(":
+            open_at.append(position)
+        elif character == ")" and open_at:
+            groups.append((open_at.pop(), position))
+        position += 1
+    return groups
+
+
+def _captures(text, start):
+    """Whether the group opening at `start` is a numbered or named capture."""
+    if not text.startswith("(?", start):
+        return True
+    return text.startswith("(?P<", start) or (
+        text.startswith("(?<", start) and text[start + 3 : start + 4] not in "=!"
+    )
+
+
+def _without_redundant_outer_group(text):
+    groups = _groups(text)
+    if (0, len(text) - 1) not in groups:
+        return text
+    if text.startswith("(?:"):
+        return text[3:-1].strip()
+    if text.startswith("(?"):
+        return text
+    captures_inside = any(start > 0 and _captures(text, start) for start, _ in groups)
+    return text if captures_inside else text[1:-1].strip()
+
+
 def normalise(pattern):
     """The pattern as one canonical string, or None when it is not text."""
     if not isinstance(pattern, str):
@@ -39,18 +87,7 @@ def normalise(pattern):
     for long_form, short in _SYNONYMS:
         text = text.replace(long_form, short)
     text = _REDUNDANT_REPEAT.sub("", text)
-    if text.startswith("(") and text.endswith(")"):
-        depth = 0
-        for position, character in enumerate(text):
-            if character == "(":
-                depth += 1
-            elif character == ")":
-                depth -= 1
-                if depth == 0 and position != len(text) - 1:
-                    break
-        else:
-            text = text[1:-1].strip()
-    return text
+    return _without_redundant_outer_group(text)
 
 
 def score(output, expected, input_data=None, metadata=None):

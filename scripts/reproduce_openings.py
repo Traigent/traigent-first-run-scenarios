@@ -1,59 +1,82 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Re-measure every published opening from the artifacts committed beside it.
+"""Re-measure every published opening by replaying the commands recorded beside it.
 
-This reads. It never writes into the repository, and it has no mode that does.
-The sibling builder's sweep carries a `--publish` flag and has twice destroyed
-the evidence it exists to protect; a checker that cannot write cannot do that,
-which is the whole reason this is a verifier rather than a publisher. When a
-contract needs replacing, a person runs the guide and edits the file, and this
-says whether the result agrees.
+This reads. It never writes into the repository, and it has no mode that does: a
+checker that cannot write cannot overwrite the evidence it exists to protect.
+When a contract needs replacing, a person runs the guide and edits the file, and
+this says whether the result agrees.
 
-What it needs: a `traigent-first-run` checkout sitting on the revision each
-scenario's `verifier/measurement/invocation.json` names, passed as $GUIDE. What
-it uses from this repository: the manifest's declared `guide_task_kind` and
-`guide_evaluator_method`, and the scenario's committed `agent-read.json` and
-`row-review.json`. Nothing else, on purpose -- if it needed anything a reader
-does not have, the contracts would not be re-derivable and this would be
-theatre.
+Each scenario's `verifier/measurement/invocation.json` records the preflight,
+calibration and readiness commands its opening was measured with. They are
+replayed as recorded -- every flag, in order -- with only the placeholders bound:
+$PYTHON to this interpreter, $GUIDE to the checkout, $PROJECT to a scratch copy
+of the scenario's `project/`, $SCENARIO to the scenario's directory here,
+$MEASURE to a scratch directory, and $ROW_REVIEW to the committed read that goes
+with the contract being checked. A step writes its JSON to the $MEASURE file the
+later steps name for it. Replaying the record rather than rebuilding the commands
+is the point: a flag the record carries and this script forgot would otherwise
+produce a disagreement that is this script's own mistake.
+
+A scenario whose opening turns on what a reader of its answers found declares a
+second contract for a read that found nothing wrong (`expected_route.
+read_dependent` in its manifest). Both are measured, each with its own read:
+`row-review.json` for the published contract and `row-review-sound-read.json`
+for the other.
+
+Every field a contract publishes is compared: band, status, recommended action,
+caps, and the displayed overall and per-pillar scores and confidences.
+
+What it needs: a clean `traigent-first-run` checkout on the revision every
+`invocation.json` names, passed as $GUIDE.
 
     GUIDE=~/code/traigent-first-run python3 scripts/reproduce_openings.py
 
-Exit 0 when every published contract reproduces, 1 when any does not, 2 when it
-could not run at all. The three are different answers and a reader acts on them
-differently, so they are not collapsed.
+Exit 0 when every published contract reproduces, 1 when any disagrees, 2 when a
+contract could not be measured at all -- including when the checkout cannot be
+trusted to be the recorded revision. A disagreement outranks a contract that
+could not be read, since it is the more specific finding; both are printed.
 """
 
 import atexit
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 REPO = Path(__file__).resolve().parent.parent
 
+# Where each recorded step writes. The later steps name these files through
+# $MEASURE, so a step is only replayable if its output has a name here.
+STEP_OUTPUTS = {
+    "preflight": "02-preflight.json",
+    "calibration": "03-calibration.json",
+    "readiness": "05-readiness.json",
+}
+PLACEHOLDER = re.compile(r"\$[A-Z_]+")
+SOUND_READ_SUFFIX = "-sound-read"
+
 
 def fail(reason: str) -> NoReturn:
-    """Could not run: a different answer from "ran and disagreed", and it exits 2.
-
-    The three exit codes are three different answers a reader acts on
-    differently, so every way of not being able to start comes through here
-    rather than out of a traceback.
-    """
+    """Could not run at all: exits 2, never a traceback."""
     print(f"cannot reproduce: {reason}", file=sys.stderr)
     raise SystemExit(2)
+
+
+class CouldNotMeasure(Exception):
+    """One contract could not be measured; the others still are."""
 
 
 _root = os.environ.get("GUIDE")
 if not _root:
     fail("set GUIDE to a traigent-first-run checkout")
-GUIDE = Path(_root).expanduser()
-G = GUIDE / "skills/traigent-first-run/scripts"
-if not (G / "readiness.py").is_file():
-    fail(f"no readiness.py under {G}")
+GUIDE = Path(_root).expanduser().resolve()
+if not (GUIDE / "skills/traigent-first-run/scripts/readiness.py").is_file():
+    fail(f"no skills/traigent-first-run/scripts/readiness.py under {GUIDE}")
 
 _home = tempfile.mkdtemp()
 atexit.register(shutil.rmtree, _home, True)
@@ -62,6 +85,7 @@ ENV = {
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
     "PATH": os.environ.get("PATH", ""),
+    "PYTHONDONTWRITEBYTECODE": "1",
     "PYTHONHASHSEED": "0",
     "PYTHONNOUSERSITE": "1",
 }
@@ -72,191 +96,203 @@ def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def guide_revision() -> str:
-    """The revision $GUIDE sits on. Refuses rather than guessing."""
-    found = run(["git", "-C", str(GUIDE), "rev-parse", "HEAD"], REPO)
-    if found.returncode != 0:
+    """The revision $GUIDE sits on, refusing a checkout that differs from it."""
+    head = run(["git", "-C", str(GUIDE), "rev-parse", "HEAD"], REPO)
+    if head.returncode != 0:
         fail(f"{GUIDE} is not a git checkout, so its revision cannot be established")
-    return found.stdout.strip()
+    status = run(["git", "-C", str(GUIDE), "status", "--porcelain"], REPO)
+    if status.returncode != 0:
+        fail(f"cannot read the working-tree state of {GUIDE}")
+    if status.stdout.strip():
+        fail(
+            f"{GUIDE} has local changes, so it is not the revision it names: "
+            + "; ".join(status.stdout.strip().splitlines()[:5])
+        )
+    return head.stdout.strip()
+
+
+def last_line(text: str) -> str:
+    lines = text.strip().splitlines()
+    return lines[-1][:120] if lines else "(no output)"
+
+
+def replay(
+    invocation: dict[str, Any], scenario: Path, row_review: Path | None
+) -> dict[str, Any]:
+    """Run the recorded steps once and return the readiness JSON."""
+    work = Path(tempfile.mkdtemp())
+    try:
+        project = work / "project"
+        measure = work / "measure"
+        shutil.copytree(scenario / "project", project)
+        measure.mkdir()
+        bound = {
+            "$PYTHON": sys.executable,
+            "$GUIDE": str(GUIDE),
+            "$PROJECT": str(project),
+            "$SCENARIO": str(scenario),
+            "$MEASURE": str(measure),
+        }
+        if row_review is not None:
+            bound["$ROW_REVIEW"] = str(row_review)
+        written: set[str] = set()
+        steps = invocation.get("steps")
+        if not isinstance(steps, dict) or "readiness" not in steps:
+            raise CouldNotMeasure("invocation.json records no readiness step")
+        read_later = {
+            STEP_OUTPUTS[name]: any(
+                f"$MEASURE/{STEP_OUTPUTS[name]}" in argument
+                for later in list(steps.values())[index + 1 :]
+                for argument in later
+            )
+            for index, name in enumerate(steps)
+            if name in STEP_OUTPUTS
+        }
+        for name, recorded in steps.items():
+            if name not in STEP_OUTPUTS:
+                raise CouldNotMeasure(f"step {name!r} has no known output file")
+            cmd: list[str] = []
+            for argument in recorded:
+                for token in PLACEHOLDER.findall(argument):
+                    if token not in bound:
+                        raise CouldNotMeasure(f"step {name!r} uses unbound {token}")
+                for token, value in bound.items():
+                    argument = argument.replace(token, value)
+                if argument.startswith(str(measure) + "/"):
+                    needed = argument[len(str(measure)) + 1 :]
+                    if needed not in written:
+                        raise CouldNotMeasure(
+                            f"step {name!r} reads $MEASURE/{needed}, "
+                            "which no earlier step writes"
+                        )
+                cmd.append(argument)
+            done = run(cmd, project)
+            output = STEP_OUTPUTS[name]
+            wrote = bool(done.stdout.strip())
+            # A non-zero exit with a payload is a step reporting findings. A step
+            # nothing reads is recorded because it refused -- the readiness
+            # command then carries that refusal as a flag -- so it must still
+            # refuse; one that now measures means the record has gone stale.
+            if name != "readiness" and not read_later[output]:
+                if wrote:
+                    raise CouldNotMeasure(
+                        f"{name} now writes a result no recorded step reads, so "
+                        "the record's account of it is stale"
+                    )
+                continue
+            if not wrote:
+                raise CouldNotMeasure(
+                    f"{name} wrote nothing (rc={done.returncode}): "
+                    + last_line(done.stderr)
+                )
+            (measure / output).write_text(done.stdout)
+            written.add(output)
+        result: dict[str, Any] = json.loads(
+            (measure / STEP_OUTPUTS["readiness"]).read_text()
+        )
+        return result
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def published_fields(contract: dict[str, Any]) -> dict[str, Any]:
+    display = contract["display"]
+    return {
+        "band": contract["band"],
+        "status": contract["status"],
+        "recommended_action": contract["recommended_action"],
+        "caps": sorted(contract["caps"]),
+        "overall": display["overall"],
+        "pillars": display["pillars"],
+    }
+
+
+def measured_fields(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "band": result["band"],
+        "status": result["status"],
+        "recommended_action": result["recommended_action"],
+        "caps": sorted(cap["condition"] for cap in result["caps"]),
+        "overall": {"score": result["overall"], "confidence": result["confidence"]},
+        "pillars": {
+            pillar["name"]: {
+                "score": pillar["score"],
+                "confidence": pillar["confidence"],
+            }
+            for pillar in result["pillars"]
+        },
+    }
+
+
+def contracts(scenario: Path) -> list[tuple[str, Path, Path | None]]:
+    """(label, contract, the read it was measured with) for each contract."""
+    verifier = scenario / "verifier"
+    review = verifier / "measurement" / "row-review.json"
+    found = [
+        (
+            scenario.name,
+            verifier / "expected-opening.json",
+            review if review.is_file() else None,
+        )
+    ]
+    route = json.loads((scenario / "scenario.json").read_text())["catalog"][
+        "expected_route"
+    ]
+    dependent = route.get("read_dependent")
+    if dependent is not None:
+        contract = scenario / dependent["sound_read_contract"]
+        found.append(
+            (
+                f"{scenario.name} (sound read)",
+                contract,
+                verifier / "measurement" / f"row-review{SOUND_READ_SUFFIX}.json",
+            )
+        )
+    return found
 
 
 AT = guide_revision()
-_declared = {
-    json.loads(path.read_text(encoding="utf-8"))["guide_revision"]
-    for path in REPO.glob("scenarios/*/verifier/measurement/invocation.json")
-}
-if not _declared:
-    fail("no scenario records the revision it was measured at")
-if _declared != {AT}:
-    fail(
-        f"GUIDE is on {AT[:8]} and these openings were measured at "
-        + ", ".join(sorted(r[:8] for r in _declared))
-        + "; comparing against a different revision of the guide answers a "
-        "different question from the one this script asks"
-    )
-print(f"  guide {AT[:8]}, which is what every invocation.json records\n")
-
 rows: list[tuple[str, str, str]] = []
 for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
-    slug = manifest.parent.name
-    work: Path | None = None
-    # One scenario that cannot be read is one row of the report, not a
-    # traceback that abandons the other eleven and carries a temp path out
-    # with it. The directory is removed on every path, not only the one
-    # that finished.
-    try:
-        cat = json.loads(manifest.read_text())["catalog"]
-        meas = manifest.parent / "verifier" / "measurement"
-        work = Path(tempfile.mkdtemp())
-        shutil.copytree(manifest.parent / "project", work / "project")
-        proj = work / "project"
-
-        ds = (cat.get("datasets") or [{}])[0]
-        ev = cat["components"].get("evaluator") or {}
-        ag = cat["components"].get("agent") or {}
-        method = ev.get("guide_evaluator_method")
-        kind = ds.get("guide_task_kind")
-
-        pf = [
-            sys.executable,
-            str(G / "preflight.py"),
-            "--project-root",
-            str(proj),
-            "--json",
-        ]
-        if ds.get("path"):
-            pf += ["--dataset", ds["path"].split("project/", 1)[-1]]
-        if ev.get("path"):
-            pf += ["--evaluator", ev["path"].split("project/", 1)[-1]]
-        if method:
-            pf += ["--evaluator-method", method]
-        p = run(pf, proj)
-        # preflight signals FINDINGS with a non-zero exit and still writes its JSON.
-        # A run is only failed when there is no payload to read.
-        if not p.stdout.strip():
-            rows.append(
-                (
-                    slug,
-                    "preflight failed",
-                    f"rc={p.returncode} "
-                    + (
-                        (
-                            p.stderr.strip() or p.stdout.strip() or "(silent)"
-                        ).splitlines()
-                        or ["(silent)"]
-                    )[-1][:70],
+    scenario = manifest.parent
+    for label, contract_path, row_review in contracts(scenario):
+        try:
+            invocation = json.loads(
+                (scenario / "verifier/measurement/invocation.json").read_text()
+            )
+            if invocation.get("guide_revision") != AT:
+                raise CouldNotMeasure(
+                    f"measured at {str(invocation.get('guide_revision'))[:8]}, "
+                    f"GUIDE is on {AT[:8]}"
                 )
+            if row_review is not None and not row_review.is_file():
+                raise CouldNotMeasure(f"no committed read at {row_review.name}")
+            got = measured_fields(replay(invocation, scenario, row_review))
+            want = published_fields(json.loads(contract_path.read_text()))
+            differing = [key for key in want if got[key] != want[key]]
+            detail = "; ".join(
+                f"{key} got {got[key]!r} published {want[key]!r}" for key in differing
             )
-            continue
-        (work / "pf.json").write_text(p.stdout)
-
-        cal = None
-        probes = (ev.get("calibration") or {}).get("path")
-        if probes and not (ev.get("state") == "unsafe"):
-            c = [
-                sys.executable,
-                str(G / "calibrate_evaluator.py"),
-                "--scorer",
-                f'{ev["path"].split("project/",1)[-1]}:score',
-                "--cases",
-                "@" + probes.split("project/", 1)[-1],
-                "--allow-execution",
-                "--json",
-            ]
-            if kind:
-                c += ["--task-kind", kind]
-            pc = run(c, proj)
-            if pc.stdout.strip():
-                (work / "cal.json").write_text(pc.stdout)
-                cal = work / "cal.json"
-
-        rd = [
-            sys.executable,
-            str(G / "readiness.py"),
-            "--preflight",
-            str(work / "pf.json"),
-            "--json",
-        ]
-        if method:
-            rd += ["--evaluator-method", method]
-        if kind:
-            rd += ["--task-kind", kind]
-        if cal:
-            rd += ["--calibration", str(cal)]
-        review = meas / "row-review.json"
-        if review.is_file():
-            rd += ["--row-review", str(review)]
-        knobs = meas / "agent-read.json"
-        if knobs.is_file():
-            rd += ["--agent-knobs", str(knobs)]
-            doc = json.loads(knobs.read_text())
-            if any(
-                isinstance(v, dict) and v.get("source_lines")
-                for v in (doc.get("knobs") or {}).values()
-            ):
-                rd += [
-                    "--agent-source-root",
-                    str(proj),
-                    "--selected-agent",
-                    str(proj / doc["source"]),
-                    "--selected-agent-callable",
-                    "run",
-                ]
-        pr = run(rd, proj)
-        if not pr.stdout.strip():
+            rows.append((label, "DIFFERS" if differing else "MATCH", detail))
+        except CouldNotMeasure as reason:
+            rows.append((label, "COULD NOT READ", str(reason)))
+        except (OSError, KeyError, TypeError, ValueError) as failure:
             rows.append(
-                (
-                    slug,
-                    "readiness failed",
-                    (pr.stderr.strip().splitlines() or ["(no stderr)"])[-1][:70],
-                )
+                (label, "COULD NOT READ", f"{type(failure).__name__}: {failure}")
             )
-            continue
-        got = json.loads(pr.stdout)
-        pub = json.loads(
-            (manifest.parent / "verifier" / "expected-opening.json").read_text()
-        )
-
-        def shape(band: str, action: str, caps: list[str]) -> str:
-            """Every compared field, so a caps-only difference is not printed as a pair
-            of identical strings -- which is what the first version did, leaving a
-            reader with nothing to act on."""
-            return f"{band}/{action}/[{','.join(sorted(caps)) or '-'}]"
-
-        same = all(
-            [
-                got["band"] == pub["band"],
-                got["status"] == pub["status"],
-                got["recommended_action"] == pub["recommended_action"],
-                sorted(c["condition"] for c in got.get("caps", []))
-                == sorted(pub.get("caps") or []),
-            ]
-        )
-        difference = (
-            ""
-            if same
-            else "got "
-            + shape(
-                got["band"],
-                got["recommended_action"],
-                [c["condition"] for c in got.get("caps", [])],
-            )
-            + " against published "
-            + shape(pub["band"], pub["recommended_action"], list(pub.get("caps") or []))
-        )
-        rows.append((slug, "MATCH" if same else "DIFFERS", difference))
-    except Exception as failure:  # noqa: BLE001 - reported, never swallowed
-        rows.append((slug, "COULD NOT READ", f"{type(failure).__name__}: {failure}"))
-    finally:
-        if work is not None:
-            shutil.rmtree(work, ignore_errors=True)
 
 if not rows:
-    print("no scenario was read, so nothing was checked", file=sys.stderr)
+    fail("no scenario was found, so nothing was checked")
+print(f"  guide {AT[:8]}, clean checkout\n")
+width = max(len(row[0]) for row in rows)
+for label, verdict, detail in rows:
+    print(f"  {label:{width}}  {verdict:14} {detail}")
+matched = sum(1 for row in rows if row[1] == "MATCH")
+differs = sum(1 for row in rows if row[1] == "DIFFERS")
+unread = len(rows) - matched - differs
+print(f"\n  matched: {matched} of {len(rows)} contracts")
+if differs:
+    raise SystemExit(1)
+if unread:
+    print(f"  could not measure: {unread}", file=sys.stderr)
     raise SystemExit(2)
-w = max(len(r[0]) for r in rows)
-for slug, verdict, detail in rows:
-    print(f"  {slug:{w}}  {verdict:16} {detail}")
-matched = sum(1 for r in rows if r[1] == "MATCH")
-print()
-print(f"  matched: {matched} of {len(rows)}")
-raise SystemExit(0 if matched == len(rows) else 1)

@@ -1,6 +1,6 @@
 {
   "guide_revision": "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199",
-  "note": "The commands this scenario's published opening was measured with. $PYTHON is the interpreter, $GUIDE a traigent-first-run checkout on guide_revision, $PROJECT a copy of this scenario's project/ directory, $SCENARIO this scenario's directory in this repository, and $MEASURE a scratch directory the steps write into. No path here names a real machine.",
+  "note": "The commands this scenario's published opening was measured with. $PYTHON is the interpreter, $GUIDE a traigent-first-run checkout on guide_revision, $PROJECT a copy of this scenario's project/ directory, $SCENARIO this scenario's directory in this repository, $MEASURE a scratch directory the steps write into, and $ROW_REVIEW the committed read that goes with the contract being measured. No path here names a real machine.",
   "row_review": "verifier/measurement/row-review.json",
   "steps": {
     "preflight": [
@@ -43,7 +43,7 @@
       "--task-kind",
       "numeric",
       "--row-review",
-      "$SCENARIO/verifier/measurement/row-review.json",
+      "$ROW_REVIEW",
       "--agent-knobs",
       "$SCENARIO/verifier/measurement/agent-read.json",
       "--agent-source-root",

@@ -85,6 +85,13 @@ run:
 python scenario.py verify CASE --run-record RUN_JSON --result FILE
 ```
 
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
+
 Verification binds the contract to the scenario Git revision in `run.json`,
 then compares `band`, `status`, `recommended_action`, and `caps`. It never
 executes verifier code. Report every mismatch and retain the complete

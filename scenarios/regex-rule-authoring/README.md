@@ -23,33 +23,63 @@ two SQL cases are `code-sql`, which the guide treats separately.
 The second is what a customer's own reading of their answers does to the
 opening. The guide asks for five rows drawn at random, and it is the reader's
 verdicts -- not a scan of the file -- that decide whether the answer key is
-credited. On this scenario the reading finds one answer that does not answer its
-own question and one it cannot settle, and the opening is bounded because of it:
-the cap is `dataset-unsound-expected-outputs`, the routed action is
-`review-answer-key`, and the run is not stopped. The scenario is the only case in
-either repository where that cap is reached, and the only way to reach it is for
-something to have actually read a row -- which is the property the cap is there
-to have.
+credited. Four of the thirty-two answers do not answer their own question
+(lines 13, 16, 21 and 24). A read that marks one of them `no` bounds the
+opening: the cap is `dataset-unsound-expected-outputs`, the routed action is
+`review-answer-key`, and the run is not stopped. The scenario is the only case
+in either repository where that cap is reached, and the only way to reach it is
+for something to have actually read a row -- which is the property the cap is
+there to have.
 
-The disputed row is line 13. Its description says "a comma-separated list of one
-or more numbers, no spaces. A single number is a list of one", and its recorded
-rule is `\d+,\d+`, which requires a comma and so never matches `1` at all. The
-row's own `must_reject` of `"1"` is the mistake written down rather than caught.
-Nothing in this repository edits it. The recorded verdict says so with the
-reason, which is what the guide puts to the customer.
+Line 13 is the plainest of the four. Its description says "a comma-separated
+list of one or more numbers, no spaces. A single number is a list of one", and
+its recorded rule is `\d+,\d+`, which requires a comma and so never matches `1`
+at all. The row's own `must_reject` of `"1"` is the mistake written down rather
+than caught. Line 24 is the same shape: "in any mix of upper and lower case",
+recorded as the lower-case literal `password`, with `PASSWORD` under
+`must_reject`. Nothing in this repository edits any of them.
 
-Line 14 is recorded `unsure`, and an `unsure` is never scored. Its description
-says the path begins with a drive letter and a colon; its rule also demands a
-following backslash. `C:` satisfies the sentence and not the rule, and nothing
-in the row says which the desk meant. The review says that rather than guessing.
+### Two contracts, because the draw decides
+
+Five rows drawn from thirty-two miss all four unsound answers a little under
+half the time (C(28,5)/C(32,5) is about 0.49 for a uniform draw). A faithful
+read of such a draw can find nothing wrong, and the guide then opens at `STRONG`
+with `proceed`. That is not a failed run, so this scenario publishes both
+openings, each measured from a committed read:
+
+| The worker's read | Contract | Band / action / caps |
+|---|---|---|
+| marks some answer `no` | `verifier/expected-opening.json` | `WORKABLE` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution` |
+| marks no answer `no` | `verifier/expected-opening-sound-read.json` | `STRONG` / `proceed` / `dataset-coarse-resolution` |
+
+Every published field, scores included, depends on that one fact and nothing
+else about the read: reads with one, two and four `no` verdicts, and reads with
+one or two `unsure`, were each measured and land on one of these two rows.
+
+Which contract applies is decided by the read, so the read is graded too.
+`verifier/row-verdicts.json` gives a verdict for every row with its reason:
+`unsound` rows a faithful read must mark `no`, `sound` rows it must not, and
+`contestable` rows careful readers settle either way. Line 14 is one: its
+description stops at the drive letter and colon while its rule also demands a
+backslash, and nothing in the row says which the desk meant. The key reads every
+rule the way the desk uses it -- as a masking rule searched over a log line --
+and says so in its `convention`.
+
+The published read (`verifier/measurement/row-review.json`) is a seeded draw
+that reached line 13 and line 14; the sound read
+(`verifier/measurement/row-review-sound-read.json`) is chosen rather than
+drawn, five rows the key marks sound, one per difficulty stratum and one held
+out. `scenario.py check` grades both against the key and fails if the published
+read marks nothing `no` or the sound read marks any answer `no`.
 
 ## Scenario layout
 
 The scenario is fully materialized and self-contained:
 
 - `project/` contains the only scenario files assigned to the worker.
-- `verifier/` contains the expected opening contract, the measurement records
-  the published opening was produced from, and captain guidance. It is public
+- `verifier/` contains the expected opening contracts, the verdict for every
+  row, the measurement records the published openings were produced from, and
+  captain guidance. It is public
   for reproducibility but is never copied into the worker's project.
 - `scenario.json` identifies the scenario, its phase, content origin, license,
   materialized paths, starting condition, components, dataset profile,
@@ -85,8 +115,8 @@ for readability; the JSONL file stores it on one physical line:
     "difficulty": "medium",
     "split": "tuning",
     "provenance": "real",
-    "must_match": ["2019-04-07"],
-    "must_reject": ["2019-4-7"]
+    "must_match": ["2024-03-09"],
+    "must_reject": ["24-03-09"]
   }
 }
 ```
@@ -112,15 +142,15 @@ for readability; the JSONL file stores it on one physical line:
   guided run reads them**: the evaluator compares expression text and never
   compiles anything.
 
-  Three rows carry a note the recorded rule contradicts, which is what makes the
-  answer key checkable rather than a matter of opinion. On lines 16 and 21 the
-  contradiction is mechanical - compile the rule, run it against the row's own
-  `must_reject` string, and it matches: `ERROR` is written without word
-  boundaries so it finds `ERRORS`, and the stack-frame rule is written without
-  a `^` so it finds `  at ` in the middle of a line. On line 13 it is not
-  mechanical, because `\d+,\d+` really does reject `"1"` - the row is wrong
-  against its own *sentence*, which is why only a reader finds it, and why the
-  row review is the thing that raises the cap.
+  On two of the four unsound rows the note contradicts the recorded rule, which
+  makes the finding mechanical: search a log line with the rule, give it the
+  row's own `must_reject` string, and it matches. `ERROR` (line 16) is written
+  without word boundaries so it finds `ERRORS`, and the stack-frame rule (line
+  21) is written without a `^` so it finds `  at ` in the middle of a line. On
+  lines 13 and 24 the note agrees with the rule - `\d+,\d+` really does reject
+  `"1"`, and `password` really does reject `PASSWORD` - and both are wrong
+  against their own *sentence*, which is why only a reader finds them, and why
+  the row review is the thing that raises the cap.
 
 `scenario.py check 58` re-derives every one of these counts from the JSONL bytes
 and fails if they drift from the manifest.
@@ -144,9 +174,14 @@ Each row was assigned one stratum by the hardest feature its answer needs:
 ## The evaluator
 
 `evaluator.py` compares the expression the agent returned with the recorded one
-as text: it strips surrounding whitespace, removes a markdown code fence if one
-is present, collapses internal runs of whitespace that sit outside a character
-class, and returns 1.0 for equal and 0.0 for not. The catalog declares this as
+as text, after the tidying its docstring lists and nothing more: it strips
+surrounding whitespace, reads `[0-9]` as `\d` and `[A-Za-z0-9_]` (in either
+letter order) as `\w`, drops
+a `{1}` repeat, and drops one redundant outer group - a `(?:...)` always, and a
+plain `(...)` only when nothing inside it captures, because wrapping a rule that
+captures its value moves that value to another group. It returns 1.0 for equal
+and 0.0 for not. It does not remove a markdown code fence and does not touch
+whitespace inside the expression. The catalog declares this as
 `normalized-exact`.
 
 **It never compiles either side, and that is deliberate.** Compiling a
@@ -158,12 +193,17 @@ refusal is written in the evaluator's own docstring so that a reader who wants
 the other behaviour meets the reason first.
 
 The cost of the refusal is real and the scenario states it: an expression that
-is correct by a different route scores 0.0. `[0-9]{4}` is not `\d{4}` here. The
-third calibration case is exactly that -- named "a different route to the same
-strings, which this scorer does not accept" -- so the limit is on the record the
-customer approves rather than in a footnote. The other two cases cover a class
-written the long way and a redundant outer group, each with a same-answer probe
-differing only in spacing.
+is correct by a route the tidying does not cover scores 0.0. `a|b` is not `[ab]`
+here, and `\[(?:INFO|DEBUG|WARN|ERROR)\]` - the four levels in another order -
+is not line 17's rule. The limit is written where a reader meets it, in the
+evaluator's docstring and here. It is not on the calibration record, and cannot
+be: the guide's calibration requires the `equivalent_good` probe to score what
+`good` scores, so a probe built to show the limit would read as a broken
+evaluator rather than a stated one.
+
+The three calibration cases cover what the tidying does accept: a class written
+the long way (`[0-9]{4}` for `\d{4}`), a redundant outer group, and an
+alternation inside a group with stray whitespace around it.
 
 Calibration also raises a seam advisory worth reading: the evaluator alone
 scores a fenced answer 0.0 even when the expression inside the fence is right.
@@ -184,6 +224,21 @@ This protocol provides context isolation on an honour-system basis. Because the
 scenario is public, it is reproducible rather than hidden: deliberate external
 lookup or prior knowledge invalidates a run but is not prevented by this
 repository.
+
+Verifying a run needs the read as well as the result, because the read decides
+which contract applies. Collect the row review the worker passed to
+`readiness.py --row-review` and give it to `verify`:
+
+```bash
+python scenario.py verify 58 \
+  --run-record ../regex-rule-run/run.json \
+  --result /path/to/opening-result.json \
+  --row-review /path/to/row-review.json
+```
+
+`verify` fails a read that leaves an unsound row unmarked, marks a sound row
+`no`, or reads other than five rows; otherwise it compares the result with the
+contract for the read the worker gave.
 
 The declared scope is `phase-a-opening`. A matching result demonstrates the
 published opening contract for this scenario; it does not demonstrate a live

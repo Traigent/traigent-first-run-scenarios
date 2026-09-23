@@ -36,7 +36,7 @@
     }
   },
   {
-    "name": "a different route to the same strings, which this scorer does not accept",
+    "name": "an alternation inside a group, which is the same rule with stray whitespace",
     "score_mode": "binary",
     "expected": "\\[(?:DEBUG|INFO|WARN|ERROR)\\]",
     "input_data": {

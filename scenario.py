@@ -170,6 +170,26 @@ PREPARED_PROJECT_DIRECTORY = "customer-project"
 PREPARED_GUIDE_DIRECTORY = "traigent-first-run"
 EXPECTED_OPENING_FILE = "expected-opening.json"
 EXPECTED_VERIFIER_CONTRACT = f"{VERIFIER_DIRECTORY}/{EXPECTED_OPENING_FILE}"
+# A scenario whose opening turns on what a reader of its answers finds publishes
+# two contracts: `verifier_contract` for a read that marks some answer `no`, and
+# this one for a read that marks none. Which applies is decided by the worker's
+# own read, graded against the scenario's verdict for every row.
+READ_DEPENDENT_PATHS = {
+    "row_verdicts": f"{VERIFIER_DIRECTORY}/row-verdicts.json",
+    "sound_read_contract": f"{VERIFIER_DIRECTORY}/expected-opening-sound-read.json",
+}
+ROW_VERDICTS_KEYS = {"schema_version", "dataset", "question", "convention", "rows"}
+ROW_VERDICT_KEYS = {"class", "reason"}
+ROW_VERDICT_CLASSES = ("sound", "unsound", "contestable")
+READ_VERDICTS = ("yes", "no", "unsure")
+# The read the two contracts were measured for: the five rows the guide has the
+# opening read before the run's own rows are settled. A read of any other size
+# can cross the guide's unsound-share threshold differently, so it is refused
+# rather than graded against contracts that were not measured for it.
+OPENING_READ_ROWS = 5
+# The committed reads each contract was measured with.
+PUBLISHED_READ = "measurement/row-review.json"
+SOUND_READ = "measurement/row-review-sound-read.json"
 VERIFICATION_FIELDS = ("band", "status", "recommended_action", "caps")
 EXPECTED_OPENING_KEYS = {
     "schema_version",
@@ -1709,8 +1729,9 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
         "catalog.expected_route",
         catalog["expected_route"],
         EXPECTED_ROUTE_KEYS,
+        {"read_dependent"},
     )
-    expected_route = {
+    expected_route: dict[str, Any] = {
         "rationale": _require_catalog_identifier(
             manifest_path,
             "catalog.expected_route.rationale",
@@ -1728,6 +1749,21 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
             "catalog.expected_route.verifier_contract",
             f"must equal {EXPECTED_VERIFIER_CONTRACT!r}",
         )
+    if "read_dependent" in expected_route_value:
+        read_dependent = _require_object_keys(
+            manifest_path,
+            "catalog.expected_route.read_dependent",
+            expected_route_value["read_dependent"],
+            set(READ_DEPENDENT_PATHS),
+        )
+        for key, required in READ_DEPENDENT_PATHS.items():
+            field = f"catalog.expected_route.read_dependent.{key}"
+            if (
+                _normalize_scenario_path(manifest_path, field, read_dependent[key])
+                != required
+            ):
+                raise _manifest_error(manifest_path, field, f"must equal {required!r}")
+        expected_route["read_dependent"] = dict(READ_DEPENDENT_PATHS)
 
     evidence_value = _require_object_keys(
         manifest_path,
@@ -3268,6 +3304,14 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
         "catalog.expected_route.verifier_contract",
         scenario.verifier_dir,
     )
+    if "read_dependent" in catalog["expected_route"]:
+        if len(catalog["datasets"]) != 1:
+            raise _catalog_materialized_error(
+                scenario,
+                "catalog.expected_route.read_dependent",
+                "needs exactly one dataset for its verdicts to describe",
+            )
+        _validate_read_dependent(scenario, catalog["datasets"][0])
 
 
 def validate_materialized(scenario: Scenario) -> dict[str, Any]:
@@ -4484,6 +4528,153 @@ def validate_expected_opening(scenario: Scenario) -> dict[str, Any]:
     return _validate_expected_opening_value(expected_path, expected)
 
 
+def _validate_row_verdicts(path: Path, value: dict[str, Any]) -> dict[str, str]:
+    """Validate a scenario's verdict for every row; return each row's class.
+
+    `sound` rows a faithful reader does not mark `no`, `unsound` rows it must,
+    and `contestable` rows are ones careful readers can settle either way.
+    """
+    _require_contract_keys(path, "row verdicts", value, ROW_VERDICTS_KEYS)
+    schema_version = value["schema_version"]
+    if isinstance(schema_version, bool) or schema_version != SCHEMA_VERSION:
+        raise _contract_error(path, "schema_version", f"must equal {SCHEMA_VERSION}")
+    for field in ("dataset", "question", "convention"):
+        _contract_string(path, field, value[field])
+    classes: dict[str, str] = {}
+    for row_id, entry in _contract_object(path, "rows", value["rows"]).items():
+        field = f"rows.{row_id}"
+        entry = _contract_object(path, field, entry)
+        _require_contract_keys(path, field, entry, ROW_VERDICT_KEYS)
+        if entry["class"] not in ROW_VERDICT_CLASSES:
+            raise _contract_error(
+                path,
+                f"{field}.class",
+                f"must be one of {', '.join(ROW_VERDICT_CLASSES)}",
+            )
+        _contract_string(path, f"{field}.reason", entry["reason"])
+        classes[row_id] = entry["class"]
+    unsound = sum(1 for kind in classes.values() if kind == "unsound")
+    if not unsound:
+        raise _contract_error(
+            path,
+            "rows",
+            "names no unsound row, so no read reaches the published contract",
+        )
+    if len(classes) - unsound < OPENING_READ_ROWS:
+        raise _contract_error(
+            path,
+            "rows",
+            f"leaves fewer than {OPENING_READ_ROWS} rows outside the unsound ones, "
+            "so no read reaches the sound-read contract",
+        )
+    return classes
+
+
+def _grade_read(
+    path: Path, read: dict[str, Any], classes: dict[str, str]
+) -> tuple[list[str], bool]:
+    """Grade one opening read against the row verdicts.
+
+    Returns the disagreements and whether the read marks any answer `no`, which
+    is the fact that decides which of the two contracts applies.
+    """
+    rows = read.get("rows", _MISSING)
+    if not isinstance(rows, list):
+        raise _contract_error(path, "rows", "must be an array")
+    if len(rows) != OPENING_READ_ROWS:
+        return [
+            f"the contracts were measured for the {OPENING_READ_ROWS}-row opening "
+            f"read, and this read has {len(rows)}"
+        ], False
+    problems: list[str] = []
+    seen: set[str] = set()
+    marks_unsound = False
+    for index, row in enumerate(rows):
+        row = _contract_object(path, f"rows[{index}]", row)
+        row_id = _contract_string(path, f"rows[{index}].id", row.get("id", _MISSING))
+        verdict = row.get("verdict", _MISSING)
+        if verdict not in READ_VERDICTS:
+            problems.append(f"{row_id}: verdict {verdict!r} is not yes, no or unsure")
+            continue
+        if row_id in seen:
+            problems.append(f"{row_id}: read twice")
+        seen.add(row_id)
+        kind = classes.get(row_id)
+        if kind is None:
+            problems.append(f"{row_id}: not a row of this scenario's dataset")
+        elif kind == "unsound" and verdict != "no":
+            problems.append(
+                f"{row_id}: its answer does not answer its own question, "
+                f"and the read says {verdict!r}"
+            )
+        elif kind == "sound" and verdict == "no":
+            problems.append(f"{row_id}: its answer is sound, and the read says 'no'")
+        marks_unsound = marks_unsound or verdict == "no"
+    return problems, marks_unsound
+
+
+def _validate_read_dependent(scenario: Scenario, dataset: dict[str, Any]) -> None:
+    """Check the verdict key covers every row and both committed reads obey it."""
+    field = "catalog.expected_route.read_dependent"
+    verdicts_path = _catalog_regular_file(
+        scenario,
+        READ_DEPENDENT_PATHS["row_verdicts"],
+        f"{field}.row_verdicts",
+        scenario.verifier_dir,
+    )
+    verdicts = _read_strict_json_object(verdicts_path, "row verdicts")
+    classes = _validate_row_verdicts(verdicts_path, verdicts)
+    if verdicts["dataset"] != dataset["path"]:
+        raise _contract_error(
+            verdicts_path,
+            "dataset",
+            f"must name the scenario's dataset {dataset['path']!r}",
+        )
+    dataset_path = scenario.root.joinpath(*PurePosixPath(dataset["path"]).parts)
+    row_ids = {
+        f"line-{number}"
+        for number, line in enumerate(dataset_path.read_bytes().splitlines(), start=1)
+        if line.strip()
+    }
+    if set(classes) != row_ids:
+        missing = sorted(row_ids - set(classes), key=lambda item: int(item[5:]))
+        extra = sorted(set(classes) - row_ids)
+        raise _contract_error(
+            verdicts_path,
+            "rows",
+            f"must give a verdict for every row of {dataset['path']}; "
+            f"missing {missing[:5]}, not rows {extra[:5]}",
+        )
+
+    sound_contract = _catalog_regular_file(
+        scenario,
+        READ_DEPENDENT_PATHS["sound_read_contract"],
+        f"{field}.sound_read_contract",
+        scenario.verifier_dir,
+    )
+    _validate_expected_opening_value(
+        sound_contract,
+        _read_strict_json_object(sound_contract, "sound-read opening contract"),
+    )
+    for relative, contract, marks_expected in (
+        (PUBLISHED_READ, EXPECTED_OPENING_FILE, True),
+        (SOUND_READ, sound_contract.name, False),
+    ):
+        read_path = scenario.verifier_dir / relative
+        problems, marks_unsound = _grade_read(
+            read_path, _read_strict_json_object(read_path, "committed read"), classes
+        )
+        if problems:
+            raise _contract_error(read_path, "rows", "; ".join(problems))
+        if marks_unsound != marks_expected:
+            raise _contract_error(
+                read_path,
+                "rows",
+                f"{contract} was measured with this read, which must "
+                + ("mark an answer 'no'" if marks_expected else "mark no answer 'no'"),
+            )
+
+
 _MISSING = object()
 
 
@@ -4531,10 +4722,11 @@ def _recorded_inventory(
     )
 
 
-def _expected_opening_from_run_record(
+def _recorded_contracts(
     scenario: Scenario,
     run_record_path: Path,
-) -> dict[str, Any]:
+) -> tuple[Scenario, Callable[[str, str], tuple[Path, dict[str, Any]]]]:
+    """The recorded manifest, and a reader for the verifier files recorded with it."""
     run_record = _validate_run_record_value(
         run_record_path,
         _read_strict_json_object(run_record_path, "captain run record"),
@@ -4674,39 +4866,85 @@ def _expected_opening_from_run_record(
                 "does not match the recorded Git revision",
             )
 
-    expected_file = next(
-        file for file in contract_files if file.relative_path == expected_contract_path
-    )
-    try:
-        expected_blob = _run_git(
-            scenario.repository_root,
-            ("cat-file", "blob", expected_file.object_id),
-            "read the recorded expected-opening contract",
+    def read_recorded(relative: str, label: str) -> tuple[Path, dict[str, Any]]:
+        """One verifier file as the recorded revision holds it, never the worktree."""
+        path = relative_scenario_root / PurePosixPath(relative)
+        recorded = next(
+            (file for file in contract_files if file.relative_path == path), None
         )
-    except PrepareError as exc:
-        raise VerificationError(
-            "cannot read the expected-opening contract recorded by the captain"
-        ) from exc
-    recorded_path = Path(f"{revision}:{expected_contract_path.as_posix()}")
-    expected = _parse_strict_json_object_bytes(
-        expected_blob,
-        recorded_path,
-        "recorded expected-opening contract",
-    )
-    return _validate_expected_opening_value(recorded_path, expected)
+        if recorded is None:
+            raise VerificationError(f"recorded scenario revision has no {label}")
+        try:
+            blob = _run_git(
+                scenario.repository_root,
+                ("cat-file", "blob", recorded.object_id),
+                f"read the recorded {label}",
+            )
+        except PrepareError as exc:
+            raise VerificationError(
+                f"cannot read the {label} recorded by the captain"
+            ) from exc
+        recorded_path = Path(f"{revision}:{path.as_posix()}")
+        return recorded_path, _parse_strict_json_object_bytes(
+            blob, recorded_path, f"recorded {label}"
+        )
+
+    return recorded_scenario, read_recorded
 
 
 def opening_mismatches(
     scenario: Scenario,
     result_path: Path,
     run_record_path: Path,
-) -> list[str]:
-    """Return semantic mismatches against the captain-recorded contract."""
+    row_review_path: Path | None = None,
+) -> tuple[list[str], str]:
+    """Return semantic mismatches and which recorded contract they were read against.
 
-    expected = _expected_opening_from_run_record(scenario, run_record_path)
+    A scenario whose opening turns on what a reader of its answers found is
+    verified in two parts: the worker's read is graded against the scenario's
+    verdict for every row, and the result is then compared with the contract for
+    the read the worker actually gave - one that marked an answer `no`, or one
+    that marked none.
+    """
+
+    recorded_scenario, read_recorded = _recorded_contracts(scenario, run_record_path)
+    route = recorded_scenario.manifest["catalog"]["expected_route"]
+    read_dependent = route.get("read_dependent")
+    contract = EXPECTED_VERIFIER_CONTRACT
+    described = "the captain-recorded contract"
+    mismatches: list[str] = []
+    if read_dependent is None:
+        if row_review_path is not None:
+            raise VerificationError(
+                f"{scenario.slug} publishes one contract, which no read of its "
+                "answers changes, so --row-review is not read for it; omit it"
+            )
+    else:
+        if row_review_path is None:
+            raise VerificationError(
+                f"{scenario.slug}'s contract depends on what the worker's read of "
+                "its answers found; pass the read the worker gave readiness as "
+                "--row-review"
+            )
+        verdicts_path, verdicts = read_recorded(
+            read_dependent["row_verdicts"], "row verdicts"
+        )
+        problems, marks_unsound = _grade_read(
+            row_review_path,
+            _read_strict_json_object(row_review_path, "worker row review"),
+            _validate_row_verdicts(verdicts_path, verdicts),
+        )
+        mismatches.extend(f"row review: {problem}" for problem in problems)
+        if marks_unsound:
+            described += " for a read that marks an answer unsound"
+        else:
+            contract = read_dependent["sound_read_contract"]
+            described += " for a read that finds every answer sound"
+
+    contract_path, contract_value = read_recorded(contract, "expected-opening contract")
+    expected = _validate_expected_opening_value(contract_path, contract_value)
     result = _read_strict_json_object(result_path, "opening result")
 
-    mismatches: list[str] = []
     for field in VERIFICATION_FIELDS:
         actual_value = result.get(field, _MISSING)
         if field == "caps" and actual_value is not _MISSING:
@@ -4723,7 +4961,7 @@ def opening_mismatches(
             mismatches.append(
                 f"{field}: expected {expected[field]!r}, got {rendered_actual}"
             )
-    return mismatches
+    return mismatches, described
 
 
 class ScenarioBank:
@@ -4886,6 +5124,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="worker-returned opening readiness JSON file",
     )
+    verify_parser.add_argument(
+        "--row-review",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "the row review the worker passed to readiness; required for, and "
+            "only accepted for, a scenario whose contract depends on it"
+        ),
+    )
     return parser
 
 
@@ -4968,10 +5215,11 @@ def main(
 
         if arguments.command == "verify":
             selected_scenario = bank.resolve(arguments.case, scenarios)
-            mismatches = opening_mismatches(
+            mismatches, contract = opening_mismatches(
                 selected_scenario,
                 arguments.result,
                 arguments.run_record,
+                arguments.row_review,
             )
             if mismatches:
                 print(
@@ -4984,7 +5232,7 @@ def main(
                 return 1
             print(
                 f"PASS: {selected_scenario.slug} opening result matches "
-                f"{', '.join(VERIFICATION_FIELDS)} in the captain-recorded contract",
+                f"{', '.join(VERIFICATION_FIELDS)} in {contract}",
                 file=output,
             )
             return 0

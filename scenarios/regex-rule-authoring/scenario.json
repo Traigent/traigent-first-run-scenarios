@@ -92,7 +92,11 @@
     ],
     "expected_route": {
       "rationale": "a-read-row-contradicts-its-own-input",
-      "verifier_contract": "verifier/expected-opening.json"
+      "verifier_contract": "verifier/expected-opening.json",
+      "read_dependent": {
+        "row_verdicts": "verifier/row-verdicts.json",
+        "sound_read_contract": "verifier/expected-opening-sound-read.json"
+      }
     },
     "evidence": {
       "demonstrates": [
