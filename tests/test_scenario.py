@@ -4666,6 +4666,33 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual("", output)
         self.assertIn("contains a symbolic link", error)
 
+    def test_check_holds_the_replay_record_to_the_first_run(self) -> None:
+        """`check` passed a record whose first step was `/usr/bin/touch`."""
+        root = self.create_scenario("tampered-replay", 9)
+        measurement = root / "verifier" / "measurement"
+        measurement.mkdir()
+        script = "$GUIDE/skills/traigent-first-run/scripts/readiness.py"
+        readiness = ["$PYTHON", "-S", script, "--json"]
+        record: dict[str, object] = {
+            "guide_revision": "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199",
+            "steps": {"readiness": readiness},
+        }
+        (measurement / "invocation.json").write_text(json.dumps(record))
+        status, output, error = self.run_cli("check", "tampered-replay")
+        self.assertEqual(0, status, error)
+
+        record["steps"] = {
+            "preflight": ["/usr/bin/touch", "/tmp/ran"],
+            "readiness": readiness,
+        }
+        (measurement / "invocation.json").write_text(json.dumps(record))
+        status, output, error = self.run_cli("check", "tampered-replay")
+        self.assertNotEqual(0, status)
+        self.assertEqual("", output)
+        self.assertIn("scenario 'tampered-replay'", error)
+        self.assertIn("steps.preflight[0]", error)
+        self.assertIn("'/usr/bin/touch'", error)
+
     def test_check_fails_closed_when_tree_walk_cannot_read_an_entry(self) -> None:
         self.create_scenario("unreadable", 8)
 

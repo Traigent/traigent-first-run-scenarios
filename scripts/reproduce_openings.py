@@ -19,6 +19,20 @@ produce a disagreement that is this script's own mistake. A step the record says
 refused (`refusals`, the step and the message it refuses with) must refuse with
 that message again; nothing else counts as the same refusal.
 
+Replaying a record runs the scenario's own code: calibration calls its
+evaluator. So nothing is run before the record has passed the validator
+`scenario.py check` uses (`read_invocation`), which allows the guide's three
+first-run scripts and only the flags each is replayed with, and before the
+scenario has been walked for links, which would let the project copy reach a
+file outside the scenario. Each step runs with an empty home of its own, as
+the leader of a process group of its own, under a deadline derived from the
+guide's own calibration budget; when it ends, finished or past that deadline,
+every process still in its group is killed. A process that leaves the group
+(`setsid()`) is not reached. None of that is a sandbox -- the evaluator runs as
+the user who runs this -- which is why a contribution is replayed with trunk's
+copy of this script and `scenario.py`, and why CI replays with no secrets
+(CONTRIBUTING.md, "Replaying a contribution").
+
 A scenario whose opening turns on what a reader of its answers found declares a
 second contract for a read that found nothing wrong (`expected_route.
 read_dependent` in its manifest). Both are measured, each with its own read:
@@ -39,11 +53,11 @@ trusted to be the recorded revision. A disagreement outranks a contract that
 could not be read, since it is the more specific finding; both are printed.
 """
 
-import atexit
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -51,16 +65,37 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 REPO = Path(__file__).resolve().parent.parent
+# The record validator lives with the rest of the bank's checks, so the runner
+# and `scenario.py check` cannot disagree about what a record may run.
+sys.path.insert(0, str(REPO))
+from scenario import (  # noqa: E402
+    CALIBRATION_TIMEOUT_CEILING_SECONDS,
+    INVOCATION_RECORD,
+    REPLAY_STEPS,
+    ScenarioError,
+    read_invocation,
+    regular_files_without_links,
+)
 
-# Where each recorded step writes. The later steps name these files through
-# $MEASURE, so a step is only replayable if its output has a name here.
-STEP_OUTPUTS = {
-    "preflight": "02-preflight.json",
-    "calibration": "03-calibration.json",
-    "readiness": "05-readiness.json",
-}
 PLACEHOLDER = re.compile(r"\$[A-Z_]+")
 SOUND_READ_SUFFIX = "-sound-read"
+
+# How long each replayed step may run before it is stopped, whole. Calibration
+# is the one step that runs the scenario's own code, and the guide bounds it
+# itself: CALIBRATION_TIMEOUT_CEILING_SECONDS is the longest the guide's
+# calibrate_evaluator.py budgets a calibration for (line 103 at d07b62cd), and
+# `check` refuses a recorded `--timeout` above it. The margin covers starting
+# the interpreter and writing the record after the guide's own deadline fires.
+# Preflight and readiness only read files -- preflight.py's docstring: it
+# "never imports user modules, executes an agent or evaluator" -- and the guide
+# gives them no budget, so they get the margin alone; the whole bank replays in
+# well under a minute.
+REPLAY_MARGIN_SECONDS = 60
+STEP_TIMEOUT_SECONDS = {
+    "preflight": REPLAY_MARGIN_SECONDS,
+    "calibration": CALIBRATION_TIMEOUT_CEILING_SECONDS + REPLAY_MARGIN_SECONDS,
+    "readiness": REPLAY_MARGIN_SECONDS,
+}
 
 
 def fail(reason: str) -> NoReturn:
@@ -73,6 +108,9 @@ class CouldNotMeasure(Exception):
     """One contract could not be measured; the others still are."""
 
 
+if set(STEP_TIMEOUT_SECONDS) != set(REPLAY_STEPS):
+    fail("every replayable step needs a deadline in STEP_TIMEOUT_SECONDS")
+
 _root = os.environ.get("GUIDE")
 if not _root:
     fail("set GUIDE to a traigent-first-run checkout")
@@ -80,10 +118,8 @@ GUIDE = Path(_root).expanduser().resolve()
 if not (GUIDE / "skills/traigent-first-run/scripts/readiness.py").is_file():
     fail(f"no skills/traigent-first-run/scripts/readiness.py under {GUIDE}")
 
-_home = tempfile.mkdtemp()
-atexit.register(shutil.rmtree, _home, True)
+# Every command also gets a HOME of its own; see `run`.
 ENV = {
-    "HOME": _home,
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
     "PATH": os.environ.get("PATH", ""),
@@ -93,16 +129,60 @@ ENV = {
 }
 
 
-def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, env=ENV, capture_output=True, text=True)
+def run(cmd: list[str], cwd: Path, timeout: float) -> subprocess.CompletedProcess[str]:
+    """Run one command in a fresh empty home, and leave nothing of it running.
+
+    The command leads a session, and so a process group, of its own. When it
+    ends -- finished, or past the deadline -- every process still in that group
+    is killed, so a child a step started, detached or not, does not outlive it:
+    calibration runs the scorer in children. A process that calls `setsid()`
+    leaves the group and is not reached; that residual is stated in
+    CONTRIBUTING.md. The home is removed afterwards. Raises
+    `subprocess.TimeoutExpired`.
+    """
+    with tempfile.TemporaryDirectory(
+        prefix="replay-home-", ignore_cleanup_errors=True
+    ) as home:
+        with subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env={**ENV, "HOME": home},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        ) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+            finally:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+    return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
+
+
+def git(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """Ask git about $GUIDE; a git that hangs or is missing cannot run at all."""
+    try:
+        return run(["git", "-C", str(GUIDE), *arguments], REPO, REPLAY_MARGIN_SECONDS)
+    except subprocess.TimeoutExpired:
+        fail(
+            f"git {arguments[0]} in {GUIDE} did not answer within "
+            f"{REPLAY_MARGIN_SECONDS} seconds"
+        )
+    except OSError as error:
+        fail(f"cannot run git for {GUIDE}: {error}")
 
 
 def guide_revision() -> str:
     """The revision $GUIDE sits on, refusing a checkout that differs from it."""
-    head = run(["git", "-C", str(GUIDE), "rev-parse", "HEAD"], REPO)
+    head = git("rev-parse", "HEAD")
     if head.returncode != 0:
         fail(f"{GUIDE} is not a git checkout, so its revision cannot be established")
-    status = run(["git", "-C", str(GUIDE), "status", "--porcelain"], REPO)
+    status = git("status", "--porcelain")
     if status.returncode != 0:
         fail(f"cannot read the working-tree state of {GUIDE}")
     if status.stdout.strip():
@@ -121,7 +201,16 @@ def last_line(text: str) -> str:
 def replay(
     invocation: dict[str, Any], scenario: Path, row_review: Path | None
 ) -> dict[str, Any]:
-    """Run the recorded steps once and return the readiness JSON."""
+    """Run the recorded steps once and return the readiness JSON.
+
+    The record has already passed `read_invocation`, so every step is a guide
+    script with allowed flags, and every output a later step reads is written
+    by an earlier one that the record does not name as refusing.
+    """
+    try:
+        regular_files_without_links(scenario, scenario.name)
+    except ScenarioError as refusal:
+        raise CouldNotMeasure(str(refusal)) from refusal
     work = Path(tempfile.mkdtemp())
     try:
         project = work / "project"
@@ -137,27 +226,8 @@ def replay(
         }
         if row_review is not None:
             bound["$ROW_REVIEW"] = str(row_review)
-        written: set[str] = set()
-        steps = invocation.get("steps")
-        if not isinstance(steps, dict) or "readiness" not in steps:
-            raise CouldNotMeasure("invocation.json records no readiness step")
         refusals = invocation.get("refusals", {})
-        if not isinstance(refusals, dict) or not set(refusals) <= set(steps):
-            raise CouldNotMeasure(
-                "invocation.json names a refusal for no recorded step"
-            )
-        read_later = {
-            STEP_OUTPUTS[name]: any(
-                f"$MEASURE/{STEP_OUTPUTS[name]}" in argument
-                for later in list(steps.values())[index + 1 :]
-                for argument in later
-            )
-            for index, name in enumerate(steps)
-            if name in STEP_OUTPUTS
-        }
-        for name, recorded in steps.items():
-            if name not in STEP_OUTPUTS:
-                raise CouldNotMeasure(f"step {name!r} has no known output file")
+        for name, recorded in invocation["steps"].items():
             cmd: list[str] = []
             for argument in recorded:
                 for token in PLACEHOLDER.findall(argument):
@@ -165,48 +235,36 @@ def replay(
                         raise CouldNotMeasure(f"step {name!r} uses unbound {token}")
                 for token, value in bound.items():
                     argument = argument.replace(token, value)
-                if argument.startswith(str(measure) + "/"):
-                    needed = argument[len(str(measure)) + 1 :]
-                    if needed not in written:
-                        raise CouldNotMeasure(
-                            f"step {name!r} reads $MEASURE/{needed}, "
-                            "which no earlier step writes"
-                        )
                 cmd.append(argument)
-            done = run(cmd, project)
-            output = STEP_OUTPUTS[name]
+            budget = STEP_TIMEOUT_SECONDS[name]
+            try:
+                done = run(cmd, project, budget)
+            except subprocess.TimeoutExpired as expired:
+                raise CouldNotMeasure(
+                    f"step {name!r} was still running after its {budget}-second "
+                    "replay budget and was stopped"
+                ) from expired
             wrote = bool(done.stdout.strip())
             # A non-zero exit with a payload is a step reporting findings. A step
-            # nothing reads is recorded because it refused -- the readiness
-            # command then carries that refusal as a flag -- and the record names
-            # the refusal, so the replay must refuse the same way. Any other
+            # recorded as refusing is one nothing reads -- the readiness command
+            # then carries that refusal as a flag -- and the record names the
+            # refusal, so the replay must refuse the same way. Any other
             # failure, a crash included, is not that refusal.
             if name in refusals:
-                if read_later[output]:
-                    raise CouldNotMeasure(
-                        f"{name} is recorded as refusing, yet a later step reads its "
-                        "output"
-                    )
                 if wrote or done.returncode == 0 or refusals[name] not in done.stderr:
                     raise CouldNotMeasure(
                         f"{name} was recorded refusing with {refusals[name]!r} and "
                         f"now does not (rc={done.returncode}): {last_line(done.stderr)}"
                     )
                 continue
-            if name != "readiness" and not read_later[output]:
-                raise CouldNotMeasure(
-                    f"no recorded step reads what {name} writes, and the record "
-                    "names no refusal for it"
-                )
             if not wrote:
                 raise CouldNotMeasure(
                     f"{name} wrote nothing (rc={done.returncode}): "
                     + last_line(done.stderr)
                 )
-            (measure / output).write_text(done.stdout)
-            written.add(output)
+            (measure / REPLAY_STEPS[name].output).write_text(done.stdout)
         result: dict[str, Any] = json.loads(
-            (measure / STEP_OUTPUTS["readiness"]).read_text()
+            (measure / REPLAY_STEPS["readiness"].output).read_text()
         )
         return result
     finally:
@@ -275,14 +333,16 @@ for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
     scenario = manifest.parent
     for label, contract_path, row_review in contracts(scenario):
         try:
-            invocation = json.loads(
-                (scenario / "verifier/measurement/invocation.json").read_text()
-            )
-            if not isinstance(invocation, dict):
-                raise CouldNotMeasure("invocation.json is not a JSON object")
-            if invocation.get("guide_revision") != AT:
+            try:
+                invocation = read_invocation(
+                    scenario / "verifier" / INVOCATION_RECORD,
+                    f"scenario {scenario.name!r}",
+                )
+            except ScenarioError as refusal:
+                raise CouldNotMeasure(str(refusal)) from refusal
+            if invocation["guide_revision"] != AT:
                 raise CouldNotMeasure(
-                    f"measured at {str(invocation.get('guide_revision'))[:8]}, "
+                    f"measured at {invocation['guide_revision'][:8]}, "
                     f"GUIDE is on {AT[:8]}"
                 )
             if row_review is not None and not row_review.is_file():
@@ -308,9 +368,9 @@ width = max(len(row[0]) for row in rows)
 for label, verdict, detail in rows:
     print(f"  {label:{width}}  {verdict:14} {detail}")
 matched = sum(1 for row in rows if row[1] == "MATCH")
+print(f"\n  matched: {matched} of {len(rows)} contracts")
 differs = sum(1 for row in rows if row[1] == "DIFFERS")
 unread = len(rows) - matched - differs
-print(f"\n  matched: {matched} of {len(rows)} contracts")
 if differs:
     raise SystemExit(1)
 if unread:

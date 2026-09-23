@@ -1929,40 +1929,53 @@ def _load_scenario(scenario_root: Path, repository_root: Path) -> Scenario:
 
 
 def _regular_files_without_links(scenario: Scenario) -> list[Path]:
+    return regular_files_without_links(scenario.root, scenario.slug)
+
+
+def regular_files_without_links(root: Path, slug: str) -> list[Path]:
+    """Every file under a scenario directory, refusing links and special files.
+
+    `scripts/reproduce_openings.py` runs this before it copies a scenario's
+    project for a replay, so a link cannot carry a file from outside the
+    scenario into the copy the replayed steps read.
+    """
+
     regular_files: list[Path] = []
 
     def reject_walk_error(exc: OSError) -> None:
-        raise BankError(f"cannot inspect scenario {scenario.slug!r}: {exc}") from exc
+        raise BankError(f"cannot inspect scenario {slug!r}: {exc}") from exc
 
+    if root.is_symlink():
+        raise BankError(f"scenario {slug!r} is a symbolic link: {root}")
     try:
         for current_root, directory_names, file_names in os.walk(
-            scenario.root, followlinks=False, onerror=reject_walk_error
+            root, followlinks=False, onerror=reject_walk_error
         ):
             current = Path(current_root)
             for name in directory_names:
                 child = current / name
                 if child.is_symlink():
                     raise BankError(
-                        f"scenario {scenario.slug!r} contains a symbolic link: {child}"
+                        f"scenario {slug!r} contains a symbolic link: {child}"
                     )
                 if not child.is_dir():
                     raise BankError(
-                        f"scenario {scenario.slug!r} contains a non-directory entry: {child}"
+                        f"scenario {slug!r} contains a non-directory entry: {child}"
                     )
             for name in file_names:
                 child = current / name
                 if child.is_symlink():
                     raise BankError(
-                        f"scenario {scenario.slug!r} contains a symbolic link: {child}"
+                        f"scenario {slug!r} contains a symbolic link: {child}"
                     )
                 mode = child.stat(follow_symlinks=False).st_mode
                 if not stat.S_ISREG(mode):
                     raise BankError(
-                        f"scenario {scenario.slug!r} contains a non-regular file: {child}"
+                        f"scenario {slug!r} contains a non-regular file: {child}"
                     )
                 regular_files.append(child)
     except OSError as exc:
-        raise BankError(f"cannot inspect scenario {scenario.slug!r}: {exc}") from exc
+        raise BankError(f"cannot inspect scenario {slug!r}: {exc}") from exc
     return regular_files
 
 
@@ -3314,6 +3327,307 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
         _validate_read_dependent(scenario, catalog["datasets"][0])
 
 
+# The replay record. `verifier/measurement/invocation.json` holds the guide
+# commands a published opening was measured with, and
+# `scripts/reproduce_openings.py` runs them on a maintainer's machine and in CI.
+# Running them runs the scenario's own evaluator -- calibration exists to call
+# it -- so a record is a list of commands a contribution hands to whoever
+# replays it. It is held to the commands the guide's first run makes and nothing
+# else: the interpreter, one of three guide scripts, and only the flags each is
+# replayed with, every value a placeholder the runner binds, a path inside the
+# scenario's own project, or a plain word. `check` and the runner read a record
+# through `read_invocation` alone, so a record `check` passes is one the runner
+# will run, and a record it refuses never reaches a subprocess.
+#
+# The flags are the ones the published records use, each confirmed against the
+# guide's argument parser at the revision the records name. The table is
+# written out rather than derived: a flag the guide accepts is not thereby a
+# flag a replay needs (`readiness.py --report` writes wherever it is pointed),
+# so a new one is added here, by name, when a measurement needs it.
+INVOCATION_RECORD = "measurement/invocation.json"
+INVOCATION_KEYS = {"guide_revision", "steps"}
+OPTIONAL_INVOCATION_KEYS = {"note", "row_review", "refusals"}
+GUIDE_REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+# Every recorded measurement ran the guide's scripts with `-S`, and the replay
+# runs exactly what was recorded.
+REPLAY_INTERPRETER = ("$PYTHON", "-S")
+REPLAY_SCRIPTS = "$GUIDE/skills/traigent-first-run/scripts/"
+# The longest the guide lets a calibration budget for itself:
+# `CALIBRATION_TIMEOUT_CEILING_SECONDS` in the guide's
+# `skills/traigent-first-run/scripts/calibrate_evaluator.py` (line 103 at
+# d07b62cd). A recorded `--timeout` may not exceed it, which is what lets the
+# runner derive its own deadline for the calibration step from this number.
+CALIBRATION_TIMEOUT_CEILING_SECONDS = 900
+
+_REPLAY_SEGMENT = r"[A-Za-z0-9_][A-Za-z0-9_.-]*"
+_REPLAY_RELATIVE = rf"{_REPLAY_SEGMENT}(?:/{_REPLAY_SEGMENT})*"
+_REPLAY_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
+# What a flag's value may be, and how a refusal describes it. A relative path
+# is resolved inside the project copy the step runs in; no segment may start
+# with a dot, so none is `..`.
+REPLAY_VALUES: dict[str, tuple[re.Pattern[str], str]] = {
+    "word": (re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*"), "a lower-case word"),
+    "identifier": (re.compile(_REPLAY_IDENTIFIER), "a Python identifier"),
+    "project-file": (
+        re.compile(_REPLAY_RELATIVE),
+        "a relative path inside the project",
+    ),
+    "scorer": (
+        re.compile(rf"{_REPLAY_RELATIVE}:{_REPLAY_IDENTIFIER}"),
+        "a project file and a callable, as file.py:name",
+    ),
+    "cases": (
+        re.compile(rf"@{_REPLAY_RELATIVE}"),
+        "@ and a relative path inside the project",
+    ),
+    "project-root": (re.compile(r"\$PROJECT"), "$PROJECT"),
+    "project-path": (
+        re.compile(rf"\$PROJECT/{_REPLAY_RELATIVE}"),
+        "$PROJECT/ and a relative path",
+    ),
+    "measurement-input": (
+        re.compile(rf"\$SCENARIO/verifier/measurement/{_REPLAY_SEGMENT}"),
+        "a file under $SCENARIO/verifier/measurement/",
+    ),
+    "row-review": (re.compile(r"\$ROW_REVIEW"), "$ROW_REVIEW"),
+    "seconds": (re.compile(r"[1-9][0-9]*"), "a whole number of seconds"),
+}
+
+
+@dataclass(frozen=True)
+class ReadsStep:
+    """A flag whose value is the output an earlier recorded step wrote."""
+
+    step: str
+
+
+@dataclass(frozen=True)
+class ReplayStep:
+    """One guide script a recorded measurement may run, and how it may run it."""
+
+    script: str
+    output: str
+    flags: dict[str, str | ReadsStep | None]
+
+
+# In the order the guide's first run makes them; a record keeps that order.
+REPLAY_STEPS: dict[str, ReplayStep] = {
+    "preflight": ReplayStep(
+        "preflight.py",
+        "02-preflight.json",
+        {
+            "--json": None,
+            "--defer-missing-sdk": None,
+            "--dataset": "project-file",
+            "--evaluator": "project-file",
+            "--evaluator-method": "word",
+        },
+    ),
+    "calibration": ReplayStep(
+        "calibrate_evaluator.py",
+        "03-calibration.json",
+        {
+            "--scorer": "scorer",
+            "--cases": "cases",
+            "--allow-execution": None,
+            "--timeout": "seconds",
+            "--json": None,
+            "--task-kind": "word",
+        },
+    ),
+    "readiness": ReplayStep(
+        "readiness.py",
+        "05-readiness.json",
+        {
+            "--json": None,
+            "--preflight": ReadsStep("preflight"),
+            "--calibration": ReadsStep("calibration"),
+            "--calibration-scope-refused": None,
+            "--evaluator-method": "word",
+            "--task-kind": "word",
+            "--agent-knobs": "measurement-input",
+            "--agent-source-root": "project-root",
+            "--selected-agent": "project-path",
+            "--selected-agent-callable": "identifier",
+            "--agent-origin": "word",
+            "--evaluator-origin": "word",
+            "--row-review": "row-review",
+        },
+    ),
+}
+
+
+def _validate_replay_argv(
+    refuse: Callable[[str, str], BankError],
+    name: str,
+    argv: Any,
+    earlier: Sequence[str],
+) -> set[str]:
+    """Refuse one recorded step's argv unless the table allows every token.
+
+    Returns the earlier steps whose output this one reads.
+    """
+
+    field = f"steps.{name}"
+    if not isinstance(argv, list) or not all(isinstance(item, str) for item in argv):
+        raise refuse(field, "must be an array of strings")
+    step = REPLAY_STEPS[name]
+    head = [*REPLAY_INTERPRETER, REPLAY_SCRIPTS + step.script]
+    for index, expected in enumerate(head):
+        token = argv[index] if index < len(argv) else None
+        if token != expected:
+            raise refuse(
+                f"{field}[{index}]",
+                f"{token!r} is not {expected!r}: a {name} step runs "
+                f"{' '.join(head)} and nothing else",
+            )
+    reads: set[str] = set()
+    seen: set[str] = set()
+    index = len(head)
+    while index < len(argv):
+        flag = argv[index]
+        if flag not in step.flags:
+            raise refuse(
+                f"{field}[{index}]",
+                f"{flag!r} is not a flag {step.script} is replayed with; "
+                f"the replay accepts {', '.join(step.flags)}",
+            )
+        if flag in seen:
+            raise refuse(f"{field}[{index}]", f"{flag} is given twice")
+        seen.add(flag)
+        kind = step.flags[flag]
+        index += 1
+        if kind is None:
+            continue
+        if index >= len(argv):
+            raise refuse(f"{field}[{index - 1}]", f"{flag} is given no value")
+        value = argv[index]
+        if isinstance(kind, ReadsStep):
+            wanted = f"$MEASURE/{REPLAY_STEPS[kind.step].output}"
+            if value != wanted:
+                raise refuse(
+                    f"{field}[{index}]",
+                    f"{value!r} after {flag} is not {wanted!r}",
+                )
+            if kind.step not in earlier:
+                raise refuse(
+                    f"{field}[{index}]",
+                    f"{flag} reads {wanted}, which no earlier step writes",
+                )
+            reads.add(kind.step)
+        else:
+            pattern, description = REPLAY_VALUES[kind]
+            if pattern.fullmatch(value) is None:
+                raise refuse(
+                    f"{field}[{index}]",
+                    f"{value!r} after {flag} is not {description}",
+                )
+            if kind == "seconds" and int(value) > CALIBRATION_TIMEOUT_CEILING_SECONDS:
+                raise refuse(
+                    f"{field}[{index}]",
+                    f"{flag} {value} exceeds the guide's "
+                    f"{CALIBRATION_TIMEOUT_CEILING_SECONDS}-second calibration "
+                    "ceiling, which is the most a replay allows a calibration",
+                )
+        index += 1
+    return reads
+
+
+def validate_invocation(value: Any, label: str) -> dict[str, list[str]]:
+    """Refuse a replay record that could run anything but the guide's first run.
+
+    ``label`` names the record's scenario in every refusal. Returns the recorded
+    steps in the order they run.
+    """
+
+    def refuse(field: str, message: str) -> BankError:
+        return BankError(
+            f"{label}: {VERIFIER_DIRECTORY}/{INVOCATION_RECORD}: {field}: {message}"
+        )
+
+    if not isinstance(value, dict):
+        raise refuse("record", "must be a JSON object")
+    missing = sorted(INVOCATION_KEYS - set(value))
+    unknown = sorted(set(value) - INVOCATION_KEYS - OPTIONAL_INVOCATION_KEYS)
+    if missing or unknown:
+        raise refuse(
+            "record",
+            f"missing keys {missing}, unknown keys {unknown}",
+        )
+    revision = value["guide_revision"]
+    if (
+        not isinstance(revision, str)
+        or GUIDE_REVISION_PATTERN.fullmatch(revision) is None
+    ):
+        raise refuse("guide_revision", "must be a full 40-character commit id")
+    for key in ("note", "row_review"):
+        if key in value and (not isinstance(value[key], str) or not value[key].strip()):
+            raise refuse(key, "must be a non-empty string")
+
+    steps = value["steps"]
+    if not isinstance(steps, dict) or "readiness" not in steps:
+        raise refuse("steps", "must be an object that records a readiness step")
+    order = list(REPLAY_STEPS)
+    for name in steps:
+        if name not in REPLAY_STEPS:
+            raise refuse(
+                f"steps.{name}",
+                f"is not a step a replay runs; the steps are {', '.join(order)}",
+            )
+    names = list(steps)
+    if names != sorted(names, key=order.index):
+        raise refuse("steps", f"must run in the order {', '.join(order)}")
+
+    refusals = value.get("refusals", {})
+    if not isinstance(refusals, dict):
+        raise refuse("refusals", "must be an object")
+    for name, message in refusals.items():
+        if name not in steps or name == "readiness":
+            raise refuse(
+                f"refusals.{name}",
+                "names no recorded step whose refusal a later step could carry",
+            )
+        if not isinstance(message, str) or not message.strip():
+            raise refuse(f"refusals.{name}", "must be the message it refused with")
+
+    read: set[str] = set()
+    for position, name in enumerate(names):
+        read |= _validate_replay_argv(refuse, name, steps[name], names[:position])
+    for name in names[:-1]:
+        if name in refusals and name in read:
+            raise refuse(
+                f"refusals.{name}",
+                f"{name} is recorded as refusing, yet a later step reads its output",
+            )
+        if name not in refusals and name not in read:
+            raise refuse(
+                f"steps.{name}",
+                f"no later step reads what {name} writes, and the record names "
+                "no refusal for it",
+            )
+    return {name: list(steps[name]) for name in names}
+
+
+def read_invocation(path: Path, label: str) -> dict[str, Any]:
+    """Read and validate one replay record; see `validate_invocation`."""
+
+    record = _read_strict_json_object(path, "invocation record")
+    validate_invocation(record, label)
+    return record
+
+
+def _validate_invocation_record(scenario: Scenario) -> None:
+    """Hold a scenario's replay record to the commands the runner may run.
+
+    A scenario with no record has nothing to replay; the runner reports it as
+    not measured, and the bank's tests require one of every published scenario.
+    """
+
+    path = scenario.verifier_dir / INVOCATION_RECORD
+    if os.path.lexists(path):
+        read_invocation(path, f"scenario {scenario.slug!r}")
+
+
 def validate_materialized(scenario: Scenario) -> dict[str, Any]:
     """Validate that a scenario has materialized project and verifier content."""
 
@@ -3331,7 +3645,9 @@ def validate_materialized(scenario: Scenario) -> dict[str, Any]:
     _validate_project_inventory(scenario, shipped_files)
     _validate_component_inventory(scenario, shipped_files)
     _validate_catalog_materialized(scenario)
-    return validate_expected_opening(scenario)
+    opening = validate_expected_opening(scenario)
+    _validate_invocation_record(scenario)
+    return opening
 
 
 def _path_exists_without_following_links(path: Path) -> bool:
