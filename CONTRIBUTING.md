@@ -340,6 +340,29 @@ Everything else that counts them is manual, and this is the list:
    Bind the read in `invocation.json` as `$ROW_REVIEW`. `scenario.py check`
    grades both committed reads against the verdicts, and
    `scripts/reproduce_openings.py` measures both contracts.
+8. A project that does not name its own test. A worker receives every file
+   under `project/`, so `check` reads each one's name and bytes for what
+   would tell it what is being measured. The text is folded first: a
+   lower-case letter or digit followed by a capital gains a hyphen
+   (`expectedOpening`), everything is lower-cased, and runs of `_`, `.` and
+   `-` become one hyphen; whitespace is left alone. Then:
+   - the scenario's slug and each cap its contract expects are refused as a
+     whole token -- `told-apart`, `told_apart`, `toldApart` -- but not as
+     words in a sentence, so a project may describe its own task;
+   - `expected-opening` is refused as a whole token with one separator or
+     none (`expected_opening`, `expectedOpening`, `expected.opening`,
+     `expectedopening`), but not inside a longer word such as `unexpected`,
+     and not written with a space. That is a trade-off: "the expected opening
+     balance" is ordinary prose in a finance project, so a sentence naming the
+     contract in words is not caught. The same words inside an identifier are
+     refused on purpose: `expected_opening_balance` folds to a token that
+     begins `expected-opening`, and a name that starts like the contract file
+     is the leak this rule exists for, so rename the variable;
+   - `verifier` is refused only as a path segment, `verifier/` or `verifier\`
+     not preceded by part of a name (a letter, a digit, `_`, `.` or `-`):
+     after `=`, `(`, `:`, a quote, a slash or whitespace it is a directory,
+     while `sql_verifier/` is a different directory and the bare word,
+     ordinary in a project that checks things, is left alone.
 
 ## Validate the final change
 
@@ -363,9 +386,9 @@ The last command needs a clean guide checkout on the revision the scenarios
 were measured at; CI checks one out and runs it on every change.
 
 `check` validates catalog paths and declared dataset/calibration facts, then the
-strict expected-opening structure and value ranges, and the replay record. Fix
-the contract rather than weakening validation or substituting a different
-result.
+strict expected-opening structure and value ranges, that no project file names
+what is being measured, and the replay record. Fix the contract rather than
+weakening validation or substituting a different result.
 
 If preparation behavior or worker-visible content changed, use a reviewed local
 guide checkout and a new output path after committing the final selected

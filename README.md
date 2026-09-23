@@ -133,7 +133,9 @@ further limitations.
 These facts come from each scenario's strict `scenario.json` catalog.
 `check` compares its declared paths, row and unique-input counts, split and
 difficulty counts, label strings with their per-label row counts, and
-evaluator calibration count with the materialized files. The presentation
+evaluator calibration count with the materialized files. It also refuses a
+project file that names the scenario or a cap its contract expects as a token,
+or points at the verifier, since a worker receives every one. The presentation
 can render those facts, but it does not own a second copy of them.
 
 Every fact the catalog states is a fact about bytes that ship. `check` never

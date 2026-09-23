@@ -267,6 +267,119 @@ def _opening_needs_a_row_review(opening: dict[str, object]) -> bool:
     )
 
 
+def tell_at(offset: int, token: str) -> str:
+    """Evaluator source with `token` starting `offset` bytes into the file.
+
+    The leak scan reads a block at a time, so an offset near a multiple of the
+    block size splits the token across two reads.
+    """
+    padding = offset - len(EVALUATOR_SOURCE) - 2
+    return EVALUATOR_SOURCE + "#" + "x" * padding + " " + token + "\n"
+
+
+# Tells in the forms a project writes them, the prose and names that must not
+# count, and tokens longer than the scan's carry.
+TELL_SNIPPETS = (
+    "told-apart",
+    "TOLD_APART",
+    "toldApart",
+    "untold-apart",
+    "told-apartment",
+    "told" + "_" * 60 + "apart",
+    "datasetFullySynthetic",
+    "expectedOpening",
+    "expected_opening_balance",
+    "expected opening",
+    "unexpected-opening",
+    "verifier/x",
+    "=verifier/x",
+    "(verifier/x)",
+    "sql_verifier/x",
+    "averifier/x",
+    "x",
+    "",
+    "x" + "told-apart" + "-" + "_" * 80,
+    "sql_verifier/" + "-" * 80,
+    # A tell after a letter, then text, then only separators. Once the carry
+    # has cut text, reads that fold into its trailing hyphen leave a window no
+    # longer than the carry; that must not make its start the file's start.
+    # The run of letters moves the cut across the tell's first byte.
+    *("x" + "told-apart" + "-" + "y" * run + "-" + "_" * 20 for run in range(28, 44)),
+    *("xexpectedOpening" + "y" * run + "." * 20 for run in range(24, 40)),
+)
+
+
+class TellStreamTests(unittest.TestCase):
+    """The block-at-a-time leak scan names what folding the whole file names."""
+
+    def test_the_stream_agrees_with_the_whole_file(self) -> None:
+        patterns = scenario._tell_patterns(("told-apart", "dataset-fully-synthetic"))
+        checked = 0
+        disagreements: list[str] = []
+        # A block of one byte moves every snippet across every block boundary.
+        # The carry only cuts once more than it holds has been read, so the
+        # long tail keeps the file going until the cut has crossed every
+        # position of every snippet too.
+        for block_size in (1, 2, 3, 5, 7, 11):
+            for pad in range(48):
+                for snippet in TELL_SNIPPETS:
+                    for tail in ("", " end", "s", " " * 60):
+                        content = (" " * pad + snippet + tail).encode()
+                        whole = scenario._fold_tells(content)
+                        expected = {
+                            name
+                            for name, pattern in patterns.items()
+                            if pattern.search(whole)
+                        }
+                        got = scenario._tells_in_stream(
+                            io.BytesIO(content), patterns, block_size
+                        )
+                        checked += 1
+                        if got != expected:
+                            disagreements.append(
+                                f"block {block_size}, {content!r}: streamed "
+                                f"{sorted(got)}, whole {sorted(expected)}"
+                            )
+        self.assertGreater(checked, 50000)
+        self.assertEqual(
+            [], disagreements[:5], f"{len(disagreements)} of {checked} disagree"
+        )
+
+    def test_a_cap_that_folds_longer_than_it_is_written_is_still_carried(
+        self,
+    ) -> None:
+        """A cap is any non-empty string; every hump in it folds to a hyphen."""
+        cap = "aB" * 30
+        patterns = scenario._tell_patterns(("told-apart", cap))
+        self.assertGreater(len(scenario._fold_tells(cap.encode())), len(cap))
+        checked = 0
+        disagreements: list[str] = []
+        for block_size in (1, 3, 7):
+            for pad in range(48):
+                for snippet in (cap, "x" + cap, cap + "-" + "_" * 20):
+                    for tail in ("", " end", " " * 120):
+                        content = (" " * pad + snippet + tail).encode()
+                        whole = scenario._fold_tells(content)
+                        expected = {
+                            name
+                            for name, pattern in patterns.items()
+                            if pattern.search(whole)
+                        }
+                        got = scenario._tells_in_stream(
+                            io.BytesIO(content), patterns, block_size
+                        )
+                        checked += 1
+                        if got != expected:
+                            disagreements.append(
+                                f"block {block_size}, pad {pad}, {snippet[:6]!r}: "
+                                f"streamed {sorted(got)}, whole {sorted(expected)}"
+                            )
+        self.assertGreater(checked, 1000)
+        self.assertEqual(
+            [], disagreements[:5], f"{len(disagreements)} of {checked} disagree"
+        )
+
+
 class ScenarioBankTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -4692,6 +4805,147 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertIn("scenario 'tampered-replay'", error)
         self.assertIn("steps.preflight[0]", error)
         self.assertIn("'/usr/bin/touch'", error)
+
+    def test_check_refuses_a_project_that_names_its_own_test(self) -> None:
+        root = self.create_scenario("told-apart", 10)
+        (root / "verifier" / "expected-opening.json").write_text(
+            json.dumps({**expected_opening(), "caps": ["dataset-fully-synthetic"]})
+        )
+        evaluator = root / "project" / "evaluator.py"
+        status, _, error = self.run_cli("check", "told-apart")
+        self.assertEqual(0, status, error)
+        # The file is read a block at a time; these place a tell across the
+        # first block boundary.
+        straddle = scenario._FILE_READ_BLOCK_BYTES - 4 - len(EVALUATOR_SOURCE) - 1
+        block = scenario._FILE_READ_BLOCK_BYTES
+        for label, tell, written in (
+            ("slug", "told-apart", "# case told-apart\n"),
+            ("slug in a path", "told-apart", "# runs/told_apart/latest.json\n"),
+            ("slug in camelCase", "told-apart", "toldApart = None\n"),
+            ("cap", "dataset-fully-synthetic", "# expect DATASET_FULLY_SYNTHETIC\n"),
+            (
+                "cap in camelCase",
+                "dataset-fully-synthetic",
+                "datasetFullySynthetic = 1\n",
+            ),
+            ("contract", "expected-opening", "# compare with expected_opening.json\n"),
+            ("contract as a constant", "expected-opening", "EXPECTED_OPENING = 1\n"),
+            (
+                "contract inside an identifier",
+                "expected-opening",
+                "expected_opening_balance = 0.0\n",
+            ),
+            ("directory after =", "verifier/", "CHECKS = 'x'\nCHECKS=verifier/rules\n"),
+            ("directory after (", "verifier/", "# open(verifier/x)\n"),
+            ("directory after :", "verifier/", "# rules:verifier/x\n"),
+            ("directory after ,", "verifier/", "# a,verifier/x\n"),
+            ("contract in camelCase", "expected-opening", "expectedOpening = {}\n"),
+            ("contract dotted", "expected-opening", "# config.expected.opening\n"),
+            ("contract joined", "expected-opening", "expectedopening = {}\n"),
+            ("directory", "verifier/", "# see ../verifier/answers.json\n"),
+            (
+                "across a read",
+                "verifier/",
+                "#" + "x" * (straddle - 1) + "/verifier/x\n",
+            ),
+        ):
+            with self.subTest(label=label):
+                evaluator.write_text(EVALUATOR_SOURCE + written, encoding="utf-8")
+                status, output, error = self.run_cli("check", "told-apart")
+                self.assertNotEqual(0, status)
+                self.assertEqual("", output)
+                self.assertIn("ships project/evaluator.py, which names", error)
+                self.assertIn(tell, error)
+        # A token split inside a word, where the carried text meets the next
+        # read's first letter, at the first boundary and at the second.
+        for label, tell, written in (
+            (
+                "upper case across a read",
+                "told-apart",
+                tell_at(block - 2, "TOLD-APART"),
+            ),
+            ("constant across a read", "told-apart", tell_at(block - 2, "TOLD_APART")),
+            (
+                "upper case across a second read",
+                "told-apart",
+                tell_at(2 * block - 2, "TOLD-APART"),
+            ),
+            (
+                "cap in upper case across a read",
+                "dataset-fully-synthetic",
+                tell_at(block - 3, "DATASET_FULLY_SYNTHETIC"),
+            ),
+            ("camelCase across a read", "told-apart", tell_at(block - 4, "toldApart")),
+            (
+                "a long separator run across a read",
+                "told-apart",
+                tell_at(block - 104, "told" + "_" * 200 + "apart"),
+            ),
+        ):
+            with self.subTest(label=label):
+                evaluator.write_text(written, encoding="utf-8")
+                status, output, error = self.run_cli("check", "told-apart")
+                self.assertNotEqual(0, status)
+                self.assertEqual("", output)
+                self.assertIn("ships project/evaluator.py, which names", error)
+                self.assertIn(tell, error)
+
+    def test_check_refuses_a_file_that_is_exactly_a_tell(self) -> None:
+        """No newline after it and nothing before it: the whole file is the tell."""
+        root = self.create_scenario("told-apart", 12)
+        notes = root / "project" / "notes.txt"
+        notes.write_bytes(b"notes\n")
+        self.commit_repository_paths(notes, message="Ship notes")
+        manifest = valid_manifest("told-apart", 12)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/notes.txt"]
+        self.write_manifest(root, manifest)
+        status, _, error = self.run_cli("check", "told-apart")
+        self.assertEqual(0, status, error)
+        for label, tell, content in (
+            ("slug", "told-apart", b"told-apart"),
+            ("slug as a constant", "told-apart", b"TOLD_APART"),
+            ("contract in camelCase", "expected-opening", b"expectedOpening"),
+        ):
+            with self.subTest(label=label):
+                notes.write_bytes(content)
+                status, output, error = self.run_cli("check", "told-apart")
+                self.assertNotEqual(0, status)
+                self.assertEqual("", output)
+                self.assertIn("ships project/notes.txt, which names", error)
+                self.assertIn(tell, error)
+
+    def test_check_reads_prose_about_the_task_as_prose(self) -> None:
+        """Words a real project uses for itself are not the names of its test."""
+        root = self.create_scenario("told-apart", 11)
+        (root / "verifier" / "expected-opening.json").write_text(
+            json.dumps({**expected_opening(), "caps": ["dataset-fully-synthetic"]})
+        )
+        evaluator = root / "project" / "evaluator.py"
+        # `told-apart` ends exactly where the first read ends, and the word
+        # goes on in the next one.
+        ends_a_read = scenario._FILE_READ_BLOCK_BYTES - len(EVALUATOR_SOURCE) - 12
+        for label, written in (
+            (
+                "a longer token across a read",
+                "#" + "x" * ends_a_read + " told-apartment\n",
+            ),
+            ("the project's own name", "# Told apart: the agent entry point\n"),
+            ("a common word", "# a verifier pass re-checks each rule\n"),
+            ("a cap's words", "# every dataset row is fully synthetic\n"),
+            ("a longer word", "# the unexpected opening move\n"),
+            ("the contract's words", "# the expected opening balance\n"),
+            ("the contract's words again", "# EXPECTED OPENING hours\n"),
+            ("a longer token", "expected_openings = 3\n"),
+            ("a directory named for a checker", "# rules live in sql_verifier/\n"),
+            ("another such directory", "# see answer-verifier/output.txt\n"),
+            ("a slug inside a longer token", "# the untold-apart story\n"),
+        ):
+            with self.subTest(label=label):
+                evaluator.write_text(EVALUATOR_SOURCE + written, encoding="utf-8")
+                status, output, error = self.run_cli("check", "told-apart")
+                self.assertEqual(0, status, error)
 
     def test_check_fails_closed_when_tree_walk_cannot_read_an_entry(self) -> None:
         self.create_scenario("unreadable", 8)

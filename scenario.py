@@ -23,7 +23,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable, Iterator, Sequence, TextIO
+from typing import Any, BinaryIO, Callable, Iterable, Iterator, Sequence, TextIO
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent
 DEFAULT_SCENARIOS_DIR = REPOSITORY_ROOT / "scenarios"
@@ -3628,6 +3628,168 @@ def _validate_invocation_record(scenario: Scenario) -> None:
         read_invocation(path, f"scenario {scenario.slug!r}")
 
 
+# What a project may not say about the test it is part of. A worker receives
+# every file under `project/`, so the scenario's own name, a cap its contract
+# expects, or a pointer at the captain-side material would tell it that it is
+# being measured and what the measurement expects. Every shipped file's bytes
+# and its path are read -- a SQLite page and a file name reach the worker as
+# readily as a line of prose -- after folding: a lower-case letter or digit
+# followed by a capital gains a hyphen between them (`expectedOpening`), the
+# text is lower-cased, and runs of `_`, `.` and `-` become one hyphen.
+# Whitespace is not folded, so prose about the task stays prose. On the folded
+# text:
+# - the slug and each cap match as a whole token: `told-apart`, `told_apart`,
+#   `toldApart`, but not `Told apart` in a sentence;
+# - `expected-opening` matches as a whole token with one separator or none
+#   (`expected_opening`, `expectedOpening`, `expected.opening`,
+#   `expectedopening`), but not written with a space: "the expected opening
+#   balance" is ordinary prose, so a sentence naming the contract in words is
+#   not caught. The same words inside an identifier are caught --
+#   `expected_opening_balance` folds to a token that begins `expected-opening`
+#   -- on purpose: a name that starts like the contract file is the leak this
+#   rule exists for, and renaming a variable costs a contributor little;
+# - `verifier` matches only as a path segment, `verifier/` or `verifier\` not
+#   preceded by part of a name (a letter, a digit, `_`, `.` or `-`): after `=`,
+#   `(`, `:`, a quote, a slash or whitespace it is a directory, while
+#   `sql_verifier/` is a different directory and the bare word is ordinary
+#   English in a project that checks things.
+# Measured before it was added: none of the published scenarios ships one.
+_TELL_CAMEL = re.compile(rb"([a-z0-9])([A-Z])")
+# A hyphen folds with the rest, so folding text that is already folded -- lower
+# case, its separator runs already joined -- changes nothing.
+_TELL_SEPARATORS = re.compile(rb"[_.-]+")
+_OPENING_TELL = ("expected-opening", rb"(?<![a-z0-9])expected-?opening(?![a-z0-9])")
+_VERIFIER_TELL = ("verifier/", rb"(?<![a-z0-9_.-])verifier[/\\]")
+# Room kept beyond the longest folded tell for the characters either side of a
+# match, so a tell split across two reads is judged whole.
+_TELL_MARGIN = 24
+
+
+def _fold_tells(value: bytes, before: bytes = b"") -> bytes:
+    """Fold `value`; `before` is the raw byte that precedes it, if any.
+
+    The camelCase rule looks at a pair of raw bytes, so a read that begins
+    with a capital needs the last raw byte of the read before it: after
+    lower-casing, `TO` + `LD` and `to` + `Ld` could no longer be told apart.
+    """
+    split = _TELL_CAMEL.sub(rb"\1-\2", before + value)[len(before) :]
+    return _TELL_SEPARATORS.sub(b"-", split.lower())
+
+
+def _tell_patterns(tokens: Iterable[str]) -> dict[str, re.Pattern[bytes]]:
+    patterns = {
+        token: re.compile(
+            rb"(?<![a-z0-9])"
+            + re.escape(_fold_tells(token.encode()))
+            + rb"(?![a-z0-9])"
+        )
+        for token in tokens
+    }
+    for name, pattern in (_OPENING_TELL, _VERIFIER_TELL):
+        patterns[name] = re.compile(pattern)
+    return patterns
+
+
+def _published_caps(scenario: Scenario, opening: dict[str, Any]) -> list[str]:
+    caps = list(opening["caps"])
+    if "read_dependent" in scenario.manifest["catalog"]["expected_route"]:
+        path = scenario.root / READ_DEPENDENT_PATHS["sound_read_contract"]
+        sound = _read_strict_json_object(path, "sound-read opening contract")
+        caps += _normalize_cap_conditions(
+            path, "caps", sound.get("caps", _MISSING), allow_objects=False
+        )
+    return caps
+
+
+def _tells_named_in(
+    patterns: dict[str, re.Pattern[bytes]], window: bytes, first: int, last: int
+) -> set[str]:
+    """Tells matched wholly inside [first, last] of a folded window."""
+    return {
+        name
+        for name, pattern in patterns.items()
+        if any(
+            match.start() >= first and match.end() <= last
+            for match in pattern.finditer(window)
+        )
+    }
+
+
+def _tells_in_stream(
+    handle: BinaryIO,
+    patterns: dict[str, re.Pattern[bytes]],
+    block_size: int = _FILE_READ_BLOCK_BYTES,
+) -> set[str]:
+    """The tells a file names, read a block at a time.
+
+    A large declared record costs a block rather than its size. Each read is
+    folded with the last raw byte of the read before it and joined to the
+    folded end of the previous window, so every window is a stretch of the file
+    folded whole. The tail is carried folded rather than raw so its length
+    bounds a match: a raw tail of fixed size could cut a long run of separators
+    inside a token. A match touching the end of a window waits for the next
+    one, which sees what follows it. Once the carry has cut any text, a match
+    at the very start of a window was already judged by an earlier window,
+    which saw what precedes it, and is set aside. Until then the start of the
+    window is the start of the file, and a match there counts. The cut is
+    remembered rather than read off the window's length, because a read made
+    only of separators folds into the carried hyphen and can leave a window
+    no longer than the carry after text has already been cut. The carry is
+    sized from each tell as folded, not as written: a cap is any non-empty
+    string, and every lower-to-upper change in it folds to an extra hyphen.
+    """
+
+    carried = max(len(_fold_tells(name.encode())) for name in patterns)
+    carried += _TELL_MARGIN
+    named: set[str] = set()
+    window = b""
+    previous = b""
+    cut = False
+    while True:
+        block = handle.read(block_size)
+        cut = cut or len(window) > carried
+        first = 1 if cut else 0
+        window = _TELL_SEPARATORS.sub(
+            b"-", window[-carried:] + _fold_tells(block, previous)
+        )
+        previous = block[-1:]
+        last = len(window) if not block else len(window) - 1
+        named |= _tells_named_in(patterns, window, first, last)
+        if not block:
+            return named
+
+
+def _refuse_verifier_tells(
+    scenario: Scenario,
+    shipped_files: Sequence[Path],
+    caps: Sequence[str],
+) -> None:
+    patterns = _tell_patterns((scenario.slug, *caps))
+    for path in sorted(shipped_files):
+        if not _is_within(path, scenario.project_dir):
+            continue
+        relative = path.relative_to(scenario.project_dir).as_posix()
+        folded_path = _fold_tells(relative.encode())
+        named = _tells_named_in(patterns, folded_path, 0, len(folded_path))
+        try:
+            with path.open("rb") as handle:
+                named |= _tells_in_stream(handle, patterns)
+        except OSError as exc:
+            raise BankError(
+                f"scenario {scenario.slug!r} cannot read {PROJECT_DIRECTORY}/"
+                f"{relative}: {exc}"
+            ) from exc
+        found = sorted(named)
+        if found:
+            raise BankError(
+                f"scenario {scenario.slug!r} ships {PROJECT_DIRECTORY}/{relative}, "
+                f"which names {', '.join(found)}. A worker receives every file "
+                f"under {PROJECT_DIRECTORY}/, and the scenario's slug, the caps its "
+                "contract expects and the verifier's own names tell it what is "
+                "being measured"
+            )
+
+
 def validate_materialized(scenario: Scenario) -> dict[str, Any]:
     """Validate that a scenario has materialized project and verifier content."""
 
@@ -3646,6 +3808,7 @@ def validate_materialized(scenario: Scenario) -> dict[str, Any]:
     _validate_component_inventory(scenario, shipped_files)
     _validate_catalog_materialized(scenario)
     opening = validate_expected_opening(scenario)
+    _refuse_verifier_tells(scenario, shipped_files, _published_caps(scenario, opening))
     _validate_invocation_record(scenario)
     return opening
 
