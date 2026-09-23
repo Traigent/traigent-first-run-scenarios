@@ -92,11 +92,26 @@ that read against the scenario's verdict for every row, then compares the
 result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
 
+Grade the run beyond the measured contract as well, where the captain holds the
+material: `--agent-read FILE` (the agent read the worker gave readiness as
+`--agent-knobs`, compared by setting name with the controls the manifest
+declares; any read fails where the scenario has no agent), `--project-dir DIR`
+(the worker's `customer-project/`, re-hashed against the inventory `prepare`
+recorded in `run.json`; only the guide's documented opening writes, and
+Python's bytecode of a prepared module, may be added), and `--response FILE`
+(the worker's final message, graded against the ask rules the prepared guide's
+`SKILL.md` states: it fails only on what its structure - route labels, blank
+lines and indentation - the `(recommended` mark and `I have it` decide, and
+prints the rest as `response note:` lines for you to read). Each works alone
+or with the others and with `--row-review`.
+
 Verification binds the contract to the scenario Git revision in `run.json`,
 then compares `band`, `status`, `recommended_action`, and `caps` - each cap's
 condition, ceiling, blocks and asks - at the readiness `schema_version` the
-contract was measured at. It never executes verifier code. Report every mismatch and retain the complete
-output and final status.
+contract was measured at. It prints whether the result agrees with the
+scenario's hand-written intended opening; that line is information, and `PASS`
+still means the measured contract matched. It never executes verifier code.
+Report every mismatch and retain the complete output and final status.
 
 Guide behavior pinned to an exact public guide revision, without a referenced
 captured run, is **Guide contract · no recorded run**. A successful comparison

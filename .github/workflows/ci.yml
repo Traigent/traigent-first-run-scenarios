@@ -218,6 +218,14 @@ jobs:
       - name: Hold the ask-shape rules to the pinned guide
         run: GUIDE="${GITHUB_WORKSPACE}/.guide" python -m unittest discover -s tests -p test_check_ask_shape.py -v
 
+      # `verify --project-dir` allows only what the guide's opening writes.
+      # This runs every recorded opening, calibration included, in a project
+      # prepared from the pinned guide, and verifies each with its project, so
+      # the allowance is held to what the guide really writes. Like the
+      # re-measure above, it runs each scenario's own evaluator.
+      - name: Verify a project each recorded opening ran in
+        run: GUIDE="${GITHUB_WORKSPACE}/.guide" python -m unittest discover -s tests -p test_opening_in_prepared_project.py -v
+
   presentation:
     name: Presentation artifacts
     runs-on: ubuntu-latest

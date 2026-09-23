@@ -12,7 +12,9 @@ import argparse
 import ast
 import csv
 import hashlib
+import importlib.util
 import json
+import marshal
 import math
 import os
 import re
@@ -20,6 +22,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import types
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -216,6 +219,29 @@ LEGACY_EXPECTED_OPENING_KEYS = {
 # contract was measured from. A result written under another readiness schema
 # was computed under different rules, so `verify` requires the two to agree.
 EXPECTED_OPENING_KEYS = LEGACY_EXPECTED_OPENING_KEYS | {"readiness_schema_version"}
+# A hand-written intended opening beside each measured contract: what the
+# scenario's own purpose and the guide's documentation say the opening should
+# be, written before the measurement is read. `check` holds it equal to the
+# measured contract unless it declares where and why the guide diverges.
+INTENDED_OPENING_SCHEMA_VERSION = 1
+INTENDED_OPENING_KEYS = {
+    "schema_version",
+    "band",
+    "status",
+    "recommended_action",
+    "caps",
+    "divergence",
+}
+# A divergence names every field on which the intended opening departs from the
+# measured contract, with both values, so a re-measurement that moves anything
+# else - or moves a declared field somewhere new - no longer matches it.
+DIVERGENCE_KEYS = {"issue", "reason", "fields"}
+DIVERGENT_FIELD_KEYS = {"intended", "measured"}
+GUIDE_ISSUE_PATTERN = re.compile(
+    r"^https://github\.com/Traigent/traigent-first-run/issues/[1-9][0-9]*$"
+)
+# The committed read of the agent's settings a contract was measured with.
+COMMITTED_AGENT_READ = "measurement/agent-read.json"
 DISPLAY_KEYS = {"overall", "pillars"}
 SCORECARD_KEYS = {"score", "confidence"}
 RUN_RECORD_KEYS = {"schema_version", "phase", "scenario", "worker", "inputs"}
@@ -3675,6 +3701,7 @@ _TELL_CAMEL = re.compile(rb"([a-z0-9])([A-Z])")
 # case, its separator runs already joined -- changes nothing.
 _TELL_SEPARATORS = re.compile(rb"[_.-]+")
 _OPENING_TELL = ("expected-opening", rb"(?<![a-z0-9])expected-?opening(?![a-z0-9])")
+_INTENDED_TELL = ("intended-opening", rb"(?<![a-z0-9])intended-?opening(?![a-z0-9])")
 _VERIFIER_TELL = ("verifier/", rb"(?<![a-z0-9_.-])verifier[/\\]")
 # Room kept beyond the longest folded tell for the characters either side of a
 # match, so a tell split across two reads is judged whole.
@@ -3701,23 +3728,36 @@ def _tell_patterns(tokens: Iterable[str]) -> dict[str, re.Pattern[bytes]]:
         )
         for token in tokens
     }
-    for name, pattern in (_OPENING_TELL, _VERIFIER_TELL):
+    for name, pattern in (_OPENING_TELL, _INTENDED_TELL, _VERIFIER_TELL):
         patterns[name] = re.compile(pattern)
     return patterns
 
 
 def _published_caps(scenario: Scenario, opening: dict[str, Any]) -> list[str]:
-    """The condition of every cap the scenario's contracts publish.
+    """The condition of every cap the scenario's verifier files name.
 
     A schema 2 contract records each cap whole, so the tell is its condition.
+    The intended opening beside each contract is captain-side too, and may name
+    a cap no contract carries - case 49's `evaluator-task-mismatch` - so its
+    caps are tells as well. One that is missing is left to
+    `_validate_hand_written_answers`, which requires it.
     """
     caps = [cap["condition"] for cap in opening["caps"]]
+    contracts = [EXPECTED_VERIFIER_CONTRACT]
     if "read_dependent" in scenario.manifest["catalog"]["expected_route"]:
         path = scenario.root / READ_DEPENDENT_PATHS["sound_read_contract"]
         sound = _validate_expected_opening_value(
             path, _read_strict_json_object(path, "sound-read opening contract")
         )
         caps += [cap["condition"] for cap in sound["caps"]]
+        contracts.append(READ_DEPENDENT_PATHS["sound_read_contract"])
+    for contract in contracts:
+        path = scenario.root / PurePosixPath(_intended_opening_name(contract))
+        if _path_exists_without_following_links(path):
+            intended = _validate_intended_opening_value(
+                path, _read_strict_json_object(path, "intended opening")
+            )
+            caps += [cap["condition"] for cap in intended["caps"]]
     return caps
 
 
@@ -3830,6 +3870,7 @@ def validate_materialized(scenario: Scenario) -> dict[str, Any]:
     opening = validate_expected_opening(scenario)
     _refuse_verifier_tells(scenario, shipped_files, _published_caps(scenario, opening))
     _validate_invocation_record(scenario)
+    _validate_hand_written_answers(scenario)
     return opening
 
 
@@ -4971,10 +5012,10 @@ def _cap_tuples(
 ) -> list[dict[str, Any]]:
     """Every cap as its condition, ceiling, blocks and asks, sorted by condition.
 
-    `exact` is for a contract, which this repository writes and which carries
-    those four keys and nothing else. A readiness result also carries `reason`
-    and `action_kind`: the first is wording, the second is derived from the
-    condition, and neither is compared.
+    `exact` is for a file this repository writes - a contract or an intended
+    opening - which carries those four keys and nothing else. A readiness result
+    also carries `reason` and `action_kind`: the first is wording, the second is
+    derived from the condition, and neither is compared.
     """
 
     if not isinstance(value, list):
@@ -5544,6 +5585,626 @@ class RecordedRevision:
         )
 
 
+def _agent_read_names(path: Path, read: dict[str, Any]) -> set[str]:
+    """The setting names an agent read gives readiness under `knobs`."""
+    knobs = read.get("knobs", _MISSING)
+    if not isinstance(knobs, dict):
+        raise _contract_error(path, "knobs", "must be an object keyed by setting name")
+    return set(knobs)
+
+
+def _grade_agent_read(
+    path: Path, read: dict[str, Any], controls: Sequence[str]
+) -> list[str]:
+    """Grade an agent read's setting names against the hand-declared controls.
+
+    Names only: a value range the read gives a setting is the reader's
+    evidence, and the manifest declares no values to grade it against.
+    """
+    names = _agent_read_names(path, read)
+    declared = set(controls)
+    problems: list[str] = []
+    invented = sorted(names - declared)
+    omitted = sorted(declared - names)
+    if invented:
+        problems.append(
+            "names setting(s) the scenario does not declare: " + ", ".join(invented)
+        )
+    if omitted:
+        problems.append("omits setting(s) the scenario declares: " + ", ".join(omitted))
+    return problems
+
+
+def _intended_opening_name(contract: str) -> str:
+    """`verifier/expected-opening*.json` -> `verifier/intended-opening*.json`."""
+    folder, _, name = contract.rpartition("/")
+    intended = name.replace("expected-opening", "intended-opening", 1)
+    return f"{folder}/{intended}" if folder else intended
+
+
+def _validate_intended_opening_value(
+    path: Path, value: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate one hand-written intended opening."""
+    _require_contract_keys(path, "intended opening", value, INTENDED_OPENING_KEYS)
+    schema_version = value["schema_version"]
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != INTENDED_OPENING_SCHEMA_VERSION
+    ):
+        raise _contract_error(
+            path, "schema_version", f"must equal {INTENDED_OPENING_SCHEMA_VERSION}"
+        )
+    _contract_choice(path, "band", value["band"], OPENING_BANDS)
+    _contract_choice(path, "status", value["status"], OPENING_STATUSES)
+    _contract_string(path, "recommended_action", value["recommended_action"])
+    value["caps"] = _cap_tuples(path, "caps", value["caps"], exact=True)
+    divergence = value["divergence"]
+    if divergence is not None:
+        divergence = _contract_object(path, "divergence", divergence)
+        _require_contract_keys(path, "divergence", divergence, DIVERGENCE_KEYS)
+        issue = divergence["issue"]
+        if issue is not None and (
+            not isinstance(issue, str) or GUIDE_ISSUE_PATTERN.fullmatch(issue) is None
+        ):
+            raise _contract_error(
+                path,
+                "divergence.issue",
+                "must be null or a traigent-first-run issue URL",
+            )
+        _contract_string(path, "divergence.reason", divergence["reason"])
+        fields = _contract_object(path, "divergence.fields", divergence["fields"])
+        if not fields:
+            raise _contract_error(
+                path, "divergence.fields", "must name at least one field"
+            )
+        for field, values in fields.items():
+            if field not in VERIFICATION_FIELDS:
+                raise _contract_error(
+                    path,
+                    "divergence.fields",
+                    f"{field!r} is not one of {', '.join(VERIFICATION_FIELDS)}",
+                )
+            values = _contract_object(path, f"divergence.fields.{field}", values)
+            _require_contract_keys(
+                path, f"divergence.fields.{field}", values, DIVERGENT_FIELD_KEYS
+            )
+            if field == "caps":
+                for side in DIVERGENT_FIELD_KEYS:
+                    values[side] = _cap_tuples(
+                        path, f"divergence.fields.caps.{side}", values[side], exact=True
+                    )
+    return value
+
+
+def _opening_differences(one: dict[str, Any], other: dict[str, Any]) -> list[str]:
+    """The compared fields on which two validated openings differ."""
+    return [field for field in VERIFICATION_FIELDS if one[field] != other[field]]
+
+
+def _validate_hand_written_answers(scenario: Scenario) -> None:
+    """Hold the hand-written answers against what the guide measured.
+
+    - The committed agent read the contracts were measured with names exactly
+      the settings the manifest declares under `catalog.components.agent.
+      controls`, so the controls a worker's read is graded against are the
+      ones the measurement used.
+    - Every measured contract has an intended opening beside it that equals it,
+      or that declares a divergence which still holds, and no intended opening
+      answers no contract.
+    """
+    agent = scenario.manifest["catalog"]["components"]["agent"]
+    read_path = scenario.verifier_dir / COMMITTED_AGENT_READ
+    if _path_exists_without_following_links(read_path):
+        if agent["state"] == "missing":
+            raise _contract_error(
+                read_path, "knobs", "the scenario declares no agent to have read"
+            )
+        problems = _grade_agent_read(
+            read_path,
+            _read_strict_json_object(read_path, "committed agent read"),
+            agent["controls"],
+        )
+        if problems:
+            raise _contract_error(
+                read_path,
+                "knobs",
+                "; ".join(problems)
+                + " (catalog.components.agent.controls must name the settings "
+                "the measurement read)",
+            )
+
+    route = scenario.manifest["catalog"]["expected_route"]
+    contracts = [route["verifier_contract"]]
+    if "read_dependent" in route:
+        contracts.append(route["read_dependent"]["sound_read_contract"])
+    answering = {
+        scenario.root / PurePosixPath(_intended_opening_name(contract))
+        for contract in contracts
+    }
+    for path in sorted(scenario.verifier_dir.rglob("intended-opening*.json")):
+        if path not in answering:
+            relative = path.relative_to(scenario.root).as_posix()
+            raise BankError(
+                f"scenario {scenario.slug!r} ships {relative}, an intended opening "
+                "that answers no contract: an intended opening sits beside the "
+                "contract it answers, named after it"
+            )
+    for contract in contracts:
+        contract_path = scenario.root / PurePosixPath(contract)
+        measured = _validate_expected_opening_value(
+            contract_path,
+            _read_strict_json_object(contract_path, "expected opening contract"),
+        )
+        intended_path = scenario.root / PurePosixPath(_intended_opening_name(contract))
+        intended = _validate_intended_opening_value(
+            intended_path,
+            _read_strict_json_object(intended_path, "intended opening"),
+        )
+        differences = _opening_differences(intended, measured)
+        divergence = intended["divergence"]
+        if divergence is None:
+            if differences:
+                raise _contract_error(
+                    intended_path,
+                    "divergence",
+                    f"the intended opening differs from {contract_path.name} on "
+                    f"{', '.join(differences)} and declares no divergence; correct "
+                    "the intent, or record where and why the guide departs from it",
+                )
+            continue
+        if not differences:
+            raise _contract_error(
+                intended_path,
+                "divergence",
+                f"declares a divergence that no longer holds: {contract_path.name} "
+                "now measures the intended opening",
+            )
+        declared = divergence["fields"]
+        if sorted(declared) != sorted(differences):
+            raise _contract_error(
+                intended_path,
+                "divergence.fields",
+                f"declares a divergence on {', '.join(sorted(declared))}, and "
+                f"{contract_path.name} now differs on {', '.join(sorted(differences))}",
+            )
+        for field, values in declared.items():
+            for side, opening in (("intended", intended), ("measured", measured)):
+                if values[side] != opening[field]:
+                    raise _contract_error(
+                        intended_path,
+                        f"divergence.fields.{field}.{side}",
+                        f"records {values[side]!r}, and the {side} opening has "
+                        f"{opening[field]!r}",
+                    )
+
+
+# The files the guide's opening writes into the project, named from its text
+# at the pinned revision, d07b62cd:
+# - references/component-creation.md, "Opening readiness procedure": each
+#   scoring's evidence document, preflight JSON and notes go in one fresh
+#   `traigent-runs/readiness/<YYYYMMDDTHHMMSSZ>/` directory (its example writes
+#   `agent-knobs.json` there), and `traigent-runs/calibration-cases.json` and
+#   `traigent-runs/calibration-results.json` are named before the card when the
+#   opening calibration creates them;
+# - references/evaluation-and-dataset.md, "The row-level sanity check": the row
+#   review is "kept in the readiness directory";
+# - references/evaluation-and-dataset.md, "Assistant semantic-coverage review",
+#   saves the case matrix as `traigent-runs/calibration-cases.json`, so where a
+#   scenario ships one, rewriting it is a guide write and is reported, not
+#   failed; and "When calibration runs long" sends the detached calibration's
+#   stderr to `traigent-runs/calibration.log`;
+# - SKILL.md, "Bundled guidance index": once task intent is anchored, the run
+#   record `traigent-runs/run-plan.md`, and the run log beside it, which
+#   references/run-safety.md, "The run log", names `traigent-runs/run-log.jsonl`;
+# - SKILL.md, "Operating contract": when the project root is inside a Git work
+#   tree, `/traigent-runs/` in the project-root `.gitignore`, and outside one no
+#   `.gitignore` at all. `verify` asks Git which case the project is in.
+# A top-level `traigent-runs/row-review.json` is not among them: at the pin the
+# review lives in the readiness directory. Any other change to a file `prepare`
+# copied fails.
+#
+# Python writes bytecode for what the opening imports. The guide's calibration
+# command (references/evaluation-and-dataset.md, the `calibrate_evaluator.py`
+# block) runs without `-B`, and so does every recorded replay; the script loads
+# the scorer and the guide's own `preflight.py` with importlib's
+# `spec_from_file_location` and `exec_module` (calibrate_evaluator.py lines
+# 647-653 and 1689-1693 at d07b62cd), and an import writes
+# `<dir>/__pycache__/<stem>.<cache tag>.pyc` beside its source unless bytecode
+# writing is off. So such a file passes, reported as a rewrite is, only where
+# `<dir>/<stem>.py` is a file `prepare` copied.
+OPENING_WRITE_FILES = frozenset(
+    {
+        "traigent-runs/calibration-cases.json",
+        "traigent-runs/calibration-results.json",
+        "traigent-runs/calibration.log",
+        "traigent-runs/run-plan.md",
+        "traigent-runs/run-log.jsonl",
+    }
+)
+OPENING_REWRITES = frozenset({"traigent-runs/calibration-cases.json"})
+# The caps whose question, where the card asks, the guide puts on the one ask
+# for every gap - references/evaluation-and-dataset.md, "Routing readiness
+# findings": `dataset-absent` ("put both ways out on the one ask"),
+# `dataset-split-by-task-family` ("take their answer on the one ask"),
+# `dataset-below-measurable-size` ("carry the top-up on the one ask"),
+# `dataset-coarse-resolution` ("the same bounded offer carries it wherever the
+# card asks"), and `dataset-repeated-rows` ("Take the card's two routes on the
+# one ask"). The other asking caps the bank's contracts carry have homes
+# elsewhere. `dataset-unsound-expected-outputs` is settled where the same
+# reference's "A `no` is never a silent edit" says, after selection and before
+# the run. Two are asked on run-safety.md's pre-spend approval card, the one
+# home of a question whose cap's route owns none ("Where the cap's route owns no
+# question of its own, this card is that one home and asks it here"):
+# `evaluator-calibration-refused` (the evaluation reference: "never a stop of
+# its own"; run-safety.md: the readiness card "does not put the question: that
+# happens once, at the pre-spend approval"), and `dataset-generated-answer-key`,
+# whose route requires a person's review of a sample of the answers and puts no
+# question of its own. A blocked opening stops on the one ask whatever its
+# caps, because creation, repair and an unread component all ride on it
+# (SKILL.md section 2).
+ONE_ASK_CONDITIONS = frozenset(
+    {
+        "dataset-absent",
+        "dataset-split-by-task-family",
+        "dataset-below-measurable-size",
+        "dataset-coarse-resolution",
+        "dataset-repeated-rows",
+    }
+)
+GITIGNORE = ".gitignore"
+GITIGNORE_LINE = "/traigent-runs/"
+OPENING_READINESS_FILE = re.compile(
+    r"^traigent-runs/readiness/[0-9]{8}T[0-9]{6}Z/[^/]+$"
+)
+# The directories the opening's writes create: `traigent-runs/`, its
+# `readiness/`, and one stamped directory per scoring. Any other directory
+# `prepare` did not create fails, empty or not, apart from a `__pycache__`
+# beside a prepared module (`_bytecode_source`).
+OPENING_DIRECTORIES = re.compile(
+    r"^traigent-runs(?:/readiness(?:/[0-9]{8}T[0-9]{6}Z)?)?$"
+)
+PYCACHE = "__pycache__"
+# The cache tag and bytecode magic of each Python the guide runs on: run-safety.md,
+# "Finding a supported interpreter", accepts CPython 3.11 to 3.13 (`(3, 11) <=
+# sys.version_info[:2] < (3, 14)`). Each magic is `importlib.util.MAGIC_NUMBER`
+# on that version; a test holds the running interpreter's entry to it.
+BYTECODE_MAGIC = {
+    "cpython-311": bytes.fromhex("a70d0d0a"),
+    "cpython-312": bytes.fromhex("cb0d0d0a"),
+    "cpython-313": bytes.fromhex("f30d0d0a"),
+}
+# `<stem>.<cache tag>[.opt-1|.opt-2].pyc`, the names an import writes.
+BYTECODE_FILE = re.compile(
+    r"^(?P<stem>[^/]+?)\.(?P<tag>"
+    + "|".join(re.escape(tag) for tag in BYTECODE_MAGIC)
+    + r")(?:\.opt-[12])?\.pyc$"
+)
+# Far above any module a scenario ships; a larger file is not read.
+MAX_BYTECODE_BYTES = 1 << 22
+
+
+def _is_opening_write(relative: str) -> bool:
+    return (
+        relative in OPENING_WRITE_FILES
+        or OPENING_READINESS_FILE.fullmatch(relative) is not None
+    )
+
+
+def _bytecode_source(relative: str, prepared: dict[str, Any]) -> tuple[str, str] | None:
+    """The prepared module `relative` is named as the bytecode of, and the
+    cache tag it names, if any."""
+    parent, _, name = relative.rpartition("/")
+    folder, _, cache = parent.rpartition("/")
+    match = BYTECODE_FILE.fullmatch(name)
+    if cache != PYCACHE or match is None:
+        return None
+    source = f"{folder}/{match['stem']}.py" if folder else f"{match['stem']}.py"
+    return (source, match["tag"]) if source in prepared else None
+
+
+def _bytecode_problem(path: Path, tag: str, source_size: int) -> str | None:
+    """Why the file at `path` does not read as the bytecode an import of a
+    `source_size`-byte module writes under `tag`, or None.
+
+    The header is PEP 552's: the tag's magic, flags 0 for the timestamp-based
+    file an import writes, the source's mtime, and its size modulo 2**32. The
+    mtime is not compared: `run.json` records no source mtime to compare it
+    with. A body must follow the header. It is unmarshalled only where this
+    Python wrote it - marshal's format belongs to the version, so another
+    version's body is left unread - and there it must open on marshal's code
+    type, read as one code object, and have nothing after it. A body that
+    fails to read, including by running out of memory, is reported, never
+    raised. A crafted body can still declare a large count inside the code
+    object and make the read allocate in proportion to it before it fails.
+    """
+    try:
+        if path.lstat().st_size > MAX_BYTECODE_BYTES:
+            return f"it is larger than {MAX_BYTECODE_BYTES} bytes"
+        data = path.read_bytes()
+    except OSError as exc:
+        raise VerificationError(f"cannot read {path}: {exc}") from exc
+    if len(data) < 16:
+        return "it is shorter than a bytecode header"
+    if len(data) == 16:
+        return "it is a bytecode header with no body"
+    if data[:4] != BYTECODE_MAGIC[tag]:
+        return f"it does not open with {tag}'s magic number"
+    if int.from_bytes(data[4:8], "little") != 0:
+        return "it is not the timestamp-based bytecode an import writes"
+    recorded = int.from_bytes(data[12:16], "little")
+    if recorded != source_size & 0xFFFFFFFF:
+        return (
+            f"it records a source of {recorded} bytes, and the prepared source "
+            f"has {source_size}"
+        )
+    if tag == sys.implementation.cache_tag:
+        body = data[16:]
+        # A body that does not open on marshal's code type (`c`, with or
+        # without its reference flag) is refused before any of it is read.
+        if body[0] & 0x7F != ord("c"):
+            return "its body does not unmarshal to a code object"
+        failures = (EOFError, TypeError, ValueError, MemoryError, OverflowError)
+        try:
+            code = marshal.loads(body)
+        except failures:
+            code = None
+        if not isinstance(code, types.CodeType):
+            return "its body does not unmarshal to a code object"
+        # `marshal.loads` ignores bytes after the object it reads. The same
+        # read of one byte fewer still succeeds exactly when bytes follow.
+        try:
+            marshal.loads(body[:-1])
+        except failures:
+            return None
+        return "its body carries bytes after the code object"
+    return None
+
+
+def _unprepared_directory_problem(relative: str, prepared: dict[str, Any]) -> bool:
+    """Whether `relative`, a directory `prepare` did not create, fails."""
+    if OPENING_DIRECTORIES.fullmatch(relative):
+        return False
+    folder, _, name = relative.rpartition("/")
+    if name != PYCACHE:
+        return True
+    prefix = f"{folder}/" if folder else ""
+    return not any(
+        path.startswith(prefix)
+        and "/" not in path[len(prefix) :]
+        and path.endswith(".py")
+        for path in prepared
+    )
+
+
+def _inside_git_work_tree(directory: Path) -> bool:
+    """Whether Git reads `directory` as inside a work tree, as the guide asks it."""
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"}
+    }
+    try:
+        completed = subprocess.run(
+            ["git", "-C", os.fspath(directory), "rev-parse", "--is-inside-work-tree"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=environment,
+        )
+    except OSError as exc:
+        raise VerificationError(f"cannot run Git to read {directory}: {exc}") from exc
+    return completed.returncode == 0 and completed.stdout.strip() == "true"
+
+
+def _gitignore_problem(path: Path, inside_work_tree: bool) -> str | None:
+    """Whether a project-root `.gitignore` holds only what the guide adds."""
+    if not inside_work_tree:
+        return (
+            "the project is not inside a Git work tree, where the guide creates "
+            "no .gitignore"
+        )
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise VerificationError(f"cannot read {path}: {exc}") from exc
+    if [line.strip() for line in lines if line.strip()] != [GITIGNORE_LINE]:
+        return f"holds something other than the guide's {GITIGNORE_LINE} line"
+    return None
+
+
+def _prepared_files(run_record: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Every file `prepare` copied, by its path inside the worker directory."""
+    inputs = run_record["inputs"]
+    files = {record["path"]: record for record in inputs["scenario_project"]["files"]}
+    for record in inputs["guide_bundle"]["files"]:
+        files[f"{PREPARED_GUIDE_DIRECTORY}/{record['path']}"] = record
+    return files
+
+
+def _project_changes(
+    project_dir: Path, run_record: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """Re-hash a worker project against the inventory `prepare` recorded.
+
+    Returns the problems - a file modified, deleted or added outside the
+    guide's opening writes, a directory the opening does not create, a link,
+    or a special file - and the opening writes found.
+    """
+    try:
+        metadata = project_dir.lstat()
+    except OSError as exc:
+        raise VerificationError(f"cannot inspect project {project_dir}: {exc}") from exc
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise VerificationError(f"project is not a directory: {project_dir}")
+
+    prepared = _prepared_files(run_record)
+    prepared_directories = {
+        parent.as_posix()
+        for relative in prepared
+        for parent in PurePosixPath(relative).parents
+        if parent.parts
+    }
+    found: dict[str, Path] = {}
+    directories: set[str] = set()
+    irregular: set[str] = set()
+
+    def unreadable(error: OSError) -> None:
+        raise VerificationError(
+            f"cannot read {error.filename} in the project, so it cannot be "
+            f"re-hashed: {error.strerror}"
+        )
+
+    # Directories are walked, never followed: a link is recorded as itself.
+    # A directory the walk cannot read is an error, never a skip.
+    for directory, subdirectories, filenames in os.walk(
+        project_dir, onerror=unreadable
+    ):
+        base = Path(directory)
+        for name in [*subdirectories, *filenames]:
+            path = base / name
+            relative = path.relative_to(project_dir).as_posix()
+            try:
+                mode = path.lstat().st_mode
+            except OSError as exc:
+                raise VerificationError(
+                    f"cannot inspect {relative} in the project: {exc}"
+                ) from exc
+            if stat.S_ISREG(mode):
+                found[relative] = path
+            elif stat.S_ISDIR(mode):
+                directories.add(relative)
+            else:
+                irregular.add(relative)
+    problems = [
+        f"{relative}: a symbolic link or special file, not a regular file"
+        for relative in sorted(irregular)
+    ]
+    problems += [
+        f"{relative}: a directory the opening does not create, and not one "
+        "prepare copied"
+        for relative in sorted(directories - prepared_directories)
+        if _unprepared_directory_problem(relative, prepared)
+    ]
+    writes: list[str] = []
+    inside_work_tree: bool | None = None
+    for relative in sorted(set(prepared) | set(found)):
+        record = prepared.get(relative)
+        found_path = found.get(relative)
+        if relative == GITIGNORE and record is None and found_path is not None:
+            # No scenario ships a .gitignore; `run.json` records hashes rather
+            # than bytes, so an edit to a shipped one is judged as any other.
+            if inside_work_tree is None:
+                inside_work_tree = _inside_git_work_tree(project_dir)
+            problem = _gitignore_problem(found_path, inside_work_tree)
+            if problem is None:
+                writes.append(relative)
+            else:
+                problems.append(f"{relative}: {problem}")
+        elif record is None:
+            bytecode = _bytecode_source(relative, prepared)
+            if _is_opening_write(relative):
+                writes.append(relative)
+            elif bytecode is not None and found_path is not None:
+                source, tag = bytecode
+                problem = _bytecode_problem(found_path, tag, prepared[source]["size"])
+                if problem is None:
+                    writes.append(f"{relative} (bytecode of {source})")
+                else:
+                    problems.append(
+                        f"{relative}: named as the bytecode of {source}, and {problem}"
+                    )
+            else:
+                problems.append(
+                    f"{relative}: added, and not one of the guide's opening writes"
+                )
+        elif found_path is None:
+            if relative not in irregular:
+                problems.append(f"{relative}: deleted")
+        else:
+            digest, size = _hash_regular_file(found_path, "project file")
+            try:
+                executable = bool(found_path.lstat().st_mode & stat.S_IXUSR)
+            except OSError as exc:
+                raise VerificationError(
+                    f"cannot inspect {relative} in the project: {exc}"
+                ) from exc
+            if digest != record["sha256"] or size != record["size"]:
+                if relative in OPENING_REWRITES:
+                    writes.append(f"{relative} (rewritten)")
+                else:
+                    problems.append(f"{relative}: modified")
+            elif executable != record["executable"]:
+                problems.append(f"{relative}: executable bit changed")
+    return problems, writes
+
+
+def _load_ask_shape() -> Any:
+    """The ask-shape grader, which lives beside the other repository tools."""
+    source = REPOSITORY_ROOT / "scripts" / "check_ask_shape.py"
+    specification = importlib.util.spec_from_file_location("check_ask_shape", source)
+    if specification is None or specification.loader is None:
+        raise VerificationError(f"cannot load the ask-shape grader at {source}")
+    module = importlib.util.module_from_spec(specification)
+    try:
+        specification.loader.exec_module(module)
+    except OSError as exc:
+        raise VerificationError(
+            f"cannot load the ask-shape grader at {source}: {exc}"
+        ) from exc
+    return module
+
+
+def _grade_response(
+    response_path: Path,
+    guide_copy: Path,
+    run_record: dict[str, Any],
+    *,
+    material: bool,
+) -> tuple[list[str], list[str]]:
+    """Grade the worker's final message against the guide the run was given:
+    its findings, which fail, and its notes, which a person reads.
+
+    The rules are read from the SKILL.md `prepare` copied into the project,
+    hashed against the record first, so they are the text the worker followed.
+    """
+    grader = _load_ask_shape()
+    skill_relative = PurePosixPath(*grader.SKILL_PATH.parts).as_posix()
+    record = next(
+        (
+            file
+            for file in run_record["inputs"]["guide_bundle"]["files"]
+            if file["path"] == skill_relative
+        ),
+        None,
+    )
+    skill_path = guide_copy / PurePosixPath(skill_relative)
+    if record is None:
+        raise VerificationError(f"the run record lists no guide {skill_relative}")
+    digest, _ = _hash_regular_file(skill_path, "prepared guide file")
+    if digest != record["sha256"]:
+        raise VerificationError(
+            f"{skill_path} is not the {skill_relative} the run record lists, so "
+            "the ask rules cannot be read from it"
+        )
+    missing = grader.missing_rules(skill_path.read_text(encoding="utf-8"))
+    if missing:
+        raise VerificationError(
+            f"the guide the run was given no longer states a rule --response "
+            f"grades: {' | '.join(missing)}"
+        )
+    try:
+        text = response_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise VerificationError(
+            f"cannot read the worker response {response_path}: {exc}"
+        ) from exc
+    grade = grader.check_ask_shape(text, material=material)
+    return list(grade.findings), list(grade.notes)
+
+
 @dataclass(frozen=True)
 class Verification:
     """What `verify` found: its mismatches, what matched, and what to note."""
@@ -5561,19 +6222,32 @@ def verify_opening(
     run_record_path: Path,
     *,
     row_review_path: Path | None = None,
+    agent_read_path: Path | None = None,
+    project_dir: Path | None = None,
+    response_path: Path | None = None,
 ) -> Verification:
-    """Compare a captured opening with its recorded contract.
+    """Compare a captured opening with its recorded contract, and grade the run.
 
     A scenario whose opening turns on what a reader of its answers found is
     verified in two parts: the worker's read is graded against the scenario's
     verdict for every row, and the result is then compared with the contract for
     the read the worker actually gave - one that marked an answer `no`, or one
     that marked none.
+
+    The optional grades go beyond the measured contract: the agent read's
+    setting names against the controls the manifest declares by hand, the
+    project against the inventory `prepare` recorded, and the final message
+    against the ask rules the guide's SKILL.md states - failing only on what
+    its structure (route labels, blank lines and indentation), the
+    `(recommended` mark and `I have it` decide, and noting the rest for a
+    person. The hand-written intended opening is noted, never graded: a PASS
+    is still a match with the measured contract.
     """
 
     recorded = _recorded_contracts(scenario, run_record_path)
     catalog = recorded.scenario.manifest["catalog"]
     route = catalog["expected_route"]
+    agent = catalog["components"]["agent"]
     read_dependent = route.get("read_dependent")
     contract = EXPECTED_VERIFIER_CONTRACT
     described = "the captain-recorded contract"
@@ -5660,6 +6334,86 @@ def verify_opening(
             f"asks) at readiness schema_version {readiness_schema}"
         )
     contract_mismatched = bool(mismatches)
+
+    intended_name = _intended_opening_name(contract)
+    if legacy or not recorded.has(intended_name):
+        notes.append("intended opening: none is recorded at this revision")
+    else:
+        intended_path, intended_value = recorded.read(intended_name, "intended opening")
+        intended = _validate_intended_opening_value(intended_path, intended_value)
+        against = _opening_differences(actual, intended)
+        verdict = (
+            "AGREES - the result matches the hand-written intended opening"
+            if not against
+            else f"DIVERGES on {', '.join(against)} - the result differs from the "
+            "hand-written intended opening"
+        )
+        divergence = intended["divergence"]
+        if divergence is None:
+            verdict += ", which equals the measured contract"
+        else:
+            verdict += (
+                ", which departs from the measured contract as declared: "
+                f"{divergence['reason']} (issue: {divergence['issue'] or 'none'})"
+            )
+        notes.append(f"intended opening: {verdict}")
+
+    if agent_read_path is not None and agent["state"] == "missing":
+        # The guide leaves `--agent-knobs` off "only where the inventory found
+        # no agent at all" (component-creation.md, opening readiness
+        # procedure), so a read here reports an agent the scenario lacks.
+        _read_strict_json_object(agent_read_path, "worker agent read")
+        mismatches.append(
+            "agent read: the scenario has no agent, and the guide gives readiness "
+            "no agent read where the inventory found none; this run gave one"
+        )
+    elif agent_read_path is not None:
+        problems = _grade_agent_read(
+            agent_read_path,
+            _read_strict_json_object(agent_read_path, "worker agent read"),
+            agent["controls"],
+        )
+        mismatches.extend(f"agent read: {problem}" for problem in problems)
+        count = len(agent["controls"])
+        graded.append(
+            f"its agent read names exactly the {count} setting"
+            f"{'' if count == 1 else 's'} the scenario declares"
+            if count
+            else "its agent read names no setting, as the scenario declares none"
+        )
+
+    if project_dir is not None:
+        problems, writes = _project_changes(project_dir, recorded.run_record)
+        mismatches.extend(f"project: {problem}" for problem in problems)
+        graded.append(
+            f"its project matches the prepared inventory apart from {len(writes)} "
+            f"of the guide's opening write{'' if len(writes) == 1 else 's'}"
+        )
+        if writes:
+            notes.append("project: opening writes found: " + ", ".join(writes))
+
+    if response_path is not None:
+        guide_copy = (
+            project_dir or run_record_path.parent / PREPARED_PROJECT_DIRECTORY
+        ) / PREPARED_GUIDE_DIRECTORY
+        # SKILL.md section 2, "One ask for every gap", always ends with `I have
+        # it` and a path. The opening stops there when it is blocked, or when a
+        # cap asks whose question the guide routes to that ask
+        # (ONE_ASK_CONDITIONS). Whether any other stop is about material is not
+        # derived here, so `I have it` is not required there.
+        material = expected["status"] == "BLOCKED" or (
+            not legacy
+            and any(
+                cap["asks"] and cap["condition"] in ONE_ASK_CONDITIONS
+                for cap in expected["caps"]
+            )
+        )
+        findings, response_notes = _grade_response(
+            response_path, guide_copy, recorded.run_record, material=material
+        )
+        mismatches.extend(f"response: {finding}" for finding in findings)
+        graded.append("its final message raises no hard ask-shape finding")
+        notes.extend(f"response note: {note}" for note in response_notes)
 
     return Verification(
         mismatches=tuple(mismatches),
@@ -5839,6 +6593,35 @@ def _build_parser() -> argparse.ArgumentParser:
             "only accepted for, a scenario whose contract depends on it"
         ),
     )
+    verify_parser.add_argument(
+        "--agent-read",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "the agent read the worker passed to readiness as --agent-knobs; its "
+            "setting names are graded against the scenario's declared controls, "
+            "and any read fails for a scenario with no agent"
+        ),
+    )
+    verify_parser.add_argument(
+        "--project-dir",
+        type=Path,
+        metavar="DIR",
+        help=(
+            "the worker's customer-project directory, re-hashed against the "
+            "inventory prepare recorded; only the guide's opening writes may "
+            "be added"
+        ),
+    )
+    verify_parser.add_argument(
+        "--response",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "the worker's final message, graded for the ask shape the prepared "
+            "guide's SKILL.md states; heuristic findings are printed as notes"
+        ),
+    )
     return parser
 
 
@@ -5926,6 +6709,9 @@ def main(
                 arguments.result,
                 arguments.run_record,
                 row_review_path=arguments.row_review,
+                agent_read_path=arguments.agent_read,
+                project_dir=arguments.project_dir,
+                response_path=arguments.response,
             )
             graded = "".join(f"; {item}" for item in verification.graded)
             if verification.mismatches:
@@ -5934,7 +6720,7 @@ def main(
                     + (
                         "does not match its contract"
                         if verification.contract_mismatched
-                        else f"matches {verification.matched}, and a hand-written "
+                        else f"matches {verification.matched}, and an additional "
                         "grade failed"
                     ),
                     file=error,

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "band": "PARTIAL",
+  "status": "BLOCKED",
+  "recommended_action": "resplit-dataset",
+  "caps": [
+    {
+      "condition": "dataset-tune-holdout-overlap",
+      "ceiling": 50,
+      "blocks": true,
+      "asks": false
+    },
+    {
+      "condition": "dataset-repeated-rows",
+      "ceiling": 89,
+      "blocks": false,
+      "asks": true
+    }
+  ],
+  "divergence": null
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "band": "PARTIAL",
+  "status": "BLOCKED",
+  "recommended_action": "vary-knobs",
+  "caps": [
+    {
+      "condition": "agent-no-varying-knobs",
+      "ceiling": 45,
+      "blocks": true,
+      "asks": false
+    }
+  ],
+  "divergence": null
+}

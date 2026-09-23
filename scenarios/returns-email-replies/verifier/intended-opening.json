@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "band": "PARTIAL",
+  "status": "BLOCKED",
+  "recommended_action": "label-data",
+  "caps": [
+    {
+      "condition": "dataset-no-expected-outputs",
+      "ceiling": 30,
+      "blocks": true,
+      "asks": false
+    },
+    {
+      "condition": "evaluator-absent",
+      "ceiling": 40,
+      "blocks": true,
+      "asks": false
+    }
+  ],
+  "divergence": null
+}

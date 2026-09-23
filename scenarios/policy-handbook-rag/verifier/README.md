@@ -11,6 +11,12 @@ Semantic verification compares these fields exactly:
 - `recommended_action`
 - `caps` - each cap's condition, ceiling, blocks and asks
 
+`intended-opening.json` is the hand-written answer beside the contract. It
+names no cap, and it was written with this contract's band, status and action
+already in view, so its agreement with the contract is not an independent check;
+`docs/methodology.md` says what it can show. `verify` notes whether a result
+agrees with it; a `PASS` still means the measured contract matched.
+
 The `display` section records the expected scorecard values for an honest
 customer-facing rendering. It does not broaden the semantic pass criteria and
 must be labeled as expected until a recorded run has been verified. Missing or

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "band": "WORKABLE",
+  "status": "OK",
+  "recommended_action": "review-answer-key",
+  "caps": [
+    {
+      "condition": "dataset-unsound-expected-outputs",
+      "ceiling": 70,
+      "blocks": false,
+      "asks": true
+    },
+    {
+      "condition": "dataset-coarse-resolution",
+      "ceiling": 89,
+      "blocks": false,
+      "asks": false
+    }
+  ],
+  "divergence": null
+}

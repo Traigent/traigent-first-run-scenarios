@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import itertools
 import json
+import marshal
 import os
 import random
 import re
@@ -151,6 +153,20 @@ def expected_opening() -> dict[str, object]:
     }
 
 
+def intended_opening(
+    contract: dict[str, object], divergence: object = None
+) -> dict[str, object]:
+    """A fixture's intended opening: the contract's four fields, written down."""
+    return {
+        "schema_version": 1,
+        "band": contract["band"],
+        "status": contract["status"],
+        "recommended_action": contract["recommended_action"],
+        "caps": contract["caps"],
+        "divergence": divergence,
+    }
+
+
 def readiness_result(contract: dict[str, object]) -> dict[str, object]:
     """The readiness payload a worker would capture for this contract.
 
@@ -189,6 +205,30 @@ BANDS_ABOVE_THE_ANSWER_KEY_HOLD = ("STRONG", "EXCELLENT")
 # test runs over what the reviewer read, so no other input can raise it, and a
 # published opening carrying it was measured with a review whatever its band.
 REVIEW_DERIVED_CAP = "dataset-unsound-expected-outputs"
+
+# A stand-in SKILL.md stating the ask rules `verify --response` implements, in
+# the guide's own sentences and wrapped the way the guide wraps them.
+SKILL_WITH_ASK_RULES = (
+    "# Skill\n\n"
+    "- Named routes are lettered from `A`, exactly one marked recommended, and\n"
+    "  answerable by reply. No route carries a decision of its own. Keep the\n"
+    "  question last; a route list is never compressed into yes/no. `I have it`\n"
+    "  is unnumbered, last, and only on material questions.\n\n"
+    "Always end with `I have it` and a path as an unnumbered\nalternative.\n"
+)
+
+# Written for these tests in the shape the guide teaches: two lettered routes,
+# one marked, and the standing line last.
+WELL_SHAPED_ASK = (
+    "Your rows are here, and the evaluator returns one score for every answer.\n"
+    "\n"
+    "A. **I build a working evaluator (recommended)** in a copy under\n"
+    "traigent-runs/, then carry on.\n"
+    "B. Pause, and I list the checks a corrected evaluator has to pass.\n"
+    "\n"
+    "Or reply `I have it` with a path, and I will use yours.\n"
+)
+
 
 # A scenario README's difficulty rubric: its heading at either level the bank
 # uses, and a stratum bullet in either spelling the bank uses. A heading that
@@ -523,10 +563,14 @@ class ScenarioBankTests(unittest.TestCase):
             (root / "verifier" / "expected-opening.json").write_text(
                 json.dumps(expected_opening()) + "\n", encoding="utf-8"
             )
+            (root / "verifier" / "intended-opening.json").write_text(
+                json.dumps(intended_opening(expected_opening())) + "\n",
+                encoding="utf-8",
+            )
         self.commit_repository_paths(root, message=f"Create {slug}")
         return root
 
-    def create_guide_source(self) -> Path:
+    def create_guide_source(self, skill_text: str = "# Skill\n") -> Path:
         self.guide_counter += 1
         root = Path(self.temporary_directory.name) / f"guide-{self.guide_counter}"
         skill = root / "skills" / "traigent-first-run"
@@ -538,7 +582,7 @@ class ScenarioBankTests(unittest.TestCase):
             "Test guide\nCopyright 2026 Traigent Ltd\n", encoding="utf-8"
         )
         (root / "AGENTS.md").write_text("agent rules\n", encoding="utf-8")
-        (skill / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+        (skill / "SKILL.md").write_text(skill_text, encoding="utf-8")
         script = skill / "scripts" / "readiness.py"
         script.write_text("print('inert')\n", encoding="utf-8")
         script.chmod(0o755)
@@ -620,8 +664,9 @@ class ScenarioBankTests(unittest.TestCase):
         reference: str,
         *,
         name: str,
+        skill_text: str = "# Skill\n",
     ) -> Path:
-        guide_source = self.create_guide_source()
+        guide_source = self.create_guide_source(skill_text)
         output_path = Path(self.temporary_directory.name) / name
         status, _, error = self.run_cli(
             "prepare",
@@ -4899,8 +4944,10 @@ class ScenarioBankTests(unittest.TestCase):
 
     def test_check_refuses_a_project_that_names_its_own_test(self) -> None:
         root = self.create_scenario("told-apart", 10)
-        (root / "verifier" / "expected-opening.json").write_text(
-            json.dumps({**expected_opening(), "caps": [SYNTHETIC_CAP]})
+        capped = {**expected_opening(), "caps": [SYNTHETIC_CAP]}
+        (root / "verifier" / "expected-opening.json").write_text(json.dumps(capped))
+        (root / "verifier" / "intended-opening.json").write_text(
+            json.dumps(intended_opening(capped))
         )
         evaluator = root / "project" / "evaluator.py"
         status, _, error = self.run_cli("check", "told-apart")
@@ -5010,8 +5057,10 @@ class ScenarioBankTests(unittest.TestCase):
     def test_check_reads_prose_about_the_task_as_prose(self) -> None:
         """Words a real project uses for itself are not the names of its test."""
         root = self.create_scenario("told-apart", 11)
-        (root / "verifier" / "expected-opening.json").write_text(
-            json.dumps({**expected_opening(), "caps": [SYNTHETIC_CAP]})
+        capped = {**expected_opening(), "caps": [SYNTHETIC_CAP]}
+        (root / "verifier" / "expected-opening.json").write_text(json.dumps(capped))
+        (root / "verifier" / "intended-opening.json").write_text(
+            json.dumps(intended_opening(capped))
         )
         evaluator = root / "project" / "evaluator.py"
         # `told-apart` ends exactly where the first read ends, and the word
@@ -5683,6 +5732,10 @@ class ScenarioBankTests(unittest.TestCase):
             json.dumps(changed) + "\n",
             encoding="utf-8",
         )
+        (root / "verifier" / "intended-opening.json").write_text(
+            json.dumps(intended_opening(changed)) + "\n",
+            encoding="utf-8",
+        )
 
         status, output, error = self.run_cli(
             "prepare",
@@ -5777,19 +5830,27 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(
             "PASS: verified-case opening result matches "
             "band, status, recommended_action, caps (condition, ceiling, blocks, "
-            "asks) at readiness schema_version 6 in the captain-recorded contract\n",
+            "asks) at readiness schema_version 6 in the captain-recorded contract\n"
+            "intended opening: AGREES - the result matches the hand-written "
+            "intended opening, which equals the measured contract\n",
             output,
         )
 
     def write_contract(
         self, root: Path, contract: dict[str, object], *, message: str
     ) -> None:
-        """Commit a contract in place of the fixture's."""
-        (root / "verifier" / "expected-opening.json").write_text(
-            json.dumps(contract) + "\n", encoding="utf-8"
-        )
+        """Commit a contract with the intended opening that agrees with it."""
+        for name, value in (
+            ("expected-opening.json", contract),
+            ("intended-opening.json", intended_opening(contract)),
+        ):
+            (root / "verifier" / name).write_text(
+                json.dumps(value) + "\n", encoding="utf-8"
+            )
         self.commit_repository_paths(
-            root / "verifier" / "expected-opening.json", message=message
+            root / "verifier" / "expected-opening.json",
+            root / "verifier" / "intended-opening.json",
+            message=message,
         )
 
     def test_verify_compares_whole_caps_from_readiness_objects(self) -> None:
@@ -6407,6 +6468,1250 @@ class ScenarioBankTests(unittest.TestCase):
                 self.assertEqual(1, status, error)
                 self.assertIn(reason, error)
 
+    # --- Hand-written answers: agent read, intended opening, project, ask ---
+
+    def copy_bank_scenario(self, slug: str) -> Path:
+        """A published scenario, committed into this test's repository."""
+        source = scenario.REPOSITORY_ROOT / "scenarios" / slug
+        root = self.scenarios_dir / source.name
+        shutil.copytree(source, root, ignore=shutil.ignore_patterns("__pycache__"))
+        self.commit_repository_paths(root, message=f"Copy {slug}")
+        return root
+
+    def write_agent_read(self, names: list[str], *, name: str) -> Path:
+        return self.write_result(
+            {
+                "source": "agent.py",
+                "knobs": {knob: {"evidence": "read"} for knob in names},
+            },
+            name=name,
+        )
+
+    def verify_plain(
+        self, slug: str, run_record: Path, *extra: str
+    ) -> tuple[int, str, str]:
+        contract = json.loads(
+            (
+                self.scenarios_dir / slug / "verifier" / "expected-opening.json"
+            ).read_text()
+        )
+        return self.run_cli(
+            "verify",
+            slug,
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(
+                self.write_result(
+                    readiness_result(contract), name=f"{slug}-result.json"
+                )
+            ),
+            *extra,
+        )
+
+    def test_verify_grades_the_agent_read_against_the_declared_controls(self) -> None:
+        self.create_scenario("agent-graded", 31)
+        run_record = self.prepare_run_record("agent-graded", name="agent-graded-run")
+        for names, want, reasons in (
+            (["model"], 0, ["its agent read names exactly the 1 setting"]),
+            (
+                ["model", "temperature"],
+                1,
+                [
+                    "agent read: names setting(s) the scenario does not declare: temperature"
+                ],
+            ),
+            ([], 1, ["agent read: omits setting(s) the scenario declares: model"]),
+            (
+                ["temperature"],
+                1,
+                [
+                    "does not declare: temperature",
+                    "omits setting(s) the scenario declares: model",
+                ],
+            ),
+        ):
+            with self.subTest(names=names):
+                status, output, error = self.verify_plain(
+                    "agent-graded",
+                    run_record,
+                    "--agent-read",
+                    str(self.write_agent_read(names, name="read.json")),
+                )
+                self.assertEqual(want, status, output + error)
+                for reason in reasons:
+                    self.assertIn(reason, output + error)
+                if want:
+                    self.assertIn(
+                        "matches band, status, recommended_action, caps "
+                        "(condition, ceiling, blocks, asks) at readiness "
+                        "schema_version 6 in the captain-recorded contract, and an "
+                        "additional grade failed",
+                        error,
+                    )
+
+    def test_verify_grades_a_read_of_an_agent_with_no_settings(self) -> None:
+        """Case 52 declares no control, so the only passing read names none."""
+        self.copy_bank_scenario("tool-dispatch-selector")
+        run_record = self.prepare_run_record("52", name="no-knobs-run")
+        status, output, error = self.verify_plain(
+            "tool-dispatch-selector",
+            run_record,
+            "--agent-read",
+            str(self.write_agent_read([], name="empty.json")),
+        )
+        self.assertEqual(0, status, error)
+        self.assertIn(
+            "its agent read names no setting, as the scenario declares none", output
+        )
+        status, output, error = self.verify_plain(
+            "tool-dispatch-selector",
+            run_record,
+            "--agent-read",
+            str(self.write_agent_read(["model"], name="model.json")),
+        )
+        self.assertEqual(1, status)
+        self.assertIn("names setting(s) the scenario does not declare: model", error)
+
+    def test_verify_fails_an_agent_read_where_no_agent_exists(self) -> None:
+        """The guide gives readiness no agent read where it found no agent."""
+        self.copy_bank_scenario("chatbot-on-vendor-flow")
+        run_record = self.prepare_run_record("57", name="no-agent-run")
+        status, output, error = self.verify_plain(
+            "chatbot-on-vendor-flow",
+            run_record,
+            "--agent-read",
+            str(self.write_agent_read([], name="none.json")),
+        )
+        self.assertEqual(1, status)
+        self.assertEqual("", output)
+        self.assertIn(
+            "- agent read: the scenario has no agent, and the guide gives readiness "
+            "no agent read where the inventory found none",
+            error,
+        )
+        self.assertIn("and an additional grade failed", error)
+
+    def test_check_holds_the_committed_agent_read_to_the_declared_controls(
+        self,
+    ) -> None:
+        root = self.create_scenario("agent-read-check", 32)
+        measurement = root / "verifier" / "measurement"
+        measurement.mkdir()
+        read = measurement / "agent-read.json"
+        for names, error_text in (
+            (["model"], None),
+            (["model", "temperature"], "does not declare: temperature"),
+            ([], "omits setting(s) the scenario declares: model"),
+        ):
+            with self.subTest(names=names):
+                read.write_text(
+                    json.dumps({"knobs": {name: {} for name in names}}),
+                    encoding="utf-8",
+                )
+                status, _, error = self.run_cli("check", "agent-read-check")
+                if error_text is None:
+                    self.assertEqual(0, status, error)
+                else:
+                    self.assertEqual(1, status)
+                    self.assertIn(error_text, error)
+                    self.assertIn("catalog.components.agent.controls", error)
+
+    def test_every_committed_agent_read_names_the_declared_controls(self) -> None:
+        """The measured read and the hand-declared controls are one list.
+
+        `check` holds a committed read to the controls; this holds that every
+        scenario with an agent commits one, so the grade has a measured read
+        behind it everywhere a worker's read can be graded.
+        """
+        with_agent = 0
+        for manifest_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
+        ):
+            agent = json.loads(manifest_path.read_text())["catalog"]["components"][
+                "agent"
+            ]
+            read_path = (
+                manifest_path.parent / "verifier" / "measurement" / "agent-read.json"
+            )
+            with self.subTest(scenario=manifest_path.parent.name):
+                self.assertEqual(agent["state"] != "missing", read_path.is_file())
+                if read_path.is_file():
+                    with_agent += 1
+                    self.assertEqual(
+                        set(agent["controls"]),
+                        set(json.loads(read_path.read_text())["knobs"]),
+                    )
+        self.assertEqual(12, with_agent)
+
+    def test_check_holds_the_intended_opening_to_the_measured_contract(self) -> None:
+        root = self.create_scenario("intended-check", 33)
+        intended_path = root / "verifier" / "intended-opening.json"
+        contract = expected_opening()
+        departing = {
+            **intended_opening(contract),
+            "recommended_action": "repair-evaluator",
+        }
+        declared = {
+            "issue": None,
+            "reason": "the guide routes this finding nowhere",
+            "fields": {
+                "recommended_action": {
+                    "intended": "repair-evaluator",
+                    "measured": "proceed",
+                }
+            },
+        }
+        cases = (
+            (intended_opening(contract), None),
+            (
+                departing,
+                "differs from expected-opening.json on recommended_action and declares no divergence",
+            ),
+            ({**departing, "divergence": declared}, None),
+            (
+                {**intended_opening(contract), "divergence": declared},
+                "declares a divergence that no longer holds",
+            ),
+            (
+                {
+                    **departing,
+                    "divergence": {**declared, "issue": "https://example.invalid/1"},
+                },
+                "divergence.issue: must be null or a traigent-first-run issue URL",
+            ),
+            (
+                {
+                    **departing,
+                    "divergence": {
+                        **declared,
+                        "issue": "https://github.com/Traigent/traigent-first-run/issues/7",
+                    },
+                },
+                None,
+            ),
+            (
+                {**intended_opening(contract), "caps": ["dataset-coarse-resolution"]},
+                "caps[0]: must be an object",
+            ),
+            ({**intended_opening(contract), "band": "GOOD"}, "band: must be one of"),
+            (
+                {**intended_opening(contract), "schema_version": 1.0},
+                "schema_version: must equal 1",
+            ),
+            (
+                {**departing, "divergence": {**declared, "fields": {}}},
+                "divergence.fields: must name at least one field",
+            ),
+            (
+                {
+                    **departing,
+                    "band": "STRONG",
+                    "divergence": declared,
+                },
+                "declares a divergence on recommended_action, and "
+                "expected-opening.json now differs on band, recommended_action",
+            ),
+            (
+                {
+                    **departing,
+                    "divergence": {
+                        **declared,
+                        "fields": {
+                            "recommended_action": {
+                                "intended": "repair-evaluator",
+                                "measured": "resplit-dataset",
+                            }
+                        },
+                    },
+                },
+                "divergence.fields.recommended_action.measured: records "
+                "'resplit-dataset', and the measured opening has 'proceed'",
+            ),
+        )
+        for value, reason in cases:
+            with self.subTest(reason=reason, value=value.get("divergence")):
+                intended_path.write_text(json.dumps(value), encoding="utf-8")
+                status, _, error = self.run_cli("check", "intended-check")
+                if reason is None:
+                    self.assertEqual(0, status, error)
+                else:
+                    self.assertEqual(1, status)
+                    self.assertIn(reason, error)
+        intended_path.unlink()
+        status, _, error = self.run_cli("check", "intended-check")
+        self.assertEqual(1, status)
+        self.assertIn("intended opening", error)
+
+    def test_a_declared_divergence_covers_only_the_fields_it_names(self) -> None:
+        """Re-measuring case 49 onto anything but its declared gap fails check."""
+        root = self.copy_bank_scenario("warehouse-text-to-sql")
+        contract_path = root / "verifier" / "expected-opening.json"
+        original = contract_path.read_text(encoding="utf-8")
+        status, _, error = self.run_cli("check", "49")
+        self.assertEqual(0, status, error)
+        for label, change, reason in (
+            (
+                "blocked",
+                {"band": "PARTIAL", "status": "BLOCKED"},
+                "now differs on band, caps, recommended_action, status",
+            ),
+            (
+                "another action",
+                {"recommended_action": "review-answer-key"},
+                "divergence.fields.recommended_action.measured: records 'proceed'",
+            ),
+            (
+                "the guide adopts the finding",
+                {
+                    "recommended_action": "repair-evaluator",
+                    "caps": [
+                        {
+                            "condition": "evaluator-task-mismatch",
+                            "ceiling": None,
+                            "blocks": False,
+                            "asks": True,
+                        }
+                    ],
+                },
+                "declares a divergence that no longer holds",
+            ),
+        ):
+            with self.subTest(label=label):
+                contract_path.write_text(
+                    json.dumps({**json.loads(original), **change}), encoding="utf-8"
+                )
+                status, _, error = self.run_cli("check", "49")
+                contract_path.write_text(original, encoding="utf-8")
+                self.assertEqual(1, status, error)
+                self.assertIn(reason, error)
+
+    def test_check_requires_an_intended_opening_for_each_contract(self) -> None:
+        root = self.copy_read_dependent_scenario()
+        status, _, error = self.run_cli("check", "58")
+        self.assertEqual(0, status, error)
+        (root / "verifier" / "intended-opening-sound-read.json").unlink()
+        status, _, error = self.run_cli("check", "58")
+        self.assertEqual(1, status)
+        self.assertIn("intended-opening-sound-read.json", error)
+
+    def test_check_refuses_an_intended_opening_that_answers_no_contract(
+        self,
+    ) -> None:
+        root = self.copy_bank_scenario("warehouse-text-to-sql")
+        intended = root / "verifier" / "intended-opening.json"
+        for relative in (
+            "intended-opening-sound-read.json",
+            "notes/intended-opening.json",
+        ):
+            with self.subTest(relative=relative):
+                orphan = root / "verifier" / relative
+                orphan.parent.mkdir(parents=True, exist_ok=True)
+                orphan.write_bytes(intended.read_bytes())
+                status, _, error = self.run_cli("check", "49")
+                orphan.unlink()
+                self.assertEqual(1, status, error)
+                self.assertIn(f"verifier/{relative}", error)
+                self.assertIn("answers no contract", error)
+
+    def test_check_refuses_a_project_naming_the_intended_opening_or_its_caps(
+        self,
+    ) -> None:
+        """An intended opening is captain-side, so its name and a cap only it
+        names tell a worker what is being measured, as the contract's do."""
+        root = self.copy_bank_scenario("warehouse-text-to-sql")
+        agent = root / "project" / "agent.py"
+        original = agent.read_text(encoding="utf-8")
+        for tell, line in (
+            ("intended-opening", "# see intended_opening.json\n"),
+            ("evaluator-task-mismatch", "# EVALUATOR_TASK_MISMATCH\n"),
+        ):
+            with self.subTest(tell=tell):
+                agent.write_text(original + line, encoding="utf-8")
+                status, output, error = self.run_cli("check", "49")
+                agent.write_text(original, encoding="utf-8")
+                self.assertEqual(1, status, output)
+                self.assertIn("ships project/agent.py, which names", error)
+                self.assertIn(tell, error)
+
+    def test_every_contract_has_its_own_hand_written_intended_opening(self) -> None:
+        """One intended opening per measured contract, and the bank's divergence.
+
+        Warehouse text-to-SQL is the one scenario whose intent departs from its
+        measurement: the guide documents a text-comparing SQL scorer as a
+        finding to repair, and its readiness script has no cap for it.
+        """
+        departing = []
+        for manifest_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
+        ):
+            verifier = manifest_path.parent / "verifier"
+            contracts = sorted(
+                path.name for path in verifier.glob("expected-opening*.json")
+            )
+            intended = sorted(
+                path.name for path in verifier.glob("intended-opening*.json")
+            )
+            self.assertEqual(
+                [name.replace("expected-", "intended-") for name in contracts], intended
+            )
+            for name in intended:
+                if json.loads((verifier / name).read_text())["divergence"] is not None:
+                    departing.append(f"{manifest_path.parent.name}/{name}")
+        self.assertEqual(["warehouse-text-to-sql/intended-opening.json"], departing)
+
+    def test_verify_notes_whether_the_result_agrees_with_the_intended_opening(
+        self,
+    ) -> None:
+        root = self.create_scenario("intended-note", 34)
+        contract = expected_opening()
+        intended = {
+            **intended_opening(contract),
+            "recommended_action": "repair-evaluator",
+            "divergence": {
+                "issue": None,
+                "reason": "the guide routes it nowhere",
+                "fields": {
+                    "recommended_action": {
+                        "intended": "repair-evaluator",
+                        "measured": "proceed",
+                    }
+                },
+            },
+        }
+        (root / "verifier" / "intended-opening.json").write_text(
+            json.dumps(intended), encoding="utf-8"
+        )
+        self.commit_repository_paths(
+            root / "verifier" / "intended-opening.json", message="Depart"
+        )
+        run_record = self.prepare_run_record("intended-note", name="intended-note-run")
+
+        status, output, error = self.verify_plain("intended-note", run_record)
+        self.assertEqual(0, status, error)
+        self.assertIn(
+            "intended opening: DIVERGES on recommended_action - the result differs "
+            "from the hand-written intended opening, which departs from the "
+            "measured contract as declared: the guide routes it nowhere (issue: none)",
+            output,
+        )
+        follows_intent = {
+            **readiness_result(contract),
+            "recommended_action": "repair-evaluator",
+        }
+        status, output, error = self.run_cli(
+            "verify",
+            "intended-note",
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(self.write_result(follows_intent)),
+        )
+        self.assertEqual(1, status, "PASS means the measured contract matched")
+        self.assertIn("recommended_action: expected 'proceed'", error)
+        self.assertIn("intended opening: AGREES - the result matches", error)
+
+    def test_verify_rehashes_the_worker_project_against_its_inventory(self) -> None:
+        self.create_scenario("project-graded", 35)
+        run_record = self.prepare_run_record("project-graded", name="project-run")
+        project = run_record.parent / "customer-project"
+
+        def verify() -> tuple[int, str, str]:
+            return self.verify_plain(
+                "project-graded", run_record, "--project-dir", str(project)
+            )
+
+        status, output, error = verify()
+        self.assertEqual(0, status, error)
+        self.assertIn("its project matches the prepared inventory apart from 0", output)
+
+        writes = (
+            "traigent-runs/readiness/20260923T101500Z/row-review.json",
+            "traigent-runs/readiness/20260923T101500Z/preflight.json",
+            "traigent-runs/calibration-results.json",
+            "traigent-runs/run-plan.md",
+            "traigent-runs/run-log.jsonl",
+        )
+        for relative in writes:
+            (project / relative).parent.mkdir(parents=True, exist_ok=True)
+            (project / relative).write_text("{}\n", encoding="utf-8")
+        status, output, error = verify()
+        self.assertEqual(0, status, error)
+        self.assertIn("apart from 5 of the guide's opening writes", output)
+        self.assertIn(
+            "project: opening writes found: " + ", ".join(sorted(writes)), output
+        )
+
+        agent = project / "agent.py"
+        original = agent.read_bytes()
+        guide_file = project / "traigent-first-run" / "GUIDE.md"
+        guide_original = guide_file.read_bytes()
+        probes = (
+            (
+                "modified",
+                lambda: agent.write_bytes(original + b"# edited\n"),
+                "agent.py: modified",
+            ),
+            ("deleted", agent.unlink, "agent.py: deleted"),
+            ("mode", lambda: agent.chmod(0o755), "agent.py: executable bit changed"),
+            (
+                "guide edited",
+                lambda: guide_file.write_bytes(b"# another guide\n"),
+                "traigent-first-run/GUIDE.md: modified",
+            ),
+            (
+                "undocumented write",
+                lambda: (project / "traigent-runs" / "row-review.json").write_text(
+                    "{}"
+                ),
+                "traigent-runs/row-review.json: added, and not one of the guide's opening writes",
+            ),
+            (
+                "stamp not a UTC name",
+                lambda: (project / "traigent-runs" / "readiness" / "latest").mkdir()
+                or (
+                    project / "traigent-runs" / "readiness" / "latest" / "x.json"
+                ).write_text("{}"),
+                "traigent-runs/readiness/latest/x.json: added",
+            ),
+            (
+                "link",
+                lambda: (project / "linked.py").symlink_to(agent),
+                "linked.py: a symbolic link or special file",
+            ),
+        )
+        for label, damage, reason in probes:
+            with self.subTest(label=label):
+                damage()
+                status, output, error = verify()
+                self.assertEqual(1, status, output)
+                self.assertIn(f"- project: {reason}", error)
+                for extra in ("linked.py", "traigent-runs/row-review.json"):
+                    if (project / extra).is_symlink() or (project / extra).is_file():
+                        (project / extra).unlink()
+                shutil.rmtree(project / "traigent-runs" / "readiness" / "latest", True)
+                agent.write_bytes(original)
+                agent.chmod(0o644)
+                guide_file.write_bytes(guide_original)
+        status, output, error = verify()
+        self.assertEqual(0, status, error)
+
+    def test_verify_allows_every_documented_opening_write_and_no_other(self) -> None:
+        self.copy_bank_scenario("incident-severity-triage")
+        run_record = self.prepare_run_record("46", name="writes-run")
+        project = run_record.parent / "customer-project"
+        cases_file = project / "traigent-runs" / "calibration-cases.json"
+        original_cases = cases_file.read_bytes()
+
+        def verify() -> tuple[int, str, str]:
+            return self.verify_plain(
+                "incident-severity-triage", run_record, "--project-dir", str(project)
+            )
+
+        (project / "traigent-runs" / "calibration.log").write_text("ran\n")
+        cases_file.write_bytes(original_cases.replace(b"[", b"[ ", 1))
+        status, output, error = verify()
+        self.assertEqual(0, status, error)
+        self.assertIn(
+            "project: opening writes found: traigent-runs/calibration-cases.json "
+            "(rewritten), traigent-runs/calibration.log",
+            output,
+        )
+
+        # This test's temporary directory is a Git work tree, so the guide adds
+        # its one ignore line to the project root, and nothing else.
+        gitignore = project / ".gitignore"
+        for content, want, reason in (
+            ("/traigent-runs/\n", 0, "opening writes found: .gitignore"),
+            (
+                "/traigent-runs/\n*.db\n",
+                1,
+                ".gitignore: holds something other than the guide's /traigent-runs/",
+            ),
+        ):
+            with self.subTest(content=content):
+                gitignore.write_text(content, encoding="utf-8")
+                status, output, error = verify()
+                self.assertEqual(want, status, output + error)
+                self.assertIn(reason, output + error)
+        gitignore.unlink()
+
+        cases_file.unlink()
+        status, output, error = verify()
+        self.assertEqual(1, status)
+        self.assertIn("- project: traigent-runs/calibration-cases.json: deleted", error)
+
+    def test_verify_reports_the_bytecode_python_writes_for_a_prepared_module(
+        self,
+    ) -> None:
+        """The guide's calibration imports modules without `-B`, so Python
+        writes their bytecode. Only a file that reads as the bytecode of a file
+        `prepare` copied passes: a CPython cache tag the guide runs on, an
+        optimization level Python writes, that Python's header over the
+        prepared source's size, and - where verify runs that same Python - a
+        body that unmarshals to a code object."""
+        self.copy_bank_scenario("incident-severity-triage")
+        run_record = self.prepare_run_record("46", name="bytecode-run")
+        project = run_record.parent / "customer-project"
+        evaluator = (project / "evaluator.py").read_bytes()
+        readiness = (
+            project
+            / "traigent-first-run/skills/traigent-first-run/scripts/readiness.py"
+        ).read_bytes()
+        running = sys.implementation.cache_tag
+        other = "cpython-313" if running != "cpython-313" else "cpython-311"
+
+        def pyc(
+            tag: str,
+            source: bytes,
+            *,
+            flags: int = 0,
+            size: int | None = None,
+            body: bytes | None = None,
+        ) -> bytes:
+            code = marshal.dumps(compile(source, "module.py", "exec"))
+            return (
+                scenario.BYTECODE_MAGIC[tag]
+                + flags.to_bytes(4, "little")
+                + (0).to_bytes(4, "little")
+                + (len(source) if size is None else size).to_bytes(4, "little")
+                + (code if body is None else body)
+            )
+
+        def verify() -> tuple[int, str, str]:
+            return self.verify_plain(
+                "incident-severity-triage", run_record, "--project-dir", str(project)
+            )
+
+        allowed = {
+            f"__pycache__/evaluator.{running}.pyc": pyc(running, evaluator),
+            f"__pycache__/evaluator.{other}.opt-1.pyc": pyc(other, evaluator),
+            "traigent-first-run/skills/traigent-first-run/scripts/__pycache__/"
+            f"readiness.{running}.opt-2.pyc": pyc(running, readiness),
+        }
+        for relative, content in allowed.items():
+            (project / relative).parent.mkdir(parents=True, exist_ok=True)
+            (project / relative).write_bytes(content)
+        status, output, error = verify()
+        self.assertEqual(0, status, error)
+        self.assertIn("apart from 3 of the guide's opening writes", output)
+        self.assertIn(
+            f"__pycache__/evaluator.{running}.pyc (bytecode of evaluator.py)", output
+        )
+        self.assertIn(
+            f"scripts/__pycache__/readiness.{running}.opt-2.pyc (bytecode of "
+            "traigent-first-run/skills/traigent-first-run/scripts/readiness.py)",
+            output,
+        )
+
+        named = f"__pycache__/evaluator.{running}.pyc"
+        for relative, content, reason in (
+            (
+                "__pycache__/stash.cpython-312.pyc",
+                pyc("cpython-312", evaluator),
+                "__pycache__/stash.cpython-312.pyc: added, and not one of the "
+                "guide's opening writes",
+            ),
+            (
+                "__pycache__/evaluator.pyc",
+                pyc(running, evaluator),
+                "__pycache__/evaluator.pyc: added",
+            ),
+            (
+                "evaluator.cpython-312.pyc",
+                pyc("cpython-312", evaluator),
+                "evaluator.cpython-312.pyc: added",
+            ),
+            (
+                "__pycache__/agent.evil9.pyc",
+                pyc(running, evaluator),
+                "__pycache__/agent.evil9.pyc: added",
+            ),
+            (
+                "__pycache__/agent.cpython-310.pyc",
+                pyc(running, evaluator),
+                "__pycache__/agent.cpython-310.pyc: added",
+            ),
+            (
+                f"__pycache__/agent.{running}.opt-7.pyc",
+                pyc(running, evaluator),
+                f"__pycache__/agent.{running}.opt-7.pyc: added",
+            ),
+            (named, b"arbitrary bytes", "shorter than a bytecode header"),
+            (
+                named,
+                pyc(running, evaluator)[:16],
+                "a bytecode header with no body",
+            ),
+            (
+                f"__pycache__/evaluator.{other}.pyc",
+                pyc(other, evaluator)[:16],
+                "a bytecode header with no body",
+            ),
+            (
+                named,
+                pyc(running, evaluator) + b"payload",
+                "its body carries bytes after the code object",
+            ),
+            (
+                named,
+                pyc(running, evaluator) + b"N",
+                "its body carries bytes after the code object",
+            ),
+            (
+                named,
+                pyc(running, evaluator, body=b"[" + (1 << 30).to_bytes(4, "little")),
+                "does not unmarshal to a code object",
+            ),
+            (named, pyc(other, evaluator), f"does not open with {running}'s magic"),
+            (named, pyc(running, evaluator, flags=1), "not the timestamp-based"),
+            (
+                named,
+                pyc(running, evaluator, size=len(evaluator) + 1),
+                f"records a source of {len(evaluator) + 1} bytes",
+            ),
+            (
+                named,
+                pyc(running, evaluator, body=b"\xff not marshal"),
+                "does not unmarshal to a code object",
+            ),
+            (
+                named,
+                pyc(running, evaluator, body=marshal.dumps(42)),
+                "does not unmarshal to a code object",
+            ),
+            (
+                named,
+                pyc(running, evaluator) + b"\0" * scenario.MAX_BYTECODE_BYTES,
+                "larger than",
+            ),
+            (
+                "traigent-runs/__pycache__/calibration.cpython-312.pyc",
+                pyc("cpython-312", evaluator),
+                "traigent-runs/__pycache__: a directory the opening does not create",
+            ),
+        ):
+            with self.subTest(relative=relative, reason=reason):
+                path = project / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                original = path.read_bytes() if path.is_file() else None
+                path.write_bytes(content)
+                status, output, error = verify()
+                if original is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(original)
+                if path.parent.name == "__pycache__" and not any(path.parent.iterdir()):
+                    path.parent.rmdir()
+                self.assertEqual(1, status, output)
+                self.assertIn(f"- project: {relative}", error)
+                self.assertIn(reason, error)
+
+    def test_a_bytecode_body_that_cannot_be_read_is_reported_not_raised(
+        self,
+    ) -> None:
+        """marshal runs out of memory or overflows on a crafted count; that is
+        a body that does not unmarshal, never a traceback. A body that does not
+        open on marshal's code type is refused before it is read at all."""
+        tag = sys.implementation.cache_tag
+        source = b"x = 1\n"
+        header = (
+            scenario.BYTECODE_MAGIC[tag] + bytes(8) + len(source).to_bytes(4, "little")
+        )
+        path = Path(self.temporary_directory.name) / "module.pyc"
+        path.write_bytes(header + marshal.dumps(compile(source, "m.py", "exec")))
+        for error in (MemoryError, OverflowError):
+            with self.subTest(error=error.__name__):
+                with mock.patch.object(scenario.marshal, "loads", side_effect=error):
+                    self.assertEqual(
+                        "its body does not unmarshal to a code object",
+                        scenario._bytecode_problem(path, tag, len(source)),
+                    )
+        path.write_bytes(header + b"[" + (1 << 30).to_bytes(4, "little"))
+        with mock.patch.object(scenario.marshal, "loads") as loads:
+            self.assertEqual(
+                "its body does not unmarshal to a code object",
+                scenario._bytecode_problem(path, tag, len(source)),
+            )
+        loads.assert_not_called()
+
+    def test_the_bytecode_magic_table_matches_this_python(self) -> None:
+        """Each magic number is the one CPython writes; this interpreter vouches
+        for its own entry, on each Python the suite runs on."""
+        tag = sys.implementation.cache_tag
+        self.assertIn(tag, scenario.BYTECODE_MAGIC)
+        self.assertEqual(importlib.util.MAGIC_NUMBER, scenario.BYTECODE_MAGIC[tag])
+
+    def test_verify_fails_a_directory_the_opening_does_not_create(self) -> None:
+        self.copy_bank_scenario("incident-severity-triage")
+        run_record = self.prepare_run_record("46", name="directory-run")
+        project = run_record.parent / "customer-project"
+
+        def verify() -> tuple[int, str, str]:
+            return self.verify_plain(
+                "incident-severity-triage", run_record, "--project-dir", str(project)
+            )
+
+        # The directories the guide's opening documents, even left empty.
+        for relative in (
+            "traigent-runs/readiness/20260923T120000Z",
+            "__pycache__",
+            "traigent-first-run/skills/traigent-first-run/scripts/__pycache__",
+        ):
+            (project / relative).mkdir(parents=True, exist_ok=True)
+        status, output, error = verify()
+        self.assertEqual(0, status, error)
+        for relative, reason in (
+            ("notes", "notes: a directory the opening does not create"),
+            (
+                "traigent-runs/readiness/latest",
+                "traigent-runs/readiness/latest: a directory the opening does not "
+                "create",
+            ),
+            (
+                "traigent-first-run/skills/__pycache__",
+                "traigent-first-run/skills/__pycache__: a directory the opening "
+                "does not create",
+            ),
+        ):
+            with self.subTest(relative=relative):
+                (project / relative).mkdir()
+                status, output, error = verify()
+                (project / relative).rmdir()
+                self.assertEqual(1, status, output)
+                self.assertIn(f"- project: {reason}", error)
+
+    def test_verify_refuses_a_gitignore_outside_a_git_work_tree(self) -> None:
+        self.create_scenario("outside-tree", 41)
+        guide_source = self.create_guide_source()
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        output_path = Path(outside.name) / "run"
+        status, _, error = self.run_cli(
+            "prepare",
+            "outside-tree",
+            "--guide-src",
+            str(guide_source),
+            "--output",
+            str(output_path),
+        )
+        self.assertEqual(0, status, error)
+        project = output_path / "customer-project"
+        (project / ".gitignore").write_text("/traigent-runs/\n", encoding="utf-8")
+        status, output, error = self.verify_plain(
+            "outside-tree",
+            output_path / "run.json",
+            "--project-dir",
+            str(project),
+        )
+        self.assertEqual(1, status, output)
+        self.assertIn(
+            ".gitignore: the project is not inside a Git work tree, where the guide "
+            "creates no .gitignore",
+            error,
+        )
+
+    @unittest.skipIf(os.geteuid() == 0, "root reads a directory whatever its mode")
+    def test_verify_fails_loudly_on_a_project_it_cannot_read(self) -> None:
+        self.create_scenario("unreadable", 42)
+        run_record = self.prepare_run_record("unreadable", name="unreadable-run")
+        project = run_record.parent / "customer-project"
+        hidden = project / "traigent-runs" / "hidden"
+        hidden.mkdir(parents=True)
+        (hidden / "stash.py").write_text("print('hidden')\n")
+        hidden.chmod(0o000)
+        self.addCleanup(hidden.chmod, 0o755)
+        status, output, error = self.verify_plain(
+            "unreadable", run_record, "--project-dir", str(project)
+        )
+        self.assertEqual(1, status, output)
+        self.assertEqual("", output)
+        self.assertIn("cannot read", error)
+        self.assertIn("traigent-runs/hidden", error)
+        hidden.chmod(0o755)
+
+        original_lstat = Path.lstat
+
+        def vanishing(path: Path) -> os.stat_result:
+            if path.name == "stash.py":
+                raise FileNotFoundError(2, "No such file or directory", str(path))
+            return original_lstat(path)
+
+        with mock.patch.object(Path, "lstat", autospec=True, side_effect=vanishing):
+            status, output, error = self.verify_plain(
+                "unreadable", run_record, "--project-dir", str(project)
+            )
+        self.assertEqual(1, status, output)
+        self.assertIn("cannot inspect traigent-runs/hidden/stash.py", error)
+
+    def test_verify_grades_the_final_message_for_the_guides_ask_shape(self) -> None:
+        self.create_scenario("ask-graded", 36)
+        run_record = self.prepare_run_record(
+            "ask-graded", name="ask-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+
+        def verify(text: str) -> tuple[int, str, str]:
+            return self.verify_plain(
+                "ask-graded",
+                run_record,
+                "--response",
+                str(self.write_response(text)),
+            )
+
+        status, output, error = verify(WELL_SHAPED_ASK)
+        self.assertEqual(0, status, error)
+        self.assertIn("its final message raises no hard ask-shape finding", output)
+        self.assertNotIn("response note:", output)
+        for text, reason in (
+            (
+                WELL_SHAPED_ASK.replace(
+                    "B. Pause", "B. `I have it` - give me a path.\nC. Pause"
+                ),
+                "route B opens on `I have it`",
+            ),
+            (
+                WELL_SHAPED_ASK.replace(" (recommended)", ""),
+                "none of the 2 routes is marked recommended",
+            ),
+            (
+                WELL_SHAPED_ASK.replace("B. Pause", "C. Pause"),
+                "options are labelled A, C",
+            ),
+        ):
+            with self.subTest(reason=reason):
+                status, output, error = verify(text)
+                self.assertEqual(1, status, output)
+                self.assertIn(f"- response: {reason}", error)
+        # What the grader reads heuristically is a note beside the verdict: it
+        # is printed on a PASS and on a FAIL, and never changes either.
+        for text, note, want in (
+            (
+                WELL_SHAPED_ASK + "\nShall I also add rows?\n",
+                "a question follows `I have it`",
+                0,
+            ),
+            (
+                WELL_SHAPED_ASK.replace(
+                    "B. Pause", "B. I have it - give me a path.\nC. Pause"
+                ),
+                "route B offers `I have it` inside its text",
+                0,
+            ),
+            (
+                WELL_SHAPED_ASK.replace(
+                    "then carry on.", "then carry on - redraw the split too?"
+                ),
+                "route A asks something of its own",
+                0,
+            ),
+            (
+                WELL_SHAPED_ASK.replace("B. Pause", "C. Pause").replace(
+                    "then carry on.", "then carry on - redraw the split too?"
+                ),
+                "route A asks something of its own",
+                1,
+            ),
+        ):
+            with self.subTest(note=note, want=want):
+                status, output, error = verify(text)
+                self.assertEqual(want, status, output + error)
+                self.assertIn(f"response note: {note}", output + error)
+
+    def write_response(self, text: str) -> Path:
+        path = Path(self.temporary_directory.name) / "response.md"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_verify_requires_i_have_it_where_a_cap_asks(self) -> None:
+        """An unblocked opening with an asking cap stops on the one ask too."""
+        root = self.create_scenario("asking-cap", 43)
+        asking = {
+            **expected_opening(),
+            "band": "STRONG",
+            "recommended_action": "add-examples",
+            "caps": [
+                {
+                    "condition": "dataset-coarse-resolution",
+                    "ceiling": 89,
+                    "blocks": False,
+                    "asks": True,
+                }
+            ],
+        }
+        self.write_contract(root, asking, message="Ask")
+        run_record = self.prepare_run_record(
+            "asking-cap", name="asking-cap-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        without = WELL_SHAPED_ASK.split("\nOr reply")[0]
+        for text, want in ((WELL_SHAPED_ASK, 0), (without, 1)):
+            with self.subTest(want=want):
+                status, output, error = self.verify_plain(
+                    "asking-cap",
+                    run_record,
+                    "--response",
+                    str(self.write_response(text)),
+                )
+                self.assertEqual(want, status, output + error)
+        self.assertIn("does not end on `I have it` with a path", error)
+
+    def assert_one_ask_cap_requires_i_have_it(
+        self, condition: str, number: int
+    ) -> None:
+        """An unblocked opening whose one asking cap is `condition` stops on the
+        one ask, so its final message must end on `I have it`."""
+        slug = condition.replace("dataset-", "one-ask-")
+        root = self.create_scenario(slug, number)
+        asking = {
+            **expected_opening(),
+            "band": "STRONG",
+            "recommended_action": "add-examples",
+            "caps": [
+                {"condition": condition, "ceiling": 89, "blocks": False, "asks": True}
+            ],
+        }
+        self.write_contract(root, asking, message=f"Ask on {condition}")
+        run_record = self.prepare_run_record(
+            slug, name=f"{slug}-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        without = WELL_SHAPED_ASK.split("\nOr reply")[0]
+        for text, want in ((WELL_SHAPED_ASK, 0), (without, 1)):
+            with self.subTest(condition=condition, want=want):
+                status, output, error = self.verify_plain(
+                    slug, run_record, "--response", str(self.write_response(text))
+                )
+                self.assertEqual(want, status, output + error)
+        self.assertIn("does not end on `I have it` with a path", error)
+
+    def test_verify_requires_i_have_it_where_the_dataset_is_too_small(
+        self,
+    ) -> None:
+        """The top-up for a dataset below measurable size rides on the one ask."""
+        self.assert_one_ask_cap_requires_i_have_it("dataset-below-measurable-size", 48)
+
+    def test_verify_requires_i_have_it_where_no_dataset_asks_without_blocking(
+        self,
+    ) -> None:
+        """The routing reference puts both ways out of an absent dataset on the
+        one ask ("put both ways out on the one ask"), so the condition is a
+        member. At guide d07b62cd readiness always blocks on it, and a blocked
+        opening needs `I have it` on its status alone; this contract, with the
+        cap asking and not blocking, holds the membership itself, which is
+        what a readiness that stopped blocking on it would reach."""
+        self.assert_one_ask_cap_requires_i_have_it("dataset-absent", 49)
+
+    def test_verify_requires_i_have_it_where_rows_repeat(self) -> None:
+        """component-creation.md puts the repeated-rows question on the one ask."""
+        self.assert_one_ask_cap_requires_i_have_it("dataset-repeated-rows", 45)
+
+    def test_verify_requires_i_have_it_where_the_split_follows_task_families(
+        self,
+    ) -> None:
+        """A split drawn by task family is disclosed on the one ask, whose
+        question it rides on."""
+        self.assert_one_ask_cap_requires_i_have_it("dataset-split-by-task-family", 47)
+
+    def test_verify_requires_i_have_it_only_where_the_guide_routes_the_one_ask(
+        self,
+    ) -> None:
+        """Which bank openings stop on the one ask, from the guide's routing.
+
+        Case 50's asking cap is put at the pre-spend approval, so the guide's own
+        copied-actor question, which offers no `I have it`, passes there; case
+        58's is settled where the answer-key review says. Case 51 is blocked, and
+        case 56's top-up rides on the one ask.
+        """
+        copied_actor = (
+            "Your evaluator sets its connection target at evaluator.py:12 "
+            "(clinic.db). This run can calibrate a copy of it against a target that "
+            "is not the one your original uses. A. This run copies that database "
+            "file byte for byte into traigent-runs/calibration/ and calibrates the "
+            "evaluator copy against the file copy (recommended). B. Paste a "
+            "read-only connection into .env under TRAIGENT_CALIBRATION_TARGET and "
+            "reply B. C. Skip the calibration; the run continues on the disclosure "
+            "above.\n"
+        )
+        response = self.write_response(copied_actor)
+        for slug, case, extra, want in (
+            ("clinic-scheduling-sql-exec", "50", (), 0),
+            ("contract-clause-extractor", "54", (), 0),
+            (
+                "regex-rule-authoring",
+                "58",
+                (
+                    "--row-review",
+                    str(
+                        scenario.REPOSITORY_ROOT
+                        / "scenarios/regex-rule-authoring/verifier/measurement"
+                        / "row-review.json"
+                    ),
+                ),
+                0,
+            ),
+            ("booking-assistant-next-action", "51", (), 1),
+            ("freight-quote-estimator", "56", (), 1),
+        ):
+            with self.subTest(case=case):
+                self.copy_bank_scenario(slug)
+                record = self.prepare_run_record(
+                    case, name=f"one-ask-{case}", skill_text=SKILL_WITH_ASK_RULES
+                )
+                status, output, error = self.verify_plain(
+                    slug, record, *extra, "--response", str(response)
+                )
+                self.assertEqual(want, status, output + error)
+                if want:
+                    self.assertIn("does not end on `I have it` with a path", error)
+
+    def test_verify_fails_a_final_message_with_no_readable_ask(self) -> None:
+        self.create_scenario("no-ask", 44)
+        run_record = self.prepare_run_record(
+            "no-ask", name="no-ask-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        for text, reason in (
+            ("", "the message is empty"),
+            ("Here is your readiness card.\n", "no ask was found"),
+            ("1. Build it (recommended).\n2. Pause.\n", "options are labelled 1, 2"),
+        ):
+            with self.subTest(reason=reason):
+                status, output, error = self.verify_plain(
+                    "no-ask", run_record, "--response", str(self.write_response(text))
+                )
+                self.assertEqual(1, status, output)
+                self.assertIn(f"- response: {reason}", error)
+
+    def test_verify_requires_i_have_it_on_a_blocked_opening(self) -> None:
+        """A blocked opening stops on the one ask, which ends on `I have it`."""
+        root = self.create_scenario("blocked-ask", 37)
+        blocked = {
+            **expected_opening(),
+            "band": "PARTIAL",
+            "status": "BLOCKED",
+            "recommended_action": "repair-evaluator",
+            "caps": [
+                {
+                    "condition": "evaluator-invalid",
+                    "ceiling": 25,
+                    "blocks": True,
+                    "asks": False,
+                }
+            ],
+        }
+        self.write_contract(root, blocked, message="Block")
+        run_record = self.prepare_run_record(
+            "blocked-ask", name="blocked-ask-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        without = WELL_SHAPED_ASK.split("\nOr reply")[0]
+        for slug_text, want in ((WELL_SHAPED_ASK, 0), (without, 1)):
+            with self.subTest(want=want):
+                status, output, error = self.verify_plain(
+                    "blocked-ask",
+                    run_record,
+                    "--response",
+                    str(self.write_response(slug_text)),
+                )
+                self.assertEqual(want, status, output + error)
+        self.assertIn("does not end on `I have it` with a path", error)
+
+        self.create_scenario("open-ask", 38)
+        open_record = self.prepare_run_record(
+            "open-ask", name="open-ask-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        status, output, error = self.verify_plain(
+            "open-ask", open_record, "--response", str(self.write_response(without))
+        )
+        self.assertEqual(0, status, error)
+
+    def test_verify_reads_the_ask_rules_from_the_guide_the_run_was_given(self) -> None:
+        self.create_scenario("ask-rules", 39)
+        missing = self.prepare_run_record("ask-rules", name="rules-missing-run")
+        status, output, error = self.verify_plain(
+            "ask-rules",
+            missing,
+            "--response",
+            str(self.write_response(WELL_SHAPED_ASK)),
+        )
+        self.assertEqual(1, status)
+        self.assertIn("no longer states a rule --response grades", error)
+
+        stated = self.prepare_run_record(
+            "ask-rules", name="rules-stated-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        skill = (
+            stated.parent
+            / "customer-project/traigent-first-run/skills/traigent-first-run/SKILL.md"
+        )
+        skill.write_text(SKILL_WITH_ASK_RULES + "\nedited\n", encoding="utf-8")
+        status, output, error = self.verify_plain(
+            "ask-rules", stated, "--response", str(self.write_response(WELL_SHAPED_ASK))
+        )
+        self.assertEqual(1, status)
+        self.assertIn(
+            "is not the skills/traigent-first-run/SKILL.md the run record lists", error
+        )
+
+    def test_every_verify_option_works_alone_and_with_the_others(self) -> None:
+        """The mode by option cross-product: one contract or two, each subset of flags."""
+        root = self.copy_read_dependent_scenario()
+        self.create_scenario("combined", 40)
+        plain = self.prepare_run_record(
+            "combined", name="combined-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        dependent = self.prepare_run_record(
+            "58", name="dependent-combined-run", skill_text=SKILL_WITH_ASK_RULES
+        )
+        sound = json.loads(
+            (root / "verifier" / "expected-opening-sound-read.json").read_text()
+        )
+        read = self.write_read(
+            {
+                "line-4": "yes",
+                "line-9": "yes",
+                "line-15": "yes",
+                "line-17": "yes",
+                "line-30": "yes",
+            },
+            name="sound-read.json",
+        )
+        modes = (
+            ("combined", plain, readiness_result(expected_opening()), ["model"], ()),
+            (
+                "58",
+                dependent,
+                readiness_result(sound),
+                ["model", "prompt_style", "flavour", "temperature"],
+                ("--row-review", str(read)),
+            ),
+        )
+        flags = ("--agent-read", "--project-dir", "--response")
+        for case, record, result, controls, base in modes:
+            options = {
+                "--agent-read": str(
+                    self.write_agent_read(controls, name=f"{case}-agent.json")
+                ),
+                "--project-dir": str(record.parent / "customer-project"),
+                "--response": str(self.write_response(WELL_SHAPED_ASK)),
+            }
+            for size in range(len(flags) + 1):
+                for chosen in itertools.combinations(flags, size):
+                    with self.subTest(case=case, flags=chosen):
+                        extra = [
+                            item for flag in chosen for item in (flag, options[flag])
+                        ]
+                        status, output, error = self.run_cli(
+                            "verify",
+                            case,
+                            "--run-record",
+                            str(record),
+                            "--result",
+                            str(self.write_result(result, name=f"{case}.json")),
+                            *base,
+                            *extra,
+                        )
+                        self.assertEqual(0, status, error)
+                        self.assertEqual(
+                            len(chosen), output.split("\n")[0].count("; its ")
+                        )
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_MATCH_EXAMPLE_ROOT = (
@@ -6456,7 +7761,8 @@ class CommittedContractMatchExampleTests(unittest.TestCase):
             "recommended_action, caps in the captain-recorded contract\n"
             "note: the recorded contract is schema 1, which records cap "
             "conditions only; ceilings, blocks and asks were not compared, and no "
-            "readiness schema_version was required\n",
+            "readiness schema_version was required\n"
+            "intended opening: none is recorded at this revision\n",
             process.stdout,
         )
 

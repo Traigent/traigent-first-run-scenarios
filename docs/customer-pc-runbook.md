@@ -198,6 +198,12 @@ that read against the scenario's verdict for every row, then compares the
 result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
 
+Three more options - `--agent-read`, `--project-dir` and `--response` - grade
+the run beyond the measured contract, and `verify` also notes whether the result
+agrees with the scenario's hand-written intended opening; that note never
+changes a `PASS`. What each option checks, and what it leaves ungraded, is in
+[GUIDE.md step 5](../GUIDE.md#5-capture-and-verify-the-opening).
+
 A matching result may be labeled **Verified run evidence** only when the report
 also retains the captured result, both repository revisions, `run.json`, worker
 and session identity, environment and isolation boundary, exact handoff and

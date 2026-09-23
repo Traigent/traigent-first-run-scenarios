@@ -98,7 +98,7 @@ optimization.
 | `incident-severity-triage` (46)      | Ready reference        | Closed-label severity classifier; agent, labeled rows, evaluator, and four varying settings present                                 | EXCELLENT · OK · `proceed` · none                                                                         |
 | `helpdesk-queue-router` (47)         | Ready reference        | Six-queue ticket router whose evaluator folds three ticketing tools' spellings together; all components ready                       | EXCELLENT · OK · `proceed` · none                                                                         |
 | `policy-handbook-rag` (48)           | Ready reference        | Retrieval-augmented short-answer QA over a 20-document handbook; all components ready                                               | EXCELLENT · OK · `proceed` · none                                                                         |
-| `warehouse-text-to-sql` (49)         | Evaluator quality      | Text-to-SQL over a shipped SQLite database; the scorer compares SQL as text, the wrong kind of check for the task                    | EXCELLENT · OK · `proceed` · none (the mismatch is a task-fit finding on the card, not a cap)              |
+| `warehouse-text-to-sql` (49)         | Evaluator quality      | Text-to-SQL over a shipped SQLite database; the scorer compares SQL as text, the wrong kind of check for the task                    | EXCELLENT · OK · `proceed` · none (the mismatch is a task-fit finding on the card, not a cap; the hand-written intended opening asks for an evaluator repair and declares that divergence, field by field) |
 | `clinic-scheduling-sql-exec` (50)    | Execution safety       | Text-to-SQL whose scorer executes the generated query against the shipped database; calibration of the original is declined        | WORKABLE · OK · `confirm-evaluator-connection` · `evaluator-calibration-refused`                          |
 | `booking-assistant-next-action` (51) | Dataset integrity      | Next-action selection from a flat chat transcript; six tuning transcripts repeat on the holdout side                                | PARTIAL · BLOCKED · `resplit-dataset` · `dataset-tune-holdout-overlap`, `dataset-repeated-rows`           |
 | `tool-dispatch-selector` (52)        | Search-space readiness | Tool-call selection with one model, one fixed instruction, and no setting that varies                                               | PARTIAL · BLOCKED · `vary-knobs` · `agent-no-varying-knobs`                                               |
@@ -257,6 +257,12 @@ that read against the scenario's verdict for every row, then compares the
 result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
 
+Three more options - `--agent-read`, `--project-dir` and `--response` - grade
+the run beyond the measured contract, and `verify` also notes whether the result
+agrees with the scenario's hand-written intended opening; that note never
+changes a `PASS`. What each option checks, and what it leaves ungraded, is in
+[GUIDE.md step 5](GUIDE.md#5-capture-and-verify-the-opening).
+
 From there the route continues, not the exercise: with your approvals,
 credentials, and cost boundaries in place, the same `customer-project/`
 proceeds through baseline, managed optimization, and results. No such
@@ -327,9 +333,11 @@ scenario.py                         Catalog, preparation, and verification CLI
 scenarios/<slug>/README.md          The scenario's starting state, in prose
 scenarios/<slug>/scenario.json      Public scenario identity, catalog, and content terms
 scenarios/<slug>/project/           Files copied into the worker project
-scenarios/<slug>/verifier/          Captain-side expected opening contract
+scenarios/<slug>/verifier/          Captain-side measured contract and hand-written intended opening
 schema/scenario.schema.json         Scenario manifest schema
 scripts/check_public_surface.py     Public-surface guard over tracked bytes and paths
+scripts/reproduce_openings.py       Re-measures every contract against the pinned guide
+scripts/check_ask_shape.py          Grades a worker's final message for the guide's ask shape
 docs/scenario-coverage.md           Released scenarios by family and dataset-origin rules
 docs/customer-pc-runbook.md         Customer-machine operating procedure
 docs/methodology.md                 Claims, isolation, and evidence model

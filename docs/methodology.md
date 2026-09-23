@@ -217,6 +217,106 @@ the expected contract support an honest preview of the scenario's intended
 opening; they do not broaden the semantic match and are not recorded-run
 evidence.
 
+## Hand-written answers
+
+Every contract above is a measurement: the guide's own scripts run over the
+project bytes. Checking a run against a measurement shows that the run and the
+scripts agree; it cannot show that either is right. One file beside each
+contract is written by hand, and three `verify` options grade a run beyond the
+contract. They check different things, and each is bounded to exactly what it
+reads.
+
+- **Intended opening** - `verifier/intended-opening.json`, written by hand. How
+  this release's files were written, stated exactly: their author had already
+  read the measured band, status, action and cap conditions, which the README's
+  scenario table publishes. Each cap's ceiling came from `readiness.py`'s
+  ceiling constants. Whether each cap blocks or asks came from the guide's
+  routing reference (`evaluation-and-dataset.md`, "Routing readiness findings",
+  and `run-safety.md` on the refused calibration) read together with
+  `readiness.py`'s comments on its cap type. Case 49's one cap is this
+  repository's, because `readiness.py` has none: its condition is named here,
+  whether it blocks or asks came from the evaluation reference and `SKILL.md`
+  section 2, and its ceiling is null because neither the documentation nor the
+  code gives the finding a number - a choice, not a reading. So the
+  agreement shows different things by field: on ceilings, `readiness.py`
+  agreeing with itself; on blocks and asks, partly the documentation agreeing
+  with the code; on band, status, action and conditions, nothing independent,
+  since those were in view. What the exercise did surface is where the guide's
+  documentation and its code part. Case 49 is that place: the evaluation
+  reference treats a scorer that compares SQL as text as a finding to repair,
+  and `readiness.py` has no cap or ask for it, so the intended opening declares
+  a divergence naming both fields and both values. The files cannot detect a
+  ceiling that drifts between the code and the documentation, because the
+  ceilings were read off the code. `check` holds each intended opening equal
+  to its contract unless it declares a divergence naming exactly the fields
+  that differ, with both values; it cannot tell an intended opening written
+  after the measurement from one written before, and nothing in the repository
+  records the order. `verify` notes whether a result agrees with it; that note
+  never changes a `PASS`.
+- **Agent read** (`--agent-read`) - graded against the controls the manifest
+  declares by hand, which `check` holds equal to the committed read the
+  contracts were measured with. *Catches:* a setting name the worker's read
+  gives that the manifest does not declare, a declared one it omits, and any
+  read at all where the scenario has no agent. *Does not establish:* that a
+  declared name is a real setting or that an undeclared one is not - that is
+  the manifest author's reading - nor anything about values, source lines or
+  evidence. On case 52, a read that names the agent's pinned `MODEL` constant as
+  a setting fails here, and readiness given that read no longer blocks, so the
+  contract comparison fails with it.
+- **Project inventory** (`--project-dir`) - graded against the inventory
+  `prepare` recorded in `run.json`, not against anything written by hand.
+  *Proves:* at the moment of the check, no prepared file was changed or removed
+  - apart from a rewrite of a shipped `traigent-runs/calibration-cases.json`,
+  which the guide documents and the output reports - nothing was added beyond
+  the guide's documented opening writes and Python's bytecode of a prepared
+  module, which the guide's calibration imports without `-B` and the output
+  reports, no directory was added beyond the ones those writes create, and
+  every directory could be read. A bytecode file passes only with a supported
+  CPython's name, magic and header over the prepared source's size, a body
+  after the header, and - where `verify` runs that version - a body that opens
+  on marshal's code type and is one code object with nothing appended to it; a
+  body that fails to read, out of memory included, is reported, never raised.
+  *Does not prove:* that nothing was changed and put back, that the opening
+  writes hold correct content, that a bytecode file is what Python compiled
+  from that source - the header records a size and a time, not the source;
+  the time is not compared, because `run.json` records no source modification
+  time; and another version's body is not unmarshalled, so bytes appended to
+  it go unseen - that reading a crafted body is cheap, since a count it
+  declares inside the code object is allocated before the read fails, or
+  anything about files outside the project directory.
+- **Ask shape** (`--response`) - graded against the ask rules the prepared
+  guide's `SKILL.md` states, read from the copy `prepare` made and hashed
+  against `run.json`. It fails only on what the message's structure - its
+  route labels, blank lines and indentation - and the guide's two tokens, the
+  `(recommended` mark and `I have it`, decide, and prints the rest as notes
+  for a person. *Proves:* every list it reads as routes is lettered A, B, C
+  from A with no gap and no repeat but a new `A`, its label lines in one
+  shape or, line under line, in several emphases; no two routes carry the
+  mark, and at least one does wherever the message recommends nothing in
+  words; no route opens on the standing line, `I have it` or "Or reply
+  `I have it`", and `I have it` is not only above the last route; and
+  "I have it" is there where the opening stops on the one ask for every gap -
+  it is blocked, or a cap asks whose question the guide's routing reference
+  puts on that ask. A message the grader cannot read as an ask fails, as the
+  grader's own policy.
+  *Does not prove:* that the ask holds one decision. Whether a sentence above
+  the routes, inside one, or after `I have it` is a second question or a
+  customer's row quoted back cannot be decided from the text, so it is noted,
+  never failed; so are `I have it` inside a route's text anywhere but at its
+  opening, which may be the standing line or a path inside the choices, a
+  mark outside the routes, a recommendation in words instead of the mark, and
+  `I have it` in another spelling. Nor that a route does what it says, that
+  the ask is the right one, that it sits below the result it follows, that
+  `I have it` is absent where the question is not about material, or
+  anything about options in a shape it does not read as routes. Those need a
+  person reading the run, with the notes as a start. The grader is held to
+  `tests/data/asks/`, which holds every ask that three of the guide's
+  references print in quoted, backticked or lettered form, verbatim, and for
+  each rule it grades or notes, messages that break it.
+
+A pass on every grade is still a Phase A statement about supplied files, with
+the same limits as the semantic match above.
+
 ## Phase B live value path
 
 Phase B is a separate human-guided exercise of the real value path. It begins

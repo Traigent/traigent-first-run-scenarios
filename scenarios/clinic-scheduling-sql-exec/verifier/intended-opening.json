@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "band": "WORKABLE",
+  "status": "OK",
+  "recommended_action": "confirm-evaluator-connection",
+  "caps": [
+    {
+      "condition": "evaluator-calibration-refused",
+      "ceiling": null,
+      "blocks": false,
+      "asks": true
+    }
+  ],
+  "divergence": null
+}
