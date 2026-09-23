@@ -44,7 +44,7 @@ jobs:
         run: ruff check scenario.py scripts tests
 
       - name: Type-check production Python
-        run: mypy --strict scenario.py scripts/check_public_surface.py scripts/reproduce_openings.py
+        run: mypy --strict scenario.py scripts/check_public_surface.py scripts/reproduce_openings.py scripts/check_ask_shape.py
 
       # The spelling scope comes from the git index rather than a written-out
       # path list. A renamed or newly added file stays covered, where a stale
@@ -211,6 +211,12 @@ jobs:
 
       - name: Re-measure every published contract
         run: GUIDE="${GITHUB_WORKSPACE}/.guide" python scripts/reproduce_openings.py
+
+      # The ask-shape grade implements sentences of the guide's SKILL.md. This
+      # holds that the pinned guide still states each one, and that every ask
+      # three of its references print is held verbatim in the grader's corpus.
+      - name: Hold the ask-shape rules to the pinned guide
+        run: GUIDE="${GITHUB_WORKSPACE}/.guide" python -m unittest discover -s tests -p test_check_ask_shape.py -v
 
   presentation:
     name: Presentation artifacts
