@@ -206,6 +206,37 @@ BANDS_ABOVE_THE_ANSWER_KEY_HOLD = ("STRONG", "EXCELLENT")
 # published opening carrying it was measured with a review whatever its band.
 REVIEW_DERIVED_CAP = "dataset-unsound-expected-outputs"
 
+# Contracts that read the same on every compared field - band, status, action,
+# and each cap's condition, ceiling, blocks and asks - registered with why their
+# scenarios are still different scenarios and where a reader sees that, since
+# the contract cannot show it. The test derives the groups from the contracts,
+# so an unregistered group and a stale entry both fail. `separated_by_intent`
+# names the twins whose hand-written intended opening departs from the measured
+# one, which is where the intended openings tell twins apart.
+KNOWN_OPENING_TWINS: dict[frozenset[str], dict[str, object]] = {
+    frozenset(
+        {
+            "incident-severity-triage",
+            "helpdesk-queue-router",
+            "policy-handbook-rag",
+            "warehouse-text-to-sql",
+        }
+    ): {
+        "differ": (
+            "four agent types, four datasets and four evaluators - a closed-label "
+            "classifier, a queue router, a retrieval agent and a text-to-SQL "
+            "agent - none of which carries anything that caps it, and the guide "
+            "gives every such project one reading"
+        ),
+        "visible": (
+            "each scenario's README and scenario.json; for warehouse-text-to-sql "
+            "also the task-fit finding on its readiness card and its intended "
+            "opening, which asks for an evaluator repair"
+        ),
+        "separated_by_intent": ("warehouse-text-to-sql",),
+    },
+}
+
 # A stand-in SKILL.md stating the ask rules `verify --response` implements, in
 # the guide's own sentences and wrapped the way the guide wraps them.
 SKILL_WITH_ASK_RULES = (
@@ -2150,18 +2181,6 @@ class ScenarioBankTests(unittest.TestCase):
         )
         self.assertIn("OK: named-dataset", output)
 
-    # The scenarios whose published contract is identical to another's, recorded so
-    # the set is a claim the suite checks rather than four identical table cells a
-    # reader has to interpret. `docs/scenario-coverage.md` says why they coincide.
-    SHARED_OPENING_CONTRACTS = (
-        (
-            "helpdesk-queue-router",
-            "incident-severity-triage",
-            "policy-handbook-rag",
-            "warehouse-text-to-sql",
-        ),
-    )
-
     def test_the_recorded_invocation_agrees_with_the_manifest(self) -> None:
         """The two disagreeing is exactly how case 52 published a wrong number.
 
@@ -2311,48 +2330,98 @@ class ScenarioBankTests(unittest.TestCase):
         )
         self.assertGreater(reviewed, 0, "no committed row review was read")
 
-    def test_the_scenarios_sharing_a_contract_are_the_ones_written_down(self) -> None:
+    def test_every_group_of_opening_twins_is_registered(self) -> None:
         """A new scenario landing on an existing contract is a decision.
 
-        The contract is four fields, each cap with its ceiling and routing, so
-        two scenarios that differ in agent type,
-        dataset and evaluator can still read the same. Four of the thirteen do,
-        on purpose -- "nothing is wrong with this project" is one reading and
-        there is only one of it. An accidental fifth should not look the same as
-        those four.
+        The groups are derived from the contracts - every one, a read-dependent
+        scenario's second included - on band, status, action and each cap's
+        condition, ceiling, blocks and asks. A group that is not in
+        `KNOWN_OPENING_TWINS` fails, and so does a registered group the
+        contracts no longer produce. Each entry says why its scenarios are
+        still different scenarios and where a reader sees it, and README.md
+        names every group.
         """
 
-        by_contract: dict[tuple[object, ...], list[str]] = {}
-        for manifest_path in sorted(
-            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
-        ):
+        root = scenario.REPOSITORY_ROOT
+        by_contract: dict[tuple[object, ...], set[str]] = {}
+        intent_departs: set[str] = set()
+        read = 0
+        for manifest_path in sorted((root / "scenarios").glob("*/scenario.json")):
             slug = manifest_path.parent.name
-            contract = json.loads(
-                (manifest_path.parent / "verifier" / "expected-opening.json").read_text(
-                    encoding="utf-8"
-                )
-            )
-            key = (
-                contract["band"],
-                contract["status"],
-                contract["recommended_action"],
-                tuple(
-                    sorted(
-                        (cap["condition"], cap["ceiling"], cap["blocks"], cap["asks"])
-                        for cap in contract["caps"]
+            route = json.loads(manifest_path.read_text(encoding="utf-8"))["catalog"][
+                "expected_route"
+            ]
+            contracts = [(slug, route["verifier_contract"])]
+            if "read_dependent" in route:
+                contracts.append(
+                    (
+                        f"{slug} (sound read)",
+                        route["read_dependent"]["sound_read_contract"],
                     )
-                ),
-            )
-            by_contract.setdefault(key, []).append(slug)
-        self.assertGreaterEqual(len(by_contract), 1, "no contract was read")
-        found = sorted(
-            tuple(sorted(slugs)) for slugs in by_contract.values() if len(slugs) > 1
+                )
+            for label, relative in contracts:
+                contract = json.loads(
+                    (manifest_path.parent / relative).read_text(encoding="utf-8")
+                )
+                read += 1
+                key = (
+                    contract["band"],
+                    contract["status"],
+                    contract["recommended_action"],
+                    tuple(
+                        (cap["condition"], cap["ceiling"], cap["blocks"], cap["asks"])
+                        for cap in sorted(
+                            contract["caps"], key=lambda cap: cap["condition"]
+                        )
+                    ),
+                )
+                by_contract.setdefault(key, set()).add(label)
+                intended = json.loads(
+                    (
+                        manifest_path.parent
+                        / relative.replace("expected-opening", "intended-opening")
+                    ).read_text(encoding="utf-8")
+                )
+                if intended["divergence"] is not None:
+                    intent_departs.add(label)
+        published = len(
+            list((root / "scenarios").glob("*/verifier/expected-opening*.json"))
+        )
+        self.assertGreater(published, 0, "no contract was found")
+        self.assertEqual(published, read, "a contract the grouping did not read")
+        groups = {
+            frozenset(labels) for labels in by_contract.values() if len(labels) > 1
+        }
+        self.assertEqual(
+            [],
+            sorted(sorted(group) for group in groups - set(KNOWN_OPENING_TWINS)),
+            "contracts that read the same are not registered in KNOWN_OPENING_TWINS",
         )
         self.assertEqual(
-            sorted(tuple(sorted(g)) for g in self.SHARED_OPENING_CONTRACTS),
-            found,
-            "the scenarios sharing a published contract are not the recorded ones",
+            [],
+            sorted(sorted(group) for group in set(KNOWN_OPENING_TWINS) - groups),
+            "KNOWN_OPENING_TWINS registers a group the contracts no longer produce",
         )
+
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        section = readme.split("### Scenarios that open the same way", 1)
+        self.assertEqual(2, len(section), "README.md has no twin section")
+        body = section[1].split("\n#", 1)[0]
+        bullets = [part for part in body.split("\n- ")[1:]]
+        for group, entry in KNOWN_OPENING_TWINS.items():
+            with self.subTest(group=sorted(group)):
+                self.assertTrue(entry["differ"].strip() and entry["visible"].strip())
+                self.assertEqual(
+                    sorted(group & intent_departs),
+                    sorted(entry["separated_by_intent"]),
+                    "the twins whose intended opening departs from the measured one",
+                )
+                named = [
+                    bullet
+                    for bullet in bullets
+                    if all(f"`{label.split(' ')[0]}`" in bullet for label in group)
+                ]
+                self.assertEqual(1, len(named), "README.md names the group once")
 
     def test_a_readme_rubric_illustrates_a_stratum_with_a_row_from_it(self) -> None:
         """A worked example in prose is a claim about the data beside it.

@@ -381,7 +381,10 @@ Everything else that counts them is manual, and this is the list:
    guide's argument parser at the pinned revision accepts it.
    `agent-read.json` names exactly the settings in
    `catalog.components.agent.controls` - `check` holds that, because the
-   controls are what a worker's `--agent-read` is graded against.
+   controls are what a worker's `--agent-read` is graded against. A new
+   contract that reads the same as another one on every compared field joins
+   a group in `KNOWN_OPENING_TWINS` in `tests/test_scenario.py`, with why the
+   scenarios still differ, and the README names the group.
 8. A contract that depends on the draw. When a scenario's opening turns on
    whether the worker's read finds an unsound answer, and a five-row draw can
    miss every unsound row, publish both openings: declare

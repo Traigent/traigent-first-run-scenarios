@@ -109,6 +109,23 @@ optimization.
 | `chatbot-on-vendor-flow` (57)        | Missing material       | Intent routing on a hosted vendor flow; labeled rows and a calibratable evaluator, but no local agent                               | NOT READY · BLOCKED · `connect-agent` · `agent-absent`                                                    |
 | `regex-rule-authoring` (58)          | Dataset integrity      | Regular-expression authoring against a hand-written answer key in which three answers do not answer their own question             | WORKABLE · OK · `review-answer-key` · `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; a read that finds every answer sound opens STRONG · OK · `proceed` · `dataset-coarse-resolution` |
 
+### Scenarios that open the same way
+
+A contract is four fields, so scenarios that differ in every other way can
+publish the same one - down to each cap's ceiling and routing. Every such group
+is registered, with why its scenarios still differ, in `KNOWN_OPENING_TWINS` in
+`tests/test_scenario.py`, which derives the groups from the contracts and fails
+on one that is not registered:
+
+- `incident-severity-triage` (46), `helpdesk-queue-router` (47),
+  `policy-handbook-rag` (48) and `warehouse-text-to-sql` (49) all open
+  EXCELLENT · OK · `proceed` with no cap. They are four agent types over four
+  datasets and four evaluators; what they share is the one reading the guide
+  gives a project with nothing that caps it. The hand-written intended openings
+  separate case 49: its intended opening asks for an evaluator repair, and it
+  declares where the guide departs from that (see
+  [docs/methodology.md](docs/methodology.md#hand-written-answers)).
+
 Each scenario's primary dataset is declared and checked as data rather than
 presentation copy:
 

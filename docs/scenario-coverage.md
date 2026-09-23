@@ -207,7 +207,14 @@ which is why it sits in a different family from the other three.
 It is written down here because a reader comparing four identical right-hand
 cells cannot otherwise tell a deliberate coincidence from a copy-paste, and
 because a new scenario landing on an existing contract should be a
-decision rather than an accident. `tests/test_scenario.py` pins the set.
+decision rather than an accident. `tests/test_scenario.py` derives the groups
+from every contract, a read-dependent scenario's second included, and fails on
+any group missing from its `KNOWN_OPENING_TWINS` registry, which records why the
+scenarios still differ and where that shows.
+
+The hand-written intended openings separate case 49 from the other three: its
+intended opening asks for an evaluator repair, and it records that the guide at
+`d07b62cd` has no cap for a scorer that is the wrong kind of check.
 
 ## Dataset origin rules
 
