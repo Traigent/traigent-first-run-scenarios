@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "slug": "chatbot-on-vendor-flow",
+  "legacy_id": 57,
+  "title": "Intent routing on a hosted vendor flow with no local agent",
+  "summary": "A customer-shaped claims-intake chatbot whose routing runs on a hosted conversation-flow vendor: a flow export and a project note stand where an agent would, beside labeled synthetic first messages, a deterministic intent evaluator, and calibration probes.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "missing",
+        "path": null,
+        "controls": []
+      },
+      "data": {
+        "state": "ready",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "normalized-exact-match",
+        "guide_evaluator_method": "normalized-exact",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 2
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "first-messages",
+        "state": "ready",
+        "path": "project/dataset.jsonl",
+        "task": "intent-routing",
+        "guide_task_kind": "routing",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 90,
+        "unique_inputs": 90,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 75,
+            "holdout": 15
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 23,
+            "medium": 23,
+            "hard": 22,
+            "very-hard": 22
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "mapped-labels",
+          "surface_label_count": 6,
+          "label_counts": {
+            "new_claim": 15,
+            "claim_status": 15,
+            "policy_question": 15,
+            "update_details": 15,
+            "complaint": 15,
+            "human_agent": 15
+          }
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "closed-label-task",
+          "precedence-labelled-two-intent-rows"
+        ]
+      }
+    ],
+    "non_dataset_files": [
+      "project/PROJECT.md",
+      "project/flow-export.json"
+    ],
+    "expected_route": {
+      "rationale": "agent-absent-hosted-vendor-flow",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    }
+  },
+  "tags": [
+    "closed-label",
+    "intent-routing",
+    "agent-absent",
+    "hosted-vendor-flow",
+    "exact-evaluator",
+    "labeled-data",
+    "synthetic-data"
+  ]
+}

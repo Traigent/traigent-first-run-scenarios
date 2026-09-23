@@ -1,0 +1,53 @@
+[
+  {
+    "name": "two-condition patient filter - the same rows written with an alias and the conditions swapped",
+    "score_mode": "graded",
+    "expected": "SELECT first_name, last_name FROM patients WHERE city = 'Sable Point' AND insurance_plan = 'Harbor Plus'",
+    "input_data": {
+      "question": "Which patients live in Sable Point and are on the Harbor Plus plan? Show first and last names."
+    },
+    "metadata": {
+      "scoring_path": "row-multiset"
+    },
+    "probes": {
+      "good": "SELECT first_name, last_name FROM patients WHERE city = 'Sable Point' AND insurance_plan = 'Harbor Plus'",
+      "equivalent_good": "SELECT p.first_name, p.last_name FROM patients AS p WHERE p.insurance_plan = 'Harbor Plus' AND p.city = 'Sable Point' ORDER BY p.id",
+      "partial": "SELECT first_name, last_name FROM patients WHERE city = 'Sable Point' AND insurance_plan IN ('Harbor Plus', 'Harbor Basic')",
+      "bad": "SELECT full_name, specialty FROM providers WHERE specialty = 'Cardiology'"
+    }
+  },
+  {
+    "name": "no-show patients - a join rewritten as an IN subquery",
+    "score_mode": "graded",
+    "expected": "SELECT DISTINCT p.first_name, p.last_name FROM patients p JOIN appointments a ON a.patient_id = p.id WHERE a.status = 'no-show'",
+    "input_data": {
+      "question": "Show the distinct first and last names of patients who have at least one no-show appointment."
+    },
+    "metadata": {
+      "scoring_path": "row-multiset"
+    },
+    "probes": {
+      "good": "SELECT DISTINCT p.first_name, p.last_name FROM patients p JOIN appointments a ON a.patient_id = p.id WHERE a.status = 'no-show'",
+      "equivalent_good": "SELECT first_name, last_name FROM patients WHERE id IN (SELECT patient_id FROM appointments WHERE status = 'no-show')",
+      "partial": "SELECT DISTINCT p.first_name, p.last_name FROM patients p JOIN appointments a ON a.patient_id = p.id WHERE a.status IN ('no-show', 'cancelled')",
+      "bad": "SELECT DISTINCT p.full_name, p.specialty FROM providers p JOIN appointments a ON a.provider_id = p.id WHERE a.status = 'no-show'"
+    }
+  },
+  {
+    "name": "ordered no-show leaderboard - the right rows in the wrong order earn half",
+    "score_mode": "graded",
+    "expected": "SELECT p.full_name, COUNT(*) AS n FROM appointments a JOIN providers p ON p.id = a.provider_id WHERE a.status = 'no-show' GROUP BY p.id ORDER BY n DESC, p.full_name",
+    "input_data": {
+      "question": "Which providers have the most no-shows? Show full name and no-show count, descending by count then by name."
+    },
+    "metadata": {
+      "scoring_path": "row-multiset-ordered"
+    },
+    "probes": {
+      "good": "SELECT p.full_name, COUNT(*) AS n FROM appointments a JOIN providers p ON p.id = a.provider_id WHERE a.status = 'no-show' GROUP BY p.id ORDER BY n DESC, p.full_name",
+      "equivalent_good": "SELECT providers.full_name, COUNT(appointments.id) FROM providers JOIN appointments ON appointments.provider_id = providers.id WHERE appointments.status = 'no-show' GROUP BY providers.full_name ORDER BY COUNT(appointments.id) DESC, providers.full_name",
+      "partial": "SELECT p.full_name, COUNT(*) AS n FROM appointments a JOIN providers p ON p.id = a.provider_id WHERE a.status = 'no-show' GROUP BY p.id ORDER BY n ASC, p.full_name DESC",
+      "bad": "SELECT r.name, COUNT(*) AS n FROM appointments a JOIN rooms r ON r.id = a.room_id WHERE a.status = 'no-show' GROUP BY r.id ORDER BY n DESC, r.name"
+    }
+  }
+]

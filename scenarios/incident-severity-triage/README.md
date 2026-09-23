@@ -25,6 +25,7 @@ The worker-visible project contains exactly these files:
 - `agent.py`
 - `dataset.jsonl`
 - `evaluator.py`
+- `requirements.txt`
 - `traigent-runs/calibration-cases.json`
 
 The catalog declares 120 unique labeled reports: 100 tuning and 20 holdout,
@@ -75,6 +76,27 @@ for readability; the JSONL file stores it on one physical line:
 
 `scenario.py check 46` re-derives every one of these counts from the JSONL
 bytes and fails if they drift from the manifest.
+
+## What the published opening rests on
+
+`verifier/expected-opening.json` is what the guide returned for this project's
+bytes at the pinned revision, and two of its inputs are committed beside it under
+`verifier/measurement/`: the read of the agent's settings, and the row review.
+
+The guide withholds its top two bands until a read of the expected answers has
+entered, so this scenario's band depends on that review. It covers 5 of the
+120 rows -- the five the opening asks for, drawn at random with the seed the
+document records -- and the guide's own card says what that means: *a sample, so
+unreviewed answers are assumed sound rather than verified*.
+
+One of the five is recorded `unsure` rather than `yes`: line 52 labels a checklist
+showing a step as done when it is not, at the bottom severity. An `unsure` is never
+scored, so it does not bound this contract -- but a `no` there would have, and the
+reader should know the undecided row exists rather than meet an uncapped
+`EXCELLENT` with no sign of it.
+
+`scripts/reproduce_openings.py` re-runs the measurement from those files and
+compares the result with the contract.
 
 ## Context-isolated execution
 

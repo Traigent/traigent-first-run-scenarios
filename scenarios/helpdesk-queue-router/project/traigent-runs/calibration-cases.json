@@ -1,0 +1,53 @@
+[
+  {
+    "name": "billing - the queue written the way the current desk tool writes it",
+    "score_mode": "binary",
+    "expected": "Billing",
+    "input_data": {
+      "ticket": "Our March invoice shows 42 seats but we only have 35 employees on the plan. Can you correct the charge?"
+    },
+    "metadata": {
+      "scoring_path": "queue-table"
+    },
+    "probes": {
+      "good": "Billing",
+      "equivalent_good": "BILL",
+      "partial": "data-export",
+      "bad": "outage"
+    }
+  },
+  {
+    "name": "access - a single-user fault whose surface words say outage",
+    "score_mode": "binary",
+    "expected": "Access & Login",
+    "input_data": {
+      "ticket": "The whole company is 'down' for me: I can't reach any page after the login redirect, but my colleague sitting next to me is working normally."
+    },
+    "metadata": {
+      "scoring_path": "queue-table"
+    },
+    "probes": {
+      "good": "Access & Login",
+      "equivalent_good": "ACC",
+      "partial": "outage",
+      "bad": "feature-request"
+    }
+  },
+  {
+    "name": "outage - a multi-issue ticket where the highest queue wins",
+    "score_mode": "binary",
+    "expected": "Outage",
+    "input_data": {
+      "ticket": "The May invoice double-charged us and we want that refunded, but right now nobody at the company can load the app at all: blank screen on every page, every browser."
+    },
+    "metadata": {
+      "scoring_path": "queue-table"
+    },
+    "probes": {
+      "good": "Outage",
+      "equivalent_good": "outage-incident",
+      "partial": "billing",
+      "bad": "feature-request"
+    }
+  }
+]

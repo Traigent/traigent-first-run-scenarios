@@ -64,6 +64,8 @@ MAX_SOURCE_CLASSIFY_BYTES = 1 << 22
 # The separators a delimited table is tried with when a record's bytes are not
 # a JSON row stream. A labelled CSV is a labelled dataset.
 _DELIMITER_CANDIDATES = (",", "\t", ";", "|")
+# How much of a declared record is sniffed to decide whether it is text at all.
+_BINARY_SNIFF_BYTES = 1 << 13
 
 STARTING_CONDITIONS = {
     "all-components-ready",
@@ -80,13 +82,56 @@ COMPONENT_STATES = {
 DATASET_FORMATS = {"jsonl"}
 NORMALIZED_EXACT_MATCH_METHOD = "normalized-exact-match"
 EXACT_MATCH_METHOD = "exact-match"
-# ``method`` names how the shipped evaluator compares a predicted label with a
+# ``method`` names how the shipped evaluator compares a predicted answer with a
 # recorded one. That is a statement about what the evaluator does when it runs,
 # and this module never runs it, so nothing here is keyed on the value: no
 # count, no coverage claim, no gate. It is carried because a reader of the
 # catalog should see what the scenario says about itself, and it is checked
-# only for being one of the two published spellings.
-EVALUATOR_METHODS = {EXACT_MATCH_METHOD, NORMALIZED_EXACT_MATCH_METHOD}
+# only for being one of the published spellings. The first two are the
+# spellings the first scenario shipped with; the rest are the guide's own
+# ``--evaluator-method`` names, so a catalog can describe a scorer the way the
+# guide's readiness read will be told about it.
+# The guide's `--task-kind` vocabulary, from `TASK_KINDS` in its `readiness.py`. A
+# dataset profile carries BOTH words: `task` is this catalog's own description, which
+# is free to say `tool-call-selection` where the guide says `structured`, and
+# `guide_task_kind` is the string the guide was actually given when the scenario's
+# opening was measured. The second is not decoration -- the declared task kind changes
+# what the readiness read reports, so a contract that does not record it cannot be
+# re-derived, and the value lived only in the measuring captain's notes.
+GUIDE_TASK_KINDS = {
+    "closed-label",
+    "code",
+    "code-sql",
+    "extraction",
+    "free-text",
+    "numeric",
+    "routing",
+    "short-answer",
+    "structured",
+    "tool",
+}
+GUIDE_EVALUATOR_METHODS = {
+    "composite",
+    "embedding",
+    "exact",
+    "execution",
+    "fuzzy",
+    "llm-judge-pairwise",
+    "llm-judge-pointwise",
+    "llm-judge-rubric",
+    "normalized-exact",
+    "numeric-tolerance",
+    "routing",
+    "schema",
+    "set-f1",
+    "sql-structure",
+    "state-transition",
+}
+EVALUATOR_METHODS = {
+    EXACT_MATCH_METHOD,
+    NORMALIZED_EXACT_MATCH_METHOD,
+    *GUIDE_EVALUATOR_METHODS,
+}
 MAPPED_LABEL_SHAPE = "mapped-labels"
 # The shapes whose rows carry a label string. ``mapped-labels`` lists every
 # distinct spelling that ships with the number of rows carrying it;
@@ -125,6 +170,26 @@ PREPARED_PROJECT_DIRECTORY = "customer-project"
 PREPARED_GUIDE_DIRECTORY = "traigent-first-run"
 EXPECTED_OPENING_FILE = "expected-opening.json"
 EXPECTED_VERIFIER_CONTRACT = f"{VERIFIER_DIRECTORY}/{EXPECTED_OPENING_FILE}"
+# A scenario whose opening turns on what a reader of its answers finds publishes
+# two contracts: `verifier_contract` for a read that marks some answer `no`, and
+# this one for a read that marks none. Which applies is decided by the worker's
+# own read, graded against the scenario's verdict for every row.
+READ_DEPENDENT_PATHS = {
+    "row_verdicts": f"{VERIFIER_DIRECTORY}/row-verdicts.json",
+    "sound_read_contract": f"{VERIFIER_DIRECTORY}/expected-opening-sound-read.json",
+}
+ROW_VERDICTS_KEYS = {"schema_version", "dataset", "question", "convention", "rows"}
+ROW_VERDICT_KEYS = {"class", "reason"}
+ROW_VERDICT_CLASSES = ("sound", "unsound", "contestable")
+READ_VERDICTS = ("yes", "no", "unsure")
+# The read the two contracts were measured for: the five rows the guide has the
+# opening read before the run's own rows are settled. A read of any other size
+# can cross the guide's unsound-share threshold differently, so it is refused
+# rather than graded against contracts that were not measured for it.
+OPENING_READ_ROWS = 5
+# The committed reads each contract was measured with.
+PUBLISHED_READ = "measurement/row-review.json"
+SOUND_READ = "measurement/row-review-sound-read.json"
 VERIFICATION_FIELDS = ("band", "status", "recommended_action", "caps")
 EXPECTED_OPENING_KEYS = {
     "schema_version",
@@ -184,6 +249,13 @@ COMPONENT_KEYS = {"agent", "data", "evaluator"}
 AGENT_COMPONENT_KEYS = {"controls", "path", "state"}
 DATA_COMPONENT_KEYS = {"paths", "state"}
 EVALUATOR_COMPONENT_KEYS = {"calibration", "method", "path", "state"}
+# Optional for the same reason `guide_task_kind` is: the first scenario's pinned
+# manifest predates it. It records the `--evaluator-method` the guide was actually
+# given, beside the catalog's own spelling of the same thing. Case 52 is why it
+# exists: its catalog spelling was corrected in a review commit without the
+# opening being re-measured, and the published evaluation pillar then described a
+# run nobody could reproduce from the manifest beside it.
+OPTIONAL_EVALUATOR_KEYS = {"guide_evaluator_method"}
 CALIBRATION_KEYS = {"case_count", "path"}
 DATASET_KEYS = {
     "difficulty_strata",
@@ -200,7 +272,12 @@ DATASET_KEYS = {
     "task",
     "unique_inputs",
 }
-OPTIONAL_DATASET_KEYS = {"passthrough_fields"}
+# Optional, and deliberately: it was added after the first scenario's opening was
+# recorded, and the contract-match example re-verifies that scenario's manifest at
+# the revision it was pinned to. Requiring the key retroactively would invalidate
+# committed evidence for a field that evidence predates. Every scenario shipped
+# since carries it, which a test holds rather than the reader.
+OPTIONAL_DATASET_KEYS = {"passthrough_fields", "guide_task_kind"}
 OPTIONAL_CATALOG_KEYS = {"non_dataset_files"}
 COUNT_DIMENSION_KEYS = {"counts", "field"}
 LABEL_SHAPE_KEYS = {
@@ -264,6 +341,23 @@ class _TooManyColumns(Exception):
 
 class _TooDeeplyNested(Exception):
     """Internal signal that a row nests objects deeper than can be walked."""
+
+
+class _UnreadableTable(Exception):
+    """Internal signal that a table was recognised and none of it could be read.
+
+    The delimited reading drops a line it cannot use, in three places: a line
+    that is not UTF-8, a record the CSV reader refuses, and a record whose
+    width disagrees with the header. Each drop is correct on its own -- one bad
+    line is not a reason to abandon a table. What was wrong was that nothing
+    counted them, so a file whose every data line was dropped produced the same
+    answer as a file with no labels in it: the empty list. This carries the
+    reason instead, and the caller turns it into a refusal.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
 
 
 class _DottedColumnName(Exception):
@@ -1206,6 +1300,7 @@ def _validate_evaluator_component(
         field,
         value,
         EVALUATOR_COMPONENT_KEYS,
+        optional_keys=OPTIONAL_EVALUATOR_KEYS,
     )
     state = _require_enum_string(
         manifest_path,
@@ -1219,6 +1314,15 @@ def _validate_evaluator_component(
         component["path"],
         allow_none=True,
     )
+    # Validated and not carried: nothing downstream reads it. It is recorded so a
+    # reader can re-derive the measurement, not so this module can use it.
+    if component.get("guide_evaluator_method") is not None:
+        _require_enum_string(
+            manifest_path,
+            f"{field}.guide_evaluator_method",
+            component["guide_evaluator_method"],
+            GUIDE_EVALUATOR_METHODS,
+        )
     raw_method = component["method"]
     method = (
         None
@@ -1335,6 +1439,16 @@ def _validate_dataset_profile(
         manifest_path,
         f"{field}.task",
         dataset["task"],
+    )
+    guide_task_kind = (
+        _require_enum_string(
+            manifest_path,
+            f"{field}.guide_task_kind",
+            dataset["guide_task_kind"],
+            GUIDE_TASK_KINDS,
+        )
+        if "guide_task_kind" in dataset
+        else None
     )
     input_field = _require_field_path(
         manifest_path,
@@ -1468,6 +1582,7 @@ def _validate_dataset_profile(
         "state": state,
         "path": path,
         "task": task,
+        "guide_task_kind": guide_task_kind,
         "format": dataset_format,
         "input_field": input_field,
         "label_field": label_field,
@@ -1614,8 +1729,9 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
         "catalog.expected_route",
         catalog["expected_route"],
         EXPECTED_ROUTE_KEYS,
+        {"read_dependent"},
     )
-    expected_route = {
+    expected_route: dict[str, Any] = {
         "rationale": _require_catalog_identifier(
             manifest_path,
             "catalog.expected_route.rationale",
@@ -1633,6 +1749,21 @@ def _validate_catalog(manifest_path: Path, value: Any) -> dict[str, Any]:
             "catalog.expected_route.verifier_contract",
             f"must equal {EXPECTED_VERIFIER_CONTRACT!r}",
         )
+    if "read_dependent" in expected_route_value:
+        read_dependent = _require_object_keys(
+            manifest_path,
+            "catalog.expected_route.read_dependent",
+            expected_route_value["read_dependent"],
+            set(READ_DEPENDENT_PATHS),
+        )
+        for key, required in READ_DEPENDENT_PATHS.items():
+            field = f"catalog.expected_route.read_dependent.{key}"
+            if (
+                _normalize_scenario_path(manifest_path, field, read_dependent[key])
+                != required
+            ):
+                raise _manifest_error(manifest_path, field, f"must equal {required!r}")
+        expected_route["read_dependent"] = dict(READ_DEPENDENT_PATHS)
 
     evidence_value = _require_object_keys(
         manifest_path,
@@ -2512,13 +2643,85 @@ def _delimited_header(line: str) -> tuple[str, list[str]] | None:
     """Choose the separator this line reads as a table header under, if any."""
 
     for delimiter in _DELIMITER_CANDIDATES:
-        header = next(csv.reader([line], delimiter=delimiter), [])
+        try:
+            header = next(csv.reader([line], delimiter=delimiter), [])
+        except csv.Error:
+            continue
         if len(header) < 2 or any(not name.strip() for name in header):
             continue
         if len(set(header)) != len(header):
             continue
         return delimiter, header
     return None
+
+
+def _header_repeats_a_name(line: str) -> bool:
+    """True when a line reads as a header under some separator but repeats a name.
+
+    A table keyed by column name cannot be read when two columns share one: the
+    second value lands on the first's key. Stepping over the line was worse
+    than incomplete -- the search simply carried on and took a later DATA line
+    as the header, so a record whose header was ``id,severity,severity`` was
+    reported as carrying a column named after one row's value.
+    """
+
+    for delimiter in _DELIMITER_CANDIDATES:
+        try:
+            header = next(csv.reader([line], delimiter=delimiter), [])
+        except csv.Error:
+            continue
+        if len(header) < 2 or any(not name.strip() for name in header):
+            continue
+        if len(set(header)) != len(header):
+            return True
+    return False
+
+
+def _is_binary_record(path: Path) -> bool:
+    """Say whether a declared record is bytes rather than text.
+
+    Asked of the file once, not of each line. A NUL byte is the sniff every
+    tool reaches for: UTF-8 text does not carry one, and the binary containers
+    a scenario ships -- a SQLite database, an archive, an image -- all do.
+
+    This was written, deleted as unproven, and reinstated in one sitting, which
+    is worth recording. Deleting it was right at the time: the reading then
+    answered every unreadable file with "no label surface", so nothing changed
+    when the sniff was removed and no test could see it. It became load-bearing
+    the moment the reading started refusing what it could not read, because a
+    database's pages do decode far enough to offer a header and then nothing
+    that parses -- exactly the shape the refusal is for. Without this, `check`
+    refuses a scenario for shipping its own database.
+    """
+
+    try:
+        with path.open("rb") as handle:
+            return b"\x00" in handle.read(_BINARY_SNIFF_BYTES)
+    except OSError:
+        # The read that follows opens the same file and turns its own failure
+        # into a refusal naming the path. Answering "binary" here would turn an
+        # unreadable file into a clean verdict instead.
+        return False
+
+
+def _unreadable_table_detail(dropped: dict[str, int]) -> str:
+    """Name what a recognised table lost, in the order that explains it best."""
+
+    if dropped["undecodable"]:
+        return (
+            "reads as a delimited table whose data lines are not UTF-8, so "
+            "none of its rows could be read"
+        )
+    if dropped["unparsable"]:
+        return (
+            "reads as a delimited table whose data lines the CSV reader "
+            "refuses, so none of its rows could be read"
+        )
+    return (
+        "reads as a delimited table with a quoted field that is never closed, "
+        "so the rest of the file is read as part of it and none of its rows "
+        "could be read"
+    )
 
 
 def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator[Any]:
@@ -2549,6 +2752,9 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
     labelled table plus one ragged line would report nothing.
     """
 
+    dropped = {"undecodable": 0, "unparsable": 0, "swallowed": 0}
+    seen = {"lines": 0}
+
     def lines() -> Iterator[str]:
         try:
             for raw_line in _iter_file_lines(path):
@@ -2557,6 +2763,7 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
                 try:
                     line = raw_line.decode("utf-8")
                 except UnicodeDecodeError:
+                    dropped["undecodable"] += 1
                     continue
                 stripped = line.strip()
                 if stripped.startswith("#"):
@@ -2564,9 +2771,11 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
                 try:
                     value = json.loads(stripped)
                 except ValueError:
+                    seen["lines"] += 1
                     yield line
                     continue
                 if not isinstance(value, (dict, list)):
+                    seen["lines"] += 1
                     yield line
         except _OversizedLine as exc:
             raise _oversized_line_error(scenario, path, field) from exc
@@ -2585,12 +2794,48 @@ def _iter_delimited_rows(scenario: Scenario, path: Path, field: str) -> Iterator
         if chosen is not None:
             delimiter, header = chosen
             break
+        if _header_repeats_a_name(line):
+            raise _UnreadableTable(
+                "reads as a delimited table whose header repeats a column "
+                "name, so its rows cannot be keyed by column"
+            )
     if delimiter is None:
         return
-    for record in csv.reader(stream, delimiter=delimiter):
+    rows = 0
+    records = 0
+    after_header = seen["lines"]
+    reader = csv.reader(stream, delimiter=delimiter)
+    while True:
+        try:
+            record = next(reader)
+        except StopIteration:
+            break
+        except csv.Error:
+            records += 1
+            dropped["unparsable"] += 1
+            # One record the reader cannot parse is one record that is not a
+            # row of this table; the reader picks up at the next line, so the
+            # rest of the table is still read. Parsing each physical line on
+            # its own would survive the same bad line, and would also split
+            # every quoted field that spans lines -- a table whose label
+            # column sits after such a field would report no label surface at
+            # all, which is the failure this scan exists to prevent.
+            continue
+        records += 1
         if len(record) != len(header):
             continue
+        rows += 1
         yield dict(zip(header, record))
+    # A record that swallowed more than one physical line and still did not fit
+    # the header is the signature of a quoted field opened and never closed:
+    # the reader raises nothing and reads the rest of the file as part of it.
+    # A line of prose that merely looked like a header fails the width test one
+    # line at a time, and that is honestly "this file is not a table" rather
+    # than "this table could not be read".
+    if rows == 0 and records and seen["lines"] - after_header > records:
+        dropped["swallowed"] += 1
+    if rows == 0 and any(dropped.values()):
+        raise _UnreadableTable(_unreadable_table_detail(dropped))
 
 
 def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[str]:
@@ -2608,6 +2853,12 @@ def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[st
     states the limit rather than leaving it implied.
     """
 
+    if _is_binary_record(path):
+        # A record that is bytes has no line, no header and no column, so there
+        # is no label surface here to name. The public-surface guard is what
+        # reads a binary artifact for leaked text; this check reads tables.
+        return []
+
     try:
         try:
             json_columns = _closed_label_columns(
@@ -2618,6 +2869,14 @@ def _record_label_columns(scenario: Scenario, path: Path, field: str) -> list[st
         delimited_columns = _closed_label_columns(
             _iter_delimited_rows(scenario, path, field)
         )
+    except _UnreadableTable as exc:
+        raise _catalog_materialized_error(
+            scenario,
+            field,
+            f"{path.relative_to(scenario.root).as_posix()} {exc.detail}; a "
+            "record whose rows cannot be read is a record whose label surface "
+            "cannot be ruled out",
+        ) from exc
     except _TooManyColumns as exc:
         raise _catalog_materialized_error(
             scenario,
@@ -3045,6 +3304,14 @@ def _validate_catalog_materialized(scenario: Scenario) -> None:
         "catalog.expected_route.verifier_contract",
         scenario.verifier_dir,
     )
+    if "read_dependent" in catalog["expected_route"]:
+        if len(catalog["datasets"]) != 1:
+            raise _catalog_materialized_error(
+                scenario,
+                "catalog.expected_route.read_dependent",
+                "needs exactly one dataset for its verdicts to describe",
+            )
+        _validate_read_dependent(scenario, catalog["datasets"][0])
 
 
 def validate_materialized(scenario: Scenario) -> dict[str, Any]:
@@ -4261,6 +4528,170 @@ def validate_expected_opening(scenario: Scenario) -> dict[str, Any]:
     return _validate_expected_opening_value(expected_path, expected)
 
 
+def _validate_row_verdicts(path: Path, value: dict[str, Any]) -> dict[str, str]:
+    """Validate a scenario's verdict for every row; return each row's class.
+
+    `sound` rows a faithful reader does not mark `no`, `unsound` rows it must,
+    and `contestable` rows are ones careful readers can settle either way.
+    """
+    _require_contract_keys(path, "row verdicts", value, ROW_VERDICTS_KEYS)
+    schema_version = value["schema_version"]
+    if isinstance(schema_version, bool) or schema_version != SCHEMA_VERSION:
+        raise _contract_error(path, "schema_version", f"must equal {SCHEMA_VERSION}")
+    for field in ("dataset", "question", "convention"):
+        _contract_string(path, field, value[field])
+    classes: dict[str, str] = {}
+    for row_id, entry in _contract_object(path, "rows", value["rows"]).items():
+        field = f"rows.{row_id}"
+        entry = _contract_object(path, field, entry)
+        _require_contract_keys(path, field, entry, ROW_VERDICT_KEYS)
+        if entry["class"] not in ROW_VERDICT_CLASSES:
+            raise _contract_error(
+                path,
+                f"{field}.class",
+                f"must be one of {', '.join(ROW_VERDICT_CLASSES)}",
+            )
+        _contract_string(path, f"{field}.reason", entry["reason"])
+        classes[row_id] = entry["class"]
+    unsound = sum(1 for kind in classes.values() if kind == "unsound")
+    if not unsound:
+        raise _contract_error(
+            path,
+            "rows",
+            "names no unsound row, so no read reaches the published contract",
+        )
+    if len(classes) - unsound < OPENING_READ_ROWS:
+        raise _contract_error(
+            path,
+            "rows",
+            f"leaves fewer than {OPENING_READ_ROWS} rows outside the unsound ones, "
+            "so no read reaches the sound-read contract",
+        )
+    return classes
+
+
+def _grade_read(
+    path: Path, read: dict[str, Any], classes: dict[str, str]
+) -> tuple[list[str], bool]:
+    """Grade one opening read against the row verdicts.
+
+    Returns the disagreements and whether the read marks any answer `no`, which
+    is the fact that decides which of the two contracts applies.
+    """
+    rows = read.get("rows", _MISSING)
+    if not isinstance(rows, list):
+        raise _contract_error(path, "rows", "must be an array")
+    # Before the run's rows are selected the guide has the read omit both
+    # membership declarations, and the contracts were measured without them:
+    # with them, readiness judges the answer key against the selected rows
+    # instead, which moves the band and the action.
+    declared = sorted(
+        {"selected_row_ids"} & set(read)
+        | {"in_run" for row in rows if isinstance(row, dict) and "in_run" in row}
+    )
+    if declared:
+        return [
+            f"an opening read declares no run membership, and this one declares "
+            f"{', '.join(declared)}; the contracts were measured for the read the "
+            "guide asks for before the run's rows are selected"
+        ], False
+    if len(rows) != OPENING_READ_ROWS:
+        return [
+            f"the contracts were measured for the {OPENING_READ_ROWS}-row opening "
+            f"read, and this read has {len(rows)}"
+        ], False
+    problems: list[str] = []
+    seen: set[str] = set()
+    marks_unsound = False
+    for index, row in enumerate(rows):
+        row = _contract_object(path, f"rows[{index}]", row)
+        # Stripped as readiness strips it, so both read the same row.
+        row_id = _contract_string(
+            path, f"rows[{index}].id", row.get("id", _MISSING)
+        ).strip()
+        verdict = row.get("verdict", _MISSING)
+        if verdict not in READ_VERDICTS:
+            problems.append(f"{row_id}: verdict {verdict!r} is not yes, no or unsure")
+            continue
+        if row_id in seen:
+            problems.append(f"{row_id}: read twice")
+        seen.add(row_id)
+        kind = classes.get(row_id)
+        if kind is None:
+            problems.append(f"{row_id}: not a row of this scenario's dataset")
+        elif kind == "unsound" and verdict != "no":
+            problems.append(
+                f"{row_id}: its answer does not answer its own question, "
+                f"and the read says {verdict!r}"
+            )
+        elif kind == "sound" and verdict == "no":
+            problems.append(f"{row_id}: its answer is sound, and the read says 'no'")
+        marks_unsound = marks_unsound or verdict == "no"
+    return problems, marks_unsound
+
+
+def _validate_read_dependent(scenario: Scenario, dataset: dict[str, Any]) -> None:
+    """Check the verdict key covers every row and both committed reads obey it."""
+    field = "catalog.expected_route.read_dependent"
+    verdicts_path = _catalog_regular_file(
+        scenario,
+        READ_DEPENDENT_PATHS["row_verdicts"],
+        f"{field}.row_verdicts",
+        scenario.verifier_dir,
+    )
+    verdicts = _read_strict_json_object(verdicts_path, "row verdicts")
+    classes = _validate_row_verdicts(verdicts_path, verdicts)
+    if verdicts["dataset"] != dataset["path"]:
+        raise _contract_error(
+            verdicts_path,
+            "dataset",
+            f"must name the scenario's dataset {dataset['path']!r}",
+        )
+    dataset_path = scenario.root.joinpath(*PurePosixPath(dataset["path"]).parts)
+    row_ids = {
+        f"line-{number}"
+        for number, line in enumerate(dataset_path.read_bytes().splitlines(), start=1)
+        if line.strip()
+    }
+    if set(classes) != row_ids:
+        missing = sorted(row_ids - set(classes), key=lambda item: int(item[5:]))
+        extra = sorted(set(classes) - row_ids)
+        raise _contract_error(
+            verdicts_path,
+            "rows",
+            f"must give a verdict for every row of {dataset['path']}; "
+            f"missing {missing[:5]}, not rows {extra[:5]}",
+        )
+
+    sound_contract = _catalog_regular_file(
+        scenario,
+        READ_DEPENDENT_PATHS["sound_read_contract"],
+        f"{field}.sound_read_contract",
+        scenario.verifier_dir,
+    )
+    _validate_expected_opening_value(
+        sound_contract,
+        _read_strict_json_object(sound_contract, "sound-read opening contract"),
+    )
+    for relative, contract, marks_expected in (
+        (PUBLISHED_READ, EXPECTED_OPENING_FILE, True),
+        (SOUND_READ, sound_contract.name, False),
+    ):
+        read_path = scenario.verifier_dir / relative
+        problems, marks_unsound = _grade_read(
+            read_path, _read_strict_json_object(read_path, "committed read"), classes
+        )
+        if problems:
+            raise _contract_error(read_path, "rows", "; ".join(problems))
+        if marks_unsound != marks_expected:
+            raise _contract_error(
+                read_path,
+                "rows",
+                f"{contract} was measured with this read, which must "
+                + ("mark an answer 'no'" if marks_expected else "mark no answer 'no'"),
+            )
+
+
 _MISSING = object()
 
 
@@ -4308,10 +4739,11 @@ def _recorded_inventory(
     )
 
 
-def _expected_opening_from_run_record(
+def _recorded_contracts(
     scenario: Scenario,
     run_record_path: Path,
-) -> dict[str, Any]:
+) -> tuple[Scenario, Callable[[str, str], tuple[Path, dict[str, Any]]]]:
+    """The recorded manifest, and a reader for the verifier files recorded with it."""
     run_record = _validate_run_record_value(
         run_record_path,
         _read_strict_json_object(run_record_path, "captain run record"),
@@ -4451,39 +4883,85 @@ def _expected_opening_from_run_record(
                 "does not match the recorded Git revision",
             )
 
-    expected_file = next(
-        file for file in contract_files if file.relative_path == expected_contract_path
-    )
-    try:
-        expected_blob = _run_git(
-            scenario.repository_root,
-            ("cat-file", "blob", expected_file.object_id),
-            "read the recorded expected-opening contract",
+    def read_recorded(relative: str, label: str) -> tuple[Path, dict[str, Any]]:
+        """One verifier file as the recorded revision holds it, never the worktree."""
+        path = relative_scenario_root / PurePosixPath(relative)
+        recorded = next(
+            (file for file in contract_files if file.relative_path == path), None
         )
-    except PrepareError as exc:
-        raise VerificationError(
-            "cannot read the expected-opening contract recorded by the captain"
-        ) from exc
-    recorded_path = Path(f"{revision}:{expected_contract_path.as_posix()}")
-    expected = _parse_strict_json_object_bytes(
-        expected_blob,
-        recorded_path,
-        "recorded expected-opening contract",
-    )
-    return _validate_expected_opening_value(recorded_path, expected)
+        if recorded is None:
+            raise VerificationError(f"recorded scenario revision has no {label}")
+        try:
+            blob = _run_git(
+                scenario.repository_root,
+                ("cat-file", "blob", recorded.object_id),
+                f"read the recorded {label}",
+            )
+        except PrepareError as exc:
+            raise VerificationError(
+                f"cannot read the {label} recorded by the captain"
+            ) from exc
+        recorded_path = Path(f"{revision}:{path.as_posix()}")
+        return recorded_path, _parse_strict_json_object_bytes(
+            blob, recorded_path, f"recorded {label}"
+        )
+
+    return recorded_scenario, read_recorded
 
 
 def opening_mismatches(
     scenario: Scenario,
     result_path: Path,
     run_record_path: Path,
-) -> list[str]:
-    """Return semantic mismatches against the captain-recorded contract."""
+    row_review_path: Path | None = None,
+) -> tuple[list[str], str]:
+    """Return semantic mismatches and which recorded contract they were read against.
 
-    expected = _expected_opening_from_run_record(scenario, run_record_path)
+    A scenario whose opening turns on what a reader of its answers found is
+    verified in two parts: the worker's read is graded against the scenario's
+    verdict for every row, and the result is then compared with the contract for
+    the read the worker actually gave - one that marked an answer `no`, or one
+    that marked none.
+    """
+
+    recorded_scenario, read_recorded = _recorded_contracts(scenario, run_record_path)
+    route = recorded_scenario.manifest["catalog"]["expected_route"]
+    read_dependent = route.get("read_dependent")
+    contract = EXPECTED_VERIFIER_CONTRACT
+    described = "the captain-recorded contract"
+    mismatches: list[str] = []
+    if read_dependent is None:
+        if row_review_path is not None:
+            raise VerificationError(
+                f"{scenario.slug} publishes one contract, which no read of its "
+                "answers changes, so --row-review is not read for it; omit it"
+            )
+    else:
+        if row_review_path is None:
+            raise VerificationError(
+                f"{scenario.slug}'s contract depends on what the worker's read of "
+                "its answers found; pass the read the worker gave readiness as "
+                "--row-review"
+            )
+        verdicts_path, verdicts = read_recorded(
+            read_dependent["row_verdicts"], "row verdicts"
+        )
+        problems, marks_unsound = _grade_read(
+            row_review_path,
+            _read_strict_json_object(row_review_path, "worker row review"),
+            _validate_row_verdicts(verdicts_path, verdicts),
+        )
+        mismatches.extend(f"row review: {problem}" for problem in problems)
+        if marks_unsound:
+            described += " for a read that marks an answer unsound"
+        else:
+            contract = read_dependent["sound_read_contract"]
+            described += " for a read that finds every answer sound"
+
+    contract_path, contract_value = read_recorded(contract, "expected-opening contract")
+    expected = _validate_expected_opening_value(contract_path, contract_value)
     result = _read_strict_json_object(result_path, "opening result")
 
-    mismatches: list[str] = []
     for field in VERIFICATION_FIELDS:
         actual_value = result.get(field, _MISSING)
         if field == "caps" and actual_value is not _MISSING:
@@ -4500,7 +4978,7 @@ def opening_mismatches(
             mismatches.append(
                 f"{field}: expected {expected[field]!r}, got {rendered_actual}"
             )
-    return mismatches
+    return mismatches, described
 
 
 class ScenarioBank:
@@ -4663,6 +5141,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="worker-returned opening readiness JSON file",
     )
+    verify_parser.add_argument(
+        "--row-review",
+        type=Path,
+        metavar="FILE",
+        help=(
+            "the row review the worker passed to readiness; required for, and "
+            "only accepted for, a scenario whose contract depends on it"
+        ),
+    )
     return parser
 
 
@@ -4745,10 +5232,11 @@ def main(
 
         if arguments.command == "verify":
             selected_scenario = bank.resolve(arguments.case, scenarios)
-            mismatches = opening_mismatches(
+            mismatches, contract = opening_mismatches(
                 selected_scenario,
                 arguments.result,
                 arguments.run_record,
+                arguments.row_review,
             )
             if mismatches:
                 print(
@@ -4761,7 +5249,7 @@ def main(
                 return 1
             print(
                 f"PASS: {selected_scenario.slug} opening result matches "
-                f"{', '.join(VERIFICATION_FIELDS)} in the captain-recorded contract",
+                f"{', '.join(VERIFICATION_FIELDS)} in {contract}",
                 file=output,
             )
             return 0

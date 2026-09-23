@@ -162,6 +162,25 @@ _RULES = (
         ),
     ),
     Rule(
+        # The rule above anchors the two home roots at a segment boundary, so it
+        # cannot see a home directory that has been FLATTENED into one segment --
+        # a scratch or session directory names itself after the path it shadows,
+        # with the separators rewritten as hyphens, and the root then sits in the
+        # middle of a segment where the anchor cannot reach it. Eleven recorded
+        # command lines shipped that shape past a green guard, carrying a username
+        # and a session id, under a note claiming the paths were neutralised.
+        # The pattern is assembled from fragments for the same reason every other
+        # one here is: a rule written out whole is the thing it forbids.
+        "flattened home path in a scratch or session directory",
+        re.compile(
+            _fragments(
+                r"(?:^|[/\\])-(?:ho",
+                "me|Us",
+                r"ers)-[A-Za-z0-9._-]+",
+            )
+        ),
+    ),
+    Rule(
         "machine-specific superuser path",
         re.compile(_fragments(r"(?<![A-Za-z0-9_])/r", r"oot(?:/|\\)")),
     ),
@@ -438,9 +457,69 @@ def _repository_reference_findings(
     return findings
 
 
+# Binary formats a scenario may ship on purpose, recognised by the header the
+# format itself defines. A SQLite database carries NUL bytes on every page,
+# which the encoding check below would otherwise report as text of an unknown
+# encoding on every run. The file is still scanned: every decoded view goes
+# through the denylist, so a secret or a private path inside a database page is
+# found as readily as one in a text file. What the header settles is only that
+# the NUL bytes are the format, not an encoding nobody declared.
+#
+# The first version of this asked ``content.startswith(magic)``, which is a
+# claim about sixteen bytes and not about the file: any blob at all -- a
+# compressed archive, a key, a page of UTF-32 -- could wear the prefix and have
+# its "encoding requires review" finding suppressed, which is the one finding
+# that exists for content in an encoding the decoded views do not cover. The
+# fields below are the ones SQLite fixes in every database file, and the page
+# geometry has to agree with the file's own length, so the exemption is now
+# earned by the format rather than by its first line.
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+_SQLITE_HEADER_BYTES = 100
+_SQLITE_PAYLOAD_FRACTIONS = (64, 32, 32)
+# Offsets into that 100-byte header, from the format's own description of it.
+# Named rather than written inline: the one part of the check below a reader
+# cannot verify against the spec without counting bytes.
+_SQLITE_PAGE_SIZE_AT = slice(16, 18)
+_SQLITE_WRITE_VERSION_AT = 18
+_SQLITE_READ_VERSION_AT = 19
+_SQLITE_PAYLOAD_FRACTIONS_AT = slice(21, 24)
+_SQLITE_PAGE_COUNT_AT = slice(28, 32)
+# A page size is a power of two in this range; the field stores 65536 as 1,
+# because it is two bytes wide and 65536 does not fit in them.
+_SQLITE_MIN_PAGE_SIZE = 512
+_SQLITE_MAX_PAGE_SIZE = 65536
+
+
+def _declares_known_binary_format(content: bytes) -> bool:
+    """Say whether these bytes are a SQLite database, header and geometry."""
+
+    if not content.startswith(_SQLITE_MAGIC):
+        return False
+    if len(content) < _SQLITE_HEADER_BYTES:
+        return False
+    page_size_field = int.from_bytes(content[_SQLITE_PAGE_SIZE_AT], "big")
+    page_size = _SQLITE_MAX_PAGE_SIZE if page_size_field == 1 else page_size_field
+    if page_size < _SQLITE_MIN_PAGE_SIZE or page_size > _SQLITE_MAX_PAGE_SIZE:
+        return False
+    if page_size & (page_size - 1):
+        return False
+    if content[_SQLITE_WRITE_VERSION_AT] not in (1, 2):
+        return False
+    if content[_SQLITE_READ_VERSION_AT] not in (1, 2):
+        return False
+    if tuple(content[_SQLITE_PAYLOAD_FRACTIONS_AT]) != _SQLITE_PAYLOAD_FRACTIONS:
+        return False
+    if len(content) % page_size:
+        return False
+    page_count = int.from_bytes(content[_SQLITE_PAGE_COUNT_AT], "big")
+    return page_count in (0, len(content) // page_size)
+
+
 def _scan_text(surface: str, relative_path: str, content: bytes) -> list[Finding]:
     findings: list[Finding] = []
     variants, supported_encoding = _decoded_variants(content)
+    if _declares_known_binary_format(content):
+        supported_encoding = True
     for text in variants:
         for line_number, line in enumerate(text.splitlines(), start=1):
             for rule in _RULES:

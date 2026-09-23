@@ -65,7 +65,10 @@ Stop the Phase A run at the first question or decision that belongs to the
 human. Do not provide credentials, approve paid or remote product/provider
 calls, expose customer data, mutate production, establish a baseline, or run an
 optimization. A local deterministic evaluator calibration is allowed only when
-the first-run guide's safety gate admits that exact path.
+the first-run guide's safety gate admits that exact path. Where that gate
+declines the path because the evaluator would execute candidate code or SQL,
+the guide discloses the declined check on the readiness card and continues;
+do not calibrate the original evaluator on its behalf.
 
 The scenario is public. The worker receives the project's evaluator, but the
 captain keeps the expected opening, semantic verifier, and earlier results out
@@ -81,6 +84,13 @@ run:
 ```bash
 python scenario.py verify CASE --run-record RUN_JSON --result FILE
 ```
+
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
 
 Verification binds the contract to the scenario Git revision in `run.json`,
 then compares `band`, `status`, `recommended_action`, and `caps`. It never

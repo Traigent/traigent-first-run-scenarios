@@ -1,0 +1,36 @@
+{
+  "guide_revision": "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199",
+  "note": "The commands this scenario's published opening was measured with. $PYTHON is the interpreter, $GUIDE a traigent-first-run checkout on guide_revision, $PROJECT a copy of this scenario's project/ directory, $SCENARIO this scenario's directory in this repository, and $MEASURE a scratch directory the steps write into. No path here names a real machine.",
+  "row_review": "not passed: this scenario's band sits below the answer-key hold, so a read of the answers would not change any compared field, and no review is committed for it",
+  "steps": {
+    "preflight": [
+      "$PYTHON",
+      "-S",
+      "$GUIDE/skills/traigent-first-run/scripts/preflight.py",
+      "--json",
+      "--defer-missing-sdk",
+      "--dataset",
+      "dataset.jsonl"
+    ],
+    "readiness": [
+      "$PYTHON",
+      "-S",
+      "$GUIDE/skills/traigent-first-run/scripts/readiness.py",
+      "--json",
+      "--preflight",
+      "$MEASURE/02-preflight.json",
+      "--task-kind",
+      "free-text",
+      "--agent-knobs",
+      "$SCENARIO/verifier/measurement/agent-read.json",
+      "--agent-source-root",
+      "$PROJECT",
+      "--selected-agent",
+      "$PROJECT/agent.py",
+      "--selected-agent-callable",
+      "run",
+      "--agent-origin",
+      "brought"
+    ]
+  }
+}

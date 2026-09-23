@@ -1,0 +1,56 @@
+[
+  {
+    "name": "a class written the long way, which is the same rule",
+    "score_mode": "binary",
+    "expected": "\\d{4}",
+    "input_data": {
+      "shape": "A four-digit year on its own."
+    },
+    "metadata": {
+      "row_id": "line-1",
+      "scoring_path": "normalised-text"
+    },
+    "probes": {
+      "good": "\\d{4}",
+      "equivalent_good": "  [0-9]{4}  ",
+      "partial": "\\d{2}",
+      "bad": "[a-z]+"
+    }
+  },
+  {
+    "name": "a redundant outer group, which is the same rule",
+    "score_mode": "binary",
+    "expected": "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}",
+    "input_data": {
+      "shape": "An IPv4 dotted quad, any values."
+    },
+    "metadata": {
+      "row_id": "line-3",
+      "scoring_path": "normalised-text"
+    },
+    "probes": {
+      "good": "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}",
+      "equivalent_good": "(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})",
+      "partial": "\\d{1,3}\\.\\d{1,3}",
+      "bad": "\\w+"
+    }
+  },
+  {
+    "name": "an alternation inside a group, which is the same rule with stray whitespace",
+    "score_mode": "binary",
+    "expected": "\\[(?:DEBUG|INFO|WARN|ERROR)\\]",
+    "input_data": {
+      "shape": "A log level in square brackets, one of DEBUG INFO WARN ERROR."
+    },
+    "metadata": {
+      "row_id": "line-17",
+      "scoring_path": "normalised-text"
+    },
+    "probes": {
+      "good": "\\[(?:DEBUG|INFO|WARN|ERROR)\\]",
+      "equivalent_good": "  \\[(?:DEBUG|INFO|WARN|ERROR)\\]",
+      "partial": "\\[(?:DEBUG|INFO)\\]",
+      "bad": "DEBUG"
+    }
+  }
+]

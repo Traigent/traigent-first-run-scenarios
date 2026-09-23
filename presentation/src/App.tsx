@@ -13,6 +13,7 @@ import {
   coverageLabel,
   displayEyebrow,
   evidenceLabel,
+  type CatalogDetailView,
   type CatalogEntry,
   type SlideSpec,
 } from "./model";
@@ -223,12 +224,61 @@ function TestLayerMatrix({ slide }: { slide: SlideSpec }) {
   );
 }
 
+function ScenarioCatalogIndex({
+  entries,
+}: {
+  entries: readonly CatalogEntry[];
+}) {
+  return (
+    <div className="matrix-wrap catalog-index-wrap">
+      <span className="matrix-scroll-hint" aria-hidden="true">
+        Scroll sideways to see every column
+      </span>
+      <table className="starting-matrix catalog-index">
+        <caption>
+          Published scenarios with the expected opening each contract records
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Case</th>
+            <th scope="col">Scenario</th>
+            <th scope="col">Family</th>
+            <th scope="col">Expected band · status</th>
+            <th scope="col">Expected action · caps</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry) => (
+            <tr key={entry.slug}>
+              <th scope="row">{entry.legacyId}</th>
+              <td>
+                <span className="catalog-index-slug">{entry.slug}</span>
+                {entry.label.replace(/^Case \d+: /, "")}
+              </td>
+              <td>{entry.family}</td>
+              <td>
+                {entry.expectedBand} · {entry.expectedStatus}
+              </td>
+              <td>
+                {entry.expectedAction} ·{" "}
+                {entry.expectedCaps.length === 0
+                  ? "caps none"
+                  : entry.expectedCaps.join(", ")}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ScenarioCatalog({
   entry,
   view,
 }: {
   entry: CatalogEntry;
-  view: "setup-and-route" | "data-and-limits";
+  view: CatalogDetailView;
 }) {
   const fields =
     view === "setup-and-route"
@@ -375,9 +425,17 @@ function Slide({ slide }: { slide: SlideSpec }) {
       <StartingPointMatrix slide={slide} />
       <TestLayerMatrix slide={slide} />
       <ScenarioCoverageMatrix slide={slide} />
+      {slide.kind === "catalog" && slide.catalogView === "index" ? (
+        <ScenarioCatalogIndex
+          entries={(slide.catalogSlugs ?? []).flatMap((slug) =>
+            presentation.catalog.filter((entry) => entry.slug === slug),
+          )}
+        />
+      ) : null}
       {slide.kind === "catalog" &&
       slide.catalogSlug !== undefined &&
       slide.catalogView !== undefined &&
+      slide.catalogView !== "index" &&
       presentation.catalog.some((entry) => entry.slug === slide.catalogSlug) ? (
         <ScenarioCatalog
           entry={presentation.catalog.find(

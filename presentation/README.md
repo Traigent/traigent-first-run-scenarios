@@ -11,15 +11,21 @@ catalog validation, a Phase A opening, and a separately approved Phase B live
 optimization. The current content does not claim that a fresh worker run has
 been recorded or verified.
 
-The first 10 slides form the presales/CTO core story. The remaining 18 slides
+The first 9 slides form the presales/CTO core story. The remaining 17 slides
 are a clearly marked technical appendix with stage detail, scoring mechanics,
-scenario organization, and the public coverage roadmap.
+the scenario families, and a two-slide index of the thirteen-scenario bank.
 
 ## Source of truth
 
-`src/content.ts` is the canonical slide content. It reads the published scenario
-manifest and expected opening contract. `src/model.ts` validates the complete
-presentation before either renderer uses it.
+`src/content.ts` is the canonical slide content. It reads every published
+scenario manifest and expected-opening contract under `scenarios/` - thirteen
+today, cases 46 to 58 - and derives one catalog entry per scenario from those
+files. The manifest schema accepts only the slugs in the bank table at the top
+of the module, and a manifest whose case number disagrees with that table fails
+the build. Case 46, the ready reference, is the worked example the walkthrough
+slides focus on; the model requires it to be a catalog entry and requires every
+catalog entry to appear on exactly one index slide. `src/model.ts` validates the
+complete presentation before either renderer uses it.
 
 Both HTML and PowerPoint consume the same parsed `presentation` object. Do not
 maintain separate claims for the two formats, and do not hand-edit generated
@@ -27,7 +33,7 @@ files under `dist/`.
 
 The Stage 2 scoring and cap slides are a reviewed snapshot of the public
 Guided First Run scorer at revision
-[`6ec2b9c1`](https://github.com/Traigent/traigent-first-run/blob/6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9/skills/traigent-first-run/scripts/readiness.py).
+[`d07b62cd`](https://github.com/Traigent/traigent-first-run/blob/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199/skills/traigent-first-run/scripts/readiness.py).
 Their evidence footer records that revision. Re-check the source constants,
 check display names, confidence behavior, and cap semantics whenever the guide
 changes; do not adjust a number merely to improve slide layout.
@@ -35,6 +41,9 @@ changes; do not adjust a number merely to improve slide layout.
 ## Reproduction contract behind the deck
 
 The presentation's evidence wording follows the public CLI contract:
+
+The commands below use case 46; every case number in the bank takes the same
+three commands.
 
 - `scenario.py check 46` validates the fully materialized package and the
   strict expected-opening structure and ranges. It does not run an agent.
@@ -48,9 +57,13 @@ The presentation's evidence wording follows the public CLI contract:
   only `band`, `status`, `recommended_action`, and `caps`. It executes no
   verifier code.
 
-The current deck has the published expectation but no referenced captured
-worker result. A successful catalog check or a copied expected-opening file must
-not be presented as verified run evidence.
+The current deck has the published expectation for each of the thirteen
+scenarios but no referenced captured worker result for any of them. An expected
+opening is a captain measurement of the guide's own scripts over the project
+bytes at the pinned guide revision: a contract to verify a run against, not a
+recorded run. A successful catalog check or a copied expected-opening file must
+not be presented as verified run evidence, and no scenario may be described as
+having passed.
 
 ## Requirements
 
@@ -164,9 +177,10 @@ boundary, not a missing checkbox that prose can satisfy.
 
 Content validation rejects unsupported live-value and improvement claims. It
 also prevents an absent result from becoming an implied green outcome. An
-Excellent expected band is the published grade for this scenario's opening
+Excellent expected band is the published grade for one scenario's opening
 contract; it is not a universal grade for the coding agent or proof of a live
-optimization. The claim scan reads every string the content model carries, so a
+optimization. A BLOCKED expected status is likewise a routing outcome the
+scenario exists to check, not a failed test. The claim scan reads every string the content model carries, so a
 claim is caught wherever it renders - slide body, footer evidence, speaker
 notes, catalog card, or deck subtitle - and a field added to the schema is
 covered without editing a list. Two things are not claims: a sentence that
@@ -178,8 +192,10 @@ sentence does not cover a claim in the next.
 
 1. Update `src/content.ts` and, only when the contract itself changes,
    `src/model.ts`.
-2. Keep scenario facts derived from the checked-in manifest and verifier rather
-   than duplicating them as manually maintained claims.
+2. Keep scenario facts derived from the checked-in manifests and verifiers
+   rather than duplicating them as manually maintained claims. A new scenario
+   needs a row in the bank table in `src/content.ts` and a place on an index
+   slide; the validator refuses a catalog entry no slide renders.
 3. Give each new slide an evidence state, evidence reference, and useful speaker
    note.
 4. Run `npm run check`.

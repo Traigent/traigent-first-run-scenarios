@@ -1,0 +1,91 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "openrouter/openai/gpt-4o-mini",
+        "openrouter/anthropic/claude-3.5-haiku",
+        "openrouter/meta-llama/llama-3.3-70b-instruct"
+      ],
+      "source_lines": [
+        20,
+        84
+      ],
+      "evidence": "agent.py:20 MODELS lists the three ids, :92 reads the choice from config and :93 refuses one outside the tuple, :98 hands it to call_model, and :84 passes it as model= on the litellm.completion request."
+    },
+    "schema_context": {
+      "values": [
+        "none",
+        "table_lines",
+        "full_ddl"
+      ],
+      "source_lines": [
+        48,
+        70
+      ],
+      "evidence": "agent.py:48 SCHEMA_CONTEXTS keys the three renderings of schema.sql (two of them cut from the file at import, so the table is not literal text), :67 reads the choice from config, :68 refuses one outside the dict, and :70 writes the chosen rendering into the prompt that :85 sends as the user message."
+    },
+    "prompt_style": {
+      "values": [
+        "direct",
+        "reasoned"
+      ],
+      "source_lines": [
+        54,
+        66
+      ],
+      "evidence": "agent.py:54 PROMPT_STYLES holds the two instruction wordings and :66 indexes it with the config value as the first line of the prompt that :85 sends as the user message."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.7
+      ],
+      "source_lines": [
+        59,
+        86
+      ],
+      "evidence": "agent.py:59 TEMPERATURES lists the two values, :95 reads the choice from config and :96 refuses one outside the tuple, :98 hands it to call_model, and :86 passes it as temperature= on the litellm.completion request."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        66,
+        72,
+        85
+      ],
+      "evidence": "agent.py:66-72 assembles the instruction, the schema rendering and the question into one string with no worked examples, and :85 sends it as the single user message."
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        55,
+        78,
+        98
+      ],
+      "evidence": "agent.py:55 asks for the SQL only, :78 strips a markdown fence from the reply, and :98 returns the stripped text; nothing checks that what remains is a SELECT."
+    },
+    "control-flow": {
+      "loop": false,
+      "bounded": true,
+      "source_lines": [
+        92,
+        98
+      ],
+      "evidence": "agent.py:92-98 is one straight-line body: two config reads each guarded by a raise, then one return that makes one request; no loop."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        83,
+        88
+      ],
+      "evidence": "agent.py:83-88 makes one completion call with no tools argument and reaches no tool names; the query is returned as text and never executed here."
+    }
+  }
+}

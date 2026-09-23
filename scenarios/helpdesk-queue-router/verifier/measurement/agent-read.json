@@ -1,0 +1,93 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "gpt-4.1-nano",
+        "gpt-4.1-mini",
+        "gpt-4.1"
+      ],
+      "source_lines": [
+        16,
+        86
+      ],
+      "evidence": "agent.py:16 MODELS lists the three ids, :94-95 run reads config['model'] and refuses one outside the tuple, and :86 passes it as model= on the chat.completions request."
+    },
+    "prompt_style": {
+      "values": [
+        "plain",
+        "rules",
+        "precedence"
+      ],
+      "source_lines": [
+        18,
+        65
+      ],
+      "evidence": "agent.py:18 PROMPT_STYLES holds the three instruction texts and :65 indexes it by config['prompt_style'] as the first line of the prompt that build_prompt returns into the request."
+    },
+    "few_shot_count": {
+      "values": [
+        0,
+        2,
+        4
+      ],
+      "source_lines": [
+        45,
+        69
+      ],
+      "evidence": "agent.py:45 FEW_SHOT_COUNTS lists the counts, :61-62 build_prompt reads config['few_shot_count'] and refuses one outside the tuple, and :69 slices WORKED_EXAMPLES by it into the prompt text."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.3,
+        0.7
+      ],
+      "source_lines": [
+        54,
+        88
+      ],
+      "evidence": "agent.py:54 TEMPERATURES lists the values, :97-98 run reads config['temperature'] and refuses one outside the tuple, and :88 passes it as temperature= on the chat.completions request."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 4,
+      "source_lines": [
+        47,
+        69,
+        72
+      ],
+      "evidence": "agent.py:47 WORKED_EXAMPLES holds four (ticket, queue) pairs, :69 quotes the first few_shot_count of them (0, 2 or 4) into the prompt, and :72 returns the joined text that :87 sends as the user message."
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        56,
+        66,
+        77
+      ],
+      "evidence": "agent.py:66 tells the model to answer with one of the six queue ids alone, :56 compiles those ids into QUEUE_PATTERN, and :77-80 parse_reply returns the matched id or raises when none is present."
+    },
+    "control-flow": {
+      "loop": true,
+      "bounded": true,
+      "source_lines": [
+        69,
+        100
+      ],
+      "evidence": "agent.py:100 run is one straight-line return; the only loop on its path is the for at :69 inside build_prompt, bounded by the WORKED_EXAMPLES[:shots] slice it iterates."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        85,
+        100
+      ],
+      "evidence": "agent.py:85-88 is one plain chat.completions.create with messages and temperature only, and :100 reaches nothing else; no tools are declared."
+    }
+  }
+}

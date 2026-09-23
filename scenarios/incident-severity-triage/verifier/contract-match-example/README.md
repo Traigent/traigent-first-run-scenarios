@@ -97,8 +97,10 @@ Only those four result fields are compared. The example intentionally contains n
 execution narrative, because the verifier does not validate either one.
 
 The run record's scenario project inventory contains `agent.py`, `dataset.jsonl`,
-`evaluator.py`, and `traigent-runs/calibration-cases.json`, with byte hashes and sizes. Its
-separate contract inventory contains the scenario manifest and verifier contract. The verifier
+`evaluator.py`, and `traigent-runs/calibration-cases.json`, with byte hashes and sizes, which
+is the project as the scenario revision this record names shipped it. Its
+separate contract inventory contains the scenario manifest, the verifier contract and the
+verifier README. The verifier
 checks both inventories against the pinned scenario revision.
 
 ## What this example does not establish

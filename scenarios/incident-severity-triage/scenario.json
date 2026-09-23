@@ -36,6 +36,7 @@
         "state": "ready",
         "path": "project/evaluator.py",
         "method": "normalized-exact-match",
+        "guide_evaluator_method": "normalized-exact",
         "calibration": {
           "path": "project/traigent-runs/calibration-cases.json",
           "case_count": 2
@@ -48,6 +49,7 @@
         "state": "ready",
         "path": "project/dataset.jsonl",
         "task": "closed-label-classification",
+        "guide_task_kind": "closed-label",
         "format": "jsonl",
         "input_field": "input",
         "label_field": "output",
@@ -97,6 +99,9 @@
           "closed-label-task"
         ]
       }
+    ],
+    "non_dataset_files": [
+      "project/requirements.txt"
     ],
     "expected_route": {
       "rationale": "all-required-components-ready",

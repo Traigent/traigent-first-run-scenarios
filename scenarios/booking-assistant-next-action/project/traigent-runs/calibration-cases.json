@@ -1,0 +1,36 @@
+[
+  {
+    "name": "cancellation - an action written in capitals with stray spacing",
+    "score_mode": "binary",
+    "expected": "cancel_booking",
+    "input_data": {
+      "transcript": "User: Good morning. Booking reference HL-7731D, two adults on the 10:15 next Tuesday.\nAssistant: I have that booking here. What can I do for you?\nUser: Please cancel booking HL-7731D, we are not travelling."
+    },
+    "metadata": {
+      "scoring_path": "action-name"
+    },
+    "probes": {
+      "good": "cancel_booking",
+      "equivalent_good": "  CANCEL_BOOKING\n",
+      "partial": "explain_policy",
+      "bad": "confirm_booking"
+    }
+  },
+  {
+    "name": "missing headcount - an action in mixed case",
+    "score_mode": "binary",
+    "expected": "ask_passengers",
+    "input_data": {
+      "transcript": "User: Are there sailings from Kestrel Bay back to Port Marrow on the evening of Sunday 5 October?\nAssistant: Yes, the 18:45 sails that evening.\nUser: Perfect, put us on the 18:45 on Sunday 5 October then."
+    },
+    "metadata": {
+      "scoring_path": "action-name"
+    },
+    "probes": {
+      "good": "ask_passengers",
+      "equivalent_good": "Ask_Passengers",
+      "partial": "ask_dates",
+      "bad": "quote_fare"
+    }
+  }
+]

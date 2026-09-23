@@ -1,0 +1,41 @@
+{
+  "reviewer": "assistant",
+  "draw": {
+    "method": "random.sample over 1-based source lines of project/dataset.jsonl",
+    "seed": 58,
+    "reviewed": 5,
+    "provided": 32
+  },
+  "rows": [
+    {
+      "id": "line-3",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The description says any values, so four unbounded one-to-three digit groups separated by dots is the rule it asks for."
+    },
+    {
+      "id": "line-13",
+      "origin": "collected",
+      "verdict": "no",
+      "note": "The description says a single number is a list of one, and the recorded rule \\d+,\\d+ requires a comma, so it never matches '1' at all; the row's own must_reject of '1' writes the mistake down instead of catching it."
+    },
+    {
+      "id": "line-14",
+      "origin": "collected",
+      "verdict": "unsure",
+      "note": "The description says the path begins with a drive letter and a colon and stops there, while the recorded rule also demands a following backslash; C: satisfies the sentence and not the rule, and nothing here says which the desk meant."
+    },
+    {
+      "id": "line-26",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The rule keys on the literal token, allows whitespace around the colon, and puts the value in the one capturing group, which is what capturing only the value means."
+    },
+    {
+      "id": "line-29",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "The scheme group is optional and ends in ://, the host class matches a dotted name, and the one-or-more quantifier is why the empty string is rejected."
+    }
+  ]
+}

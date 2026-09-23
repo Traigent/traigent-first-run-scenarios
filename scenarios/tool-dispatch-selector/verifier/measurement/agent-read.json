@@ -1,0 +1,55 @@
+{
+  "source": "agent.py",
+  "knobs": {},
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        53,
+        96
+      ],
+      "evidence": "agent.py:53 INSTRUCTION is the one fixed instruction, with no alternative wording and no worked examples, and agent.py:96 renders it with the seven tool lines into the system message; no prompt setting varies"
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        79,
+        84,
+        86,
+        99
+      ],
+      "evidence": "agent.py:99 requests a JSON object; agent.py:79 parses the reply as JSON, agent.py:84 refuses a tool name outside TOOLS, and agent.py:86 returns exactly {\"tool\", \"args\"}; the request passes no temperature and no other sampling argument"
+    },
+    "control-flow": {
+      "loop": true,
+      "bounded": true,
+      "source_lines": [
+        70,
+        84,
+        93,
+        101
+      ],
+      "evidence": "agent.py:93-101 run is one straight-line request with MODEL, a single literal constant bound at agent.py:13, and a config argument it never reads; the only iteration is agent.py:70 and agent.py:84 in the helpers it calls, each one pass over the seven-entry TOOLS tuple, so it ends when the tuple is exhausted; no model setting varies"
+    },
+    "tools": {
+      "used": true,
+      "declared": [
+        "set_thermostat",
+        "lock_door",
+        "start_scene",
+        "add_reminder",
+        "play_media",
+        "get_weather",
+        "list_devices"
+      ],
+      "unreachable": [],
+      "source_lines": [
+        15,
+        96,
+        101
+      ],
+      "evidence": "agent.py:15 TOOLS declares the seven names; agent.py:96 passes TOOLS into the prompt the request carries and agent.py:101 passes it to the reply check, so run reaches every declared name; the hub, not this module, executes the chosen call"
+    }
+  }
+}

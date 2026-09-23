@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import io
 import json
 import os
+import random
+import re
 import shutil
 import subprocess
 import sys
@@ -95,6 +98,7 @@ def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
                     "state": "ready",
                     "path": "project/input.txt",
                     "task": "closed-label-classification",
+                    "guide_task_kind": "closed-label",
                     "format": "jsonl",
                     "input_field": "input",
                     "label_field": "output",
@@ -144,6 +148,123 @@ def expected_opening() -> dict[str, object]:
             },
         },
     }
+
+
+# The guide withholds these two bands until a read of the answers enters, so a
+# scenario published on one of them was measured with a review.
+BANDS_ABOVE_THE_ANSWER_KEY_HOLD = ("STRONG", "EXCELLENT")
+
+# The one cap `readiness.py` builds out of a row review's verdicts. Its share
+# test runs over what the reviewer read, so no other input can raise it, and a
+# published opening carrying it was measured with a review whatever its band.
+REVIEW_DERIVED_CAP = "dataset-unsound-expected-outputs"
+
+# A scenario README's difficulty rubric: its heading at either level the bank
+# uses, and a stratum bullet in either spelling the bank uses. A heading that
+# mentions the rubric in any other form is reported, never skipped, so a new
+# spelling cannot take a scenario out of the check without a word.
+RUBRIC_HEADING = re.compile(r"^(#{2,3}) Difficulty rubric[ \t]*$", re.MULTILINE)
+RUBRIC_BULLET = re.compile(r"^- (?:\*\*([\w-]+)\*\*|`([\w-]+)`)")
+# A bullet's closing list of worked examples: backticked items, comma
+# separated, ending the bullet. Every item in such a list must name a row.
+RUBRIC_EXAMPLE_LIST = re.compile(r"(?:^|(?<=\. ))((?:`[^`]+`,\s*)*`[^`]+`)\.$")
+
+
+def _rubric_findings(repository: Path) -> tuple[list[str], int, int]:
+    """Check every README difficulty rubric against its manifest and dataset.
+
+    Returns the problems, the number of rubrics read and the number of worked
+    examples compared. A rubric must define exactly the strata its manifest
+    declares. A backticked answer that names exactly one row is a worked
+    example of that row's stratum and must sit under that stratum's bullet;
+    an answer many rows share is a label, which names a class rather than a
+    row, and illustrates nothing. A closing example list must name rows only,
+    so a typo or an escaping slip cannot drop an example out of the check.
+    """
+    problems: list[str] = []
+    read = compared = 0
+    for manifest_path in sorted((repository / "scenarios").glob("*/scenario.json")):
+        slug = manifest_path.parent.name
+        readme = manifest_path.parent / "README.md"
+        text = readme.read_text(encoding="utf-8") if readme.is_file() else ""
+        heading = RUBRIC_HEADING.search(text)
+        if heading is None:
+            problems.extend(
+                f"{slug}: rubric heading {line!r} is not in a recognised form"
+                for line in text.splitlines()
+                if line.startswith("#") and "difficulty rubric" in line.lower()
+            )
+            continue
+        read += 1
+        rest = text[heading.end() :]
+        end = re.search(rf"^#{{1,{len(heading.group(1))}}} ", rest, re.MULTILINE)
+        section = rest[: end.start()] if end else rest
+        dataset = json.loads(manifest_path.read_text(encoding="utf-8"))["catalog"][
+            "datasets"
+        ][0]
+        declared = set(dataset["difficulty_strata"]["counts"])
+        rows_with: dict[str, list[str]] = {}
+        for line in (
+            (manifest_path.parent / dataset["path"]).read_text(encoding="utf-8")
+        ).splitlines():
+            if line.strip():
+                row = json.loads(line)
+                if isinstance(row["output"], str):
+                    rows_with.setdefault(row["output"], []).append(
+                        row["metadata"]["difficulty"]
+                    )
+        stratum_of = {
+            answer: rows[0] for answer, rows in rows_with.items() if len(rows) == 1
+        }
+
+        bullets: dict[str, str] = {}
+        current: str | None = None
+        for line in section.splitlines():
+            bullet = RUBRIC_BULLET.match(line)
+            if bullet:
+                current = bullet.group(1) or bullet.group(2)
+                bullets[current] = line[bullet.end() :]
+            elif current is not None and line.startswith("  "):
+                bullets[current] += " " + line.strip()
+            else:
+                current = None
+        if set(bullets) != declared:
+            problems.append(
+                f"{slug}: the rubric defines {sorted(bullets)} and the manifest "
+                f"declares {sorted(declared)}"
+            )
+        for name, body in bullets.items():
+            for example in re.findall(r"`([^`]+)`", body):
+                stratum = stratum_of.get(example)
+                if stratum is None:
+                    continue
+                compared += 1
+                if stratum != name:
+                    problems.append(
+                        f"{slug}: the rubric illustrates {name!r} with {example!r}, "
+                        f"which the dataset labels {stratum!r}"
+                    )
+            examples = RUBRIC_EXAMPLE_LIST.search(body.strip())
+            if examples:
+                problems.extend(
+                    f"{slug}: {name!r} lists {example!r} as an example, and no "
+                    "single row of the dataset has that answer"
+                    for example in re.findall(r"`([^`]+)`", examples.group(1))
+                    if example not in stratum_of
+                )
+    return problems, read, compared
+
+
+def _opening_needs_a_row_review(opening: dict[str, object]) -> bool:
+    """Whether this published opening is one a review has to be committed for.
+
+    Asked of the contract rather than of a list, so the answer follows the bank
+    instead of being maintained beside it.
+    """
+    caps = opening.get("caps") or []
+    return (
+        opening["band"] in BANDS_ABOVE_THE_ANSWER_KEY_HOLD or REVIEW_DERIVED_CAP in caps
+    )
 
 
 class ScenarioBankTests(unittest.TestCase):
@@ -1836,6 +1957,779 @@ class ScenarioBankTests(unittest.TestCase):
             f"log looks like, and declaring it is honest: {error}",
         )
         self.assertIn("OK: named-dataset", output)
+
+    # The scenarios whose published contract is identical to another's, recorded so
+    # the set is a claim the suite checks rather than four identical table cells a
+    # reader has to interpret. `docs/scenario-coverage.md` says why they coincide.
+    SHARED_OPENING_CONTRACTS = (
+        (
+            "helpdesk-queue-router",
+            "incident-severity-triage",
+            "policy-handbook-rag",
+            "warehouse-text-to-sql",
+        ),
+    )
+
+    def test_the_recorded_invocation_agrees_with_the_manifest(self) -> None:
+        """The two disagreeing is exactly how case 52 published a wrong number.
+
+        `83d2d03` measured case 52 with `--evaluator-method exact`; a later
+        review commit corrected the catalog's declared method and did not
+        re-measure, so the manifest described one run and the contract recorded
+        another. The argv comes from the run and the manifest from an editor,
+        which is what makes this comparison worth making rather than a
+        tautology.
+        """
+
+        checked = 0
+        for manifest_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
+        ):
+            slug = manifest_path.parent.name
+            invocation_path = (
+                manifest_path.parent / "verifier" / "measurement" / "invocation.json"
+            )
+            self.assertTrue(invocation_path.is_file(), f"{slug} records no invocation")
+            invocation = json.loads(invocation_path.read_text(encoding="utf-8"))
+            readiness = invocation["steps"].get("readiness") or []
+            catalog = json.loads(manifest_path.read_text(encoding="utf-8"))["catalog"]
+            evaluator = catalog["components"].get("evaluator") or {}
+            profile = (catalog.get("datasets") or [{}])[0]
+            for flag, declared in (
+                ("--evaluator-method", evaluator.get("guide_evaluator_method")),
+                ("--task-kind", profile.get("guide_task_kind")),
+            ):
+                passed = (
+                    readiness[readiness.index(flag) + 1] if flag in readiness else None
+                )
+                with self.subTest(scenario=slug, flag=flag):
+                    self.assertEqual(
+                        declared,
+                        passed,
+                        f"{slug}: the manifest says {declared!r} and the recorded "
+                        f"invocation passed {passed!r}",
+                    )
+                    checked += 1
+        self.assertGreaterEqual(checked, 24, "no invocation was compared")
+
+    def test_a_committed_row_review_names_rows_that_exist(self) -> None:
+        """A review of rows that are not there is the defect guide #391 filed.
+
+        `preflight.py` added row-id digests because a review "could name forty-
+        eight rows that do not exist and be counted as a read of forty-eight
+        rows that do". The ids here are positional, so they are checkable
+        against the dataset's own line count, and the draw is recorded so a
+        redraw after an inconvenient verdict is not invisible.
+        """
+
+        reviewed = 0
+        for review_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob(
+                "*/verifier/measurement/row-review.json"
+            )
+        ):
+            slug = review_path.parents[2].name
+            review = json.loads(review_path.read_text(encoding="utf-8"))
+            lines = [
+                line
+                for line in (review_path.parents[2] / "project" / "dataset.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+                if line.strip()
+            ]
+            with self.subTest(scenario=slug):
+                self.assertEqual("assistant", review["reviewer"])
+                draw = review["draw"]
+                self.assertEqual(len(review["rows"]), draw["reviewed"])
+                self.assertEqual(len(lines), draw["provided"])
+                self.assertIn("method", draw)
+                # The seed is checked by REPRODUCING the draw, not by being
+                # present. A recorded seed that does not yield the recorded rows
+                # means they were chosen some other way, which is the thing the
+                # record exists to rule out.
+                generator = random.Random(draw["seed"])
+                self.assertEqual(
+                    sorted(
+                        generator.sample(range(1, len(lines) + 1), draw["reviewed"])
+                    ),
+                    sorted(
+                        int(str(row["id"]).removeprefix("line-"))
+                        for row in review["rows"]
+                    ),
+                    f"{slug}: the recorded seed does not yield the recorded rows",
+                )
+                for row in review["rows"]:
+                    number = int(str(row["id"]).removeprefix("line-"))
+                    self.assertTrue(
+                        1 <= number <= len(lines),
+                        f"{slug}: {row['id']} is not a line of the dataset",
+                    )
+                    self.assertGreater(
+                        len(row["note"]), 40, f"{slug}: {row['id']} has no real note"
+                    )
+                notes = {row["note"] for row in review["rows"]}
+                self.assertEqual(
+                    len(notes),
+                    len(review["rows"]),
+                    f"{slug}: repeated notes are a tally, not a read",
+                )
+                reviewed += 1
+        # Not "at least one". The rule is that a scenario commits a review
+        # exactly when its published opening cannot be reproduced without one,
+        # and a floor of one cannot see four of them go missing -- deleting a
+        # load-bearing review was green in every gate this repository runs.
+        # Derived from the contracts rather than written down, so it follows the
+        # bank.
+        #
+        # Two ways an opening depends on a review, and both are compared fields:
+        #
+        # - the band sits above the guide's answer-key hold, which withholds
+        #   STRONG and EXCELLENT until a read of the answers enters;
+        # - the caps carry the one condition only a reader can produce.
+        #   `readiness.py` builds `dataset-unsound-expected-outputs` from the
+        #   review's own verdicts and from nothing else, so a scenario that
+        #   publishes it and ships no review publishes a cap it cannot re-derive.
+        #   Measured on regex-rule-authoring rather than assumed: the same
+        #   inputs without `--row-review` return the same band, status and
+        #   action, and drop that cap.
+        needs_review = sorted(
+            manifest_path.parent.name
+            for manifest_path in (scenario.REPOSITORY_ROOT / "scenarios").glob(
+                "*/scenario.json"
+            )
+            if _opening_needs_a_row_review(
+                json.loads(
+                    (
+                        manifest_path.parent / "verifier" / "expected-opening.json"
+                    ).read_text(encoding="utf-8")
+                )
+            )
+        )
+        shipping = sorted(
+            review_path.parents[2].name
+            for review_path in (scenario.REPOSITORY_ROOT / "scenarios").glob(
+                "*/verifier/measurement/row-review.json"
+            )
+        )
+        self.assertEqual(
+            needs_review,
+            shipping,
+            "the scenarios shipping a row review are not the ones whose opening "
+            "needs one",
+        )
+        self.assertGreater(reviewed, 0, "no committed row review was read")
+
+    def test_the_scenarios_sharing_a_contract_are_the_ones_written_down(self) -> None:
+        """A new scenario landing on an existing contract is a decision.
+
+        The contract is four fields, so two scenarios that differ in agent type,
+        dataset and evaluator can still read the same. Four of the thirteen do,
+        on purpose -- "nothing is wrong with this project" is one reading and
+        there is only one of it. An accidental fifth should not look the same as
+        those four.
+        """
+
+        by_contract: dict[tuple[object, ...], list[str]] = {}
+        for manifest_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
+        ):
+            slug = manifest_path.parent.name
+            contract = json.loads(
+                (manifest_path.parent / "verifier" / "expected-opening.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            key = (
+                contract["band"],
+                contract["status"],
+                contract["recommended_action"],
+                tuple(sorted(contract.get("caps") or [])),
+            )
+            by_contract.setdefault(key, []).append(slug)
+        self.assertGreaterEqual(len(by_contract), 1, "no contract was read")
+        found = sorted(
+            tuple(sorted(slugs)) for slugs in by_contract.values() if len(slugs) > 1
+        )
+        self.assertEqual(
+            sorted(tuple(sorted(g)) for g in self.SHARED_OPENING_CONTRACTS),
+            found,
+            "the scenarios sharing a published contract are not the recorded ones",
+        )
+
+    def test_a_readme_rubric_illustrates_a_stratum_with_a_row_from_it(self) -> None:
+        """A worked example in prose is a claim about the data beside it.
+
+        `scenario.py check` pins every COUNT a README states and pins no
+        example, so a rubric could define `easy` and illustrate it with a rule
+        the same rubric calls `hard`, four lines apart, with every gate green.
+        That shipped once in case 58. Every rubric in the bank is read - a
+        rubric the parser cannot place is a finding, not a skip - and each must
+        define exactly its manifest's strata.
+        """
+
+        problems, read, compared = _rubric_findings(scenario.REPOSITORY_ROOT)
+        self.assertEqual([], problems)
+        headed = sum(
+            1
+            for readme in (scenario.REPOSITORY_ROOT / "scenarios").glob("*/README.md")
+            if any(
+                line.startswith("#") and "difficulty rubric" in line.lower()
+                for line in readme.read_text(encoding="utf-8").splitlines()
+            )
+        )
+        self.assertGreater(headed, 0, "no scenario README carries a rubric")
+        self.assertEqual(headed, read, "a rubric the check did not read")
+        self.assertGreater(compared, 0, "no worked example was compared")
+
+    def test_every_scenario_table_lists_the_bank_as_published(self) -> None:
+        """A table of scenarios is a claim about the bank; it is derived here.
+
+        The README's scenario table once listed twelve rows under a sentence
+        announcing thirteen, and nothing compared the two. Each table is now
+        read against the bank: every scenario exactly once, under the family
+        the deck's `SCENARIO_BANK` gives it, and - in the README - with the
+        band, status, action and caps its published contract carries.
+        """
+
+        root = scenario.REPOSITORY_ROOT
+        bank_source = (root / "presentation" / "src" / "content.ts").read_text(
+            encoding="utf-8"
+        )
+        family_of = {
+            f"{slug} ({legacy_id})": family
+            for slug, legacy_id, family in re.findall(
+                r'slug: "([\w-]+)",\s*legacyId: (\d+),\s*family: "([^"]+)"',
+                bank_source,
+            )
+        }
+        manifests = sorted((root / "scenarios").glob("*/scenario.json"))
+        self.assertEqual(
+            {
+                f"{path.parent.name} ({json.loads(path.read_text())['legacy_id']})"
+                for path in manifests
+            },
+            set(family_of),
+            "the deck's SCENARIO_BANK and the scenarios directory disagree",
+        )
+
+        def rows(document: str) -> dict[str, list[list[str]]]:
+            found: dict[str, list[list[str]]] = {}
+            for line in (root / document).read_text(encoding="utf-8").splitlines():
+                cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+                named = re.fullmatch(r"`([\w-]+)` \((\d+)\)", cells[0])
+                if line.startswith("|") and named:
+                    found.setdefault(f"{named[1]} ({named[2]})", []).append(cells)
+            return found
+
+        for document in ("README.md", "docs/scenario-coverage.md"):
+            with self.subTest(document=document):
+                table = rows(document)
+                self.assertEqual(set(family_of), set(table), "rows are not the bank")
+                for case, found in table.items():
+                    self.assertEqual(1, len(found), f"{case} is listed twice")
+                    self.assertEqual(family_of[case], found[0][1], case)
+                family_rows = {
+                    family: set(re.findall(r"`([\w-]+)` \((\d+)\)", cells[-1]))
+                    for line in (root / document)
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                    if line.startswith("|")
+                    for cells in [
+                        [c.strip() for c in line.strip().strip("|").split("|")]
+                    ]
+                    for family in [cells[0]]
+                    if family in set(family_of.values())
+                }
+                self.assertEqual(set(family_of.values()), set(family_rows))
+                for family, listed in family_rows.items():
+                    self.assertEqual(
+                        {case for case, owner in family_of.items() if owner == family},
+                        {f"{slug} ({legacy_id})" for slug, legacy_id in listed},
+                        f"the {family} row of the family table",
+                    )
+
+        # How each document spells a contract, and the phrase that introduces
+        # a read-dependent scenario's second one.
+        spellings = {
+            "README.md": (
+                3,
+                "{band} · {status} · `{action}` · ",
+                "none",
+                "a read that finds every answer sound opens ",
+            ),
+            "docs/scenario-coverage.md": (
+                -1,
+                "`{band}` / `{status}` / `{action}` / ",
+                "no caps",
+                "for a read that finds every answer sound, ",
+            ),
+        }
+
+        def assert_renders(text: str, contract: dict, empty: str) -> None:
+            prefix = spelling.format(
+                band=contract["band"],
+                status=contract["status"],
+                action=contract["recommended_action"],
+            )
+            self.assertTrue(text.startswith(prefix), f"{text!r} vs {prefix!r}")
+            caps = re.split(r"[;(]", text[len(prefix) :], maxsplit=1)[0]
+            if contract["caps"]:
+                self.assertEqual(
+                    set(contract["caps"]),
+                    set(re.findall(r"`([^`]+)`", caps)),
+                )
+            else:
+                self.assertEqual(empty, caps.strip())
+
+        rendered = 0
+        for document, (column, spelling, empty, second) in spellings.items():
+            for case, found in rows(document).items():
+                verifier = root / "scenarios" / case.split(" ")[0] / "verifier"
+                manifest = json.loads((verifier.parent / "scenario.json").read_text())
+                dependent = manifest["catalog"]["expected_route"].get("read_dependent")
+                cell = found[0][column]
+                with self.subTest(document=document, case=case):
+                    assert_renders(
+                        cell,
+                        json.loads((verifier / "expected-opening.json").read_text()),
+                        empty,
+                    )
+                    rendered += 1
+                    self.assertEqual(dependent is not None, second in cell)
+                    if dependent is not None:
+                        assert_renders(
+                            cell.split(second, 1)[1],
+                            json.loads(
+                                (
+                                    verifier.parent / dependent["sound_read_contract"]
+                                ).read_text()
+                            ),
+                            empty,
+                        )
+                        rendered += 1
+        dependent_count = sum(
+            "read_dependent"
+            in json.loads(path.read_text())["catalog"]["expected_route"]
+            for path in manifests
+        )
+        self.assertEqual(len(spellings) * (len(family_of) + dependent_count), rendered)
+
+    def test_case_58_scorer_drops_only_an_outer_group_that_changes_nothing(
+        self,
+    ) -> None:
+        """The redundant-group rule is the one place the scorer reads structure.
+
+        It must see escapes and character classes, drop `(?:...)` groups and
+        plain groups with no capture inside until none is left, keep any group
+        whose removal would change what the rule captures or asserts, and keep
+        whitespace inside a group, which the pattern matches literally.
+        """
+
+        path = (
+            scenario.REPOSITORY_ROOT
+            / "scenarios/regex-rule-authoring/project/evaluator.py"
+        )
+        specification = importlib.util.spec_from_file_location("case_58_scorer", path)
+        assert specification is not None and specification.loader is not None
+        scorer = importlib.util.module_from_spec(specification)
+        # Loading it must not leave bytecode inside a published scenario.
+        with mock.patch.object(sys, "dont_write_bytecode", True):
+            specification.loader.exec_module(scorer)
+        for written, recorded, score in (
+            ("(?:\\d+)", "\\d+", 1.0),
+            ("(\\d+)", "\\d+", 1.0),
+            ("(\\d+\\))", "\\d+\\)", 1.0),
+            ("([)])", "[)]", 1.0),
+            ("  [0-9]{4}  ", "\\d{4}", 1.0),
+            ('("token"\\s*:\\s*"([^"]*)")', '"token"\\s*:\\s*"([^"]*)"', 0.0),
+            ("(?P<year>\\d{4})", "\\d{4}", 0.0),
+            ("(?=a)", "a", 0.0),
+            ("(a)|(b)", "a)|(b", 0.0),
+            ("a|b", "[ab]", 0.0),
+            ("( \\d{4} )", "\\d{4}", 0.0),
+            ("(?:(a))", "a", 1.0),
+            ("((a))", "a", 0.0),
+        ):
+            with self.subTest(written=written):
+                self.assertEqual(score, scorer.score(written, recorded))
+
+    def test_case_58_calls_no_answer_sound_that_its_own_note_contradicts(
+        self,
+    ) -> None:
+        """A row whose recorded rule fails its own examples cannot be `sound`.
+
+        Each row carries the strings its rule is claimed to find and to leave
+        alone. The rules are searched over those strings here - they are this
+        repository's own inputs, so compiling them is safe - and any row the
+        rule contradicts must be classed unsound or contestable.
+        """
+
+        root = scenario.REPOSITORY_ROOT / "scenarios/regex-rule-authoring"
+        classes = {
+            row_id: entry["class"]
+            for row_id, entry in json.loads(
+                (root / "verifier/row-verdicts.json").read_text(encoding="utf-8")
+            )["rows"].items()
+        }
+        contradicted = []
+        for number, line in enumerate(
+            (root / "project/dataset.jsonl").read_text(encoding="utf-8").splitlines(),
+            start=1,
+        ):
+            row = json.loads(line)
+            rule = re.compile(row["output"])
+            if any(
+                not rule.search(text) for text in row["metadata"]["must_match"]
+            ) or any(rule.search(text) for text in row["metadata"]["must_reject"]):
+                contradicted.append(f"line-{number}")
+        self.assertEqual(["line-16", "line-21"], contradicted)
+        for row_id in contradicted:
+            self.assertNotEqual("sound", classes[row_id], row_id)
+
+    def test_a_readme_sample_row_is_a_row_of_its_dataset(self) -> None:
+        """The README's "equivalent object" is a claim about one line of data.
+
+        Case 58's sample once carried example strings no row has. A sample is
+        read as a row with each `...` standing for omitted text, and must match
+        a row of the scenario's dataset in every key and every other character.
+        """
+
+        def matches(sample: object, row: object) -> bool:
+            if isinstance(sample, str) and isinstance(row, str) and "..." in sample:
+                pattern = ".*?".join(re.escape(part) for part in sample.split("..."))
+                return re.fullmatch(pattern, row, re.DOTALL) is not None
+            if isinstance(sample, dict) and isinstance(row, dict):
+                return sample.keys() == row.keys() and all(
+                    matches(sample[key], row[key]) for key in sample
+                )
+            if isinstance(sample, list) and isinstance(row, list):
+                return len(sample) == len(row) and all(map(matches, sample, row))
+            return sample == row
+
+        samples = 0
+        for manifest_path in sorted(
+            (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
+        ):
+            root = manifest_path.parent
+            dataset = (
+                root
+                / json.loads(manifest_path.read_text(encoding="utf-8"))["catalog"][
+                    "datasets"
+                ][0]["path"]
+            )
+            if dataset.suffix != ".jsonl":
+                continue
+            rows = [
+                json.loads(line)
+                for line in dataset.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            readme = (root / "README.md").read_text(encoding="utf-8")
+            for block in re.findall(r"```json\n(.*?)\n```", readme, re.DOTALL):
+                sample = json.loads(block)
+                if isinstance(sample, dict) and "input" in sample:
+                    samples += 1
+                    with self.subTest(scenario=root.name):
+                        self.assertTrue(
+                            any(matches(sample, row) for row in rows),
+                            f"{root.name}: the README's sample is no row of {dataset.name}",
+                        )
+        self.assertGreater(samples, 0, "no README sample row was read")
+
+    def test_the_rubric_check_reports_each_way_a_rubric_drifts(self) -> None:
+        """The check has to fail, and for the reason under test.
+
+        Each probe makes one edit to a copy of case 58 and asserts the edit
+        applied, so a probe that silently changed nothing cannot pass. The
+        first restores the defect that shipped.
+        """
+
+        source = scenario.REPOSITORY_ROOT / "scenarios" / "regex-rule-authoring"
+        probes = (
+            (
+                "`\\d{4}`, `SID\\d{8}`.",
+                "`\\d{4}`, `#(?:[0-9a-f]{3}|[0-9a-f]{6})`.",
+                "which the dataset labels 'hard'",
+            ),
+            (
+                "### Difficulty rubric",
+                "### Difficulty Rubric",
+                "is not in a recognised form",
+            ),
+            ("`SID\\d{8}`.", "`SID\\d{9}`.", "no single row of the dataset"),
+            ("- **very-hard** -", "- **expert** -", "the manifest declares"),
+        )
+        for old, new, reason in probes:
+            with self.subTest(edit=new), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                copy = root / "scenarios" / source.name
+                shutil.copytree(source, copy)
+                readme = copy / "README.md"
+                text = readme.read_text(encoding="utf-8")
+                self.assertEqual(1, text.count(old), "the probe edit did not apply")
+                readme.write_text(text.replace(old, new), encoding="utf-8")
+                problems, _, _ = _rubric_findings(root)
+                self.assertTrue(
+                    any(reason in problem for problem in problems),
+                    f"expected a finding containing {reason!r}, got {problems}",
+                )
+
+    def test_every_shipped_scenario_names_the_guide_task_kind_it_was_measured_with(
+        self,
+    ) -> None:
+        """The declared task kind changes what the readiness read reports.
+
+        A contract that does not record it cannot be re-derived: the value
+        lived only in the notes of the captain who measured it, while the
+        catalog carried its own word for the same thing -- `tool-call-selection`
+        where the guide was actually told `structured`. The key is optional in
+        the schema because the first scenario's pinned manifest predates it;
+        every scenario in the tree carries it, and that is this test's job.
+        """
+
+        root = scenario.REPOSITORY_ROOT / "scenarios"
+        checked = 0
+        missing = []
+        for manifest_path in sorted(root.glob("*/scenario.json")):
+            catalog = json.loads(manifest_path.read_text(encoding="utf-8"))["catalog"]
+            for profile in catalog.get("datasets") or []:
+                checked += 1
+                kind = profile.get("guide_task_kind")
+                if kind is None:
+                    missing.append(manifest_path.parent.name)
+                    continue
+                self.assertIn(
+                    kind,
+                    scenario.GUIDE_TASK_KINDS,
+                    f"{manifest_path.parent.name} names a kind the guide does not take",
+                )
+        self.assertEqual([], missing, "scenarios shipping no guide task kind")
+        # Without this the whole test passes on an empty glob: no profile read,
+        # no name missing, green.
+        self.assertGreaterEqual(checked, 12, "no dataset profile was read")
+
+    def test_a_declared_binary_record_is_read_as_no_label_surface(self) -> None:
+        """A database file is a record this check cannot read as rows.
+
+        The delimited-table reading takes the first decodable run of bytes
+        holding a separator for a header. A SQLite page can decode, hold a tab,
+        and carry a bare carriage return a few bytes later, which the CSV reader
+        refuses with an exception rather than a verdict -- so `check` crashed on
+        a scenario that shipped its database. The bytes below are that shape,
+        reduced to the three properties that produced it.
+        """
+
+        root = self.create_scenario("database-record", 177)
+        database = root / "project" / "stock.db"
+        database.write_bytes(
+            b"SQLite format 3\x00"
+            + b"\x00" * 40
+            + b"id\tname\tqty\n"
+            + b"1\tbolt\r4\n"
+            + b"\x00\xff\xfe" * 20
+            + b"\n"
+        )
+        manifest = valid_manifest("database-record", 177)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/stock.db"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a database")
+
+        status, output, error = self.run_cli("check", "database-record")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: database-record", output)
+
+    def test_a_stray_control_byte_does_not_hide_a_table_s_label_column(self) -> None:
+        """One control character in a row is not a reason to drop the row.
+
+        The database above is read as no label surface because the file is
+        bytes. An earlier answer to it dropped any decoded line carrying a C0
+        control byte, which is the same question asked one level too low: a
+        text table with one vertical tab per line lost every data line and so
+        reported no label column at all. A record could then ship its answer
+        key past this check by carrying one stray byte per row.
+        """
+
+        root = self.create_scenario("noisy-table", 178)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f"{index},note\x0b{index},{'SEV1' if index % 2 else 'SEV2'}\n"
+            for index in range(20)
+        )
+        records.write_text("id,note,severity\n" + rows, encoding="utf-8")
+        manifest = valid_manifest("noisy-table", 178)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a noisy table")
+
+        status, output, error = self.run_cli("check", "noisy-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("severity", error)
+
+    def test_a_quoted_field_spanning_lines_does_not_hide_the_column_after_it(
+        self,
+    ) -> None:
+        """A table is parsed as a stream, because RFC4180 rows span lines.
+
+        Parsing each physical line on its own survives a line the reader
+        chokes on, and splits every quoted field that carries a newline. The
+        column after such a field then lands in a record of the wrong width
+        and is dropped -- so a labelled table whose note field wraps reported
+        no label surface, and the record shipped its answer key.
+        """
+
+        root = self.create_scenario("wrapped-table", 179)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f'{index},"line one of {index}\nline two of {index}",'
+            f"{'SEV1' if index % 2 else 'SEV2'}\n"
+            for index in range(20)
+        )
+        records.write_text("id,note,severity\n" + rows, encoding="utf-8")
+        manifest = valid_manifest("wrapped-table", 179)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a wrapped table")
+
+        status, output, error = self.run_cli("check", "wrapped-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("carry a closed label surface", error)
+        self.assertIn("severity", error)
+
+    def test_a_table_this_check_cannot_decode_is_refused_not_vouched_for(
+        self,
+    ) -> None:
+        """ "I could not read this" may not be spelled "there is nothing here".
+
+        The scan drops a line it cannot use in three places, and for a while
+        nothing counted the drops, so a file whose every data line was dropped
+        produced the empty list -- the same answer as a file with no labels.
+        A latin-1 CSV, which is what every European spreadsheet exports by
+        default, walked its answer key past the check that way: the ASCII
+        header was read, all twenty data lines failed to decode, and the
+        record was declared clean.
+        """
+
+        root = self.create_scenario("latin-one-table", 180)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = b"".join(
+            b"%d,note\xe9%d,%s\n" % (index, index, b"SEV1" if index % 2 else b"SEV2")
+            for index in range(20)
+        )
+        records.write_bytes(b"id,note,severity\n" + rows)
+        manifest = valid_manifest("latin-one-table", 180)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a latin-1 table")
+
+        status, output, error = self.run_cli("check", "latin-one-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("are not UTF-8", error)
+        self.assertIn("cannot be ruled out", error)
+
+    def test_a_quote_that_is_never_closed_is_refused(self) -> None:
+        """The CSV reader raises nothing for this; it swallows the file.
+
+        A quote opening a field and never closed makes every later line part
+        of that one field. The reader reports no error, the single record it
+        finally returns is the wrong width, and the table is silently empty.
+        """
+
+        root = self.create_scenario("swallowed-table", 181)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f"{index},note{index},{'SEV1' if index % 2 else 'SEV2'}\n"
+            for index in range(1, 21)
+        )
+        records.write_text('id,note,severity\n0,"open,SEV2\n' + rows, encoding="utf-8")
+        manifest = valid_manifest("swallowed-table", 181)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a swallowed table")
+
+        status, output, error = self.run_cli("check", "swallowed-table")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("never closed", error)
+
+    def test_a_header_repeating_a_column_name_is_refused(self) -> None:
+        """Stepping over it took a DATA line as the header instead.
+
+        A table keyed by column name cannot be read when two columns share
+        one. The search used to carry on to the next line that qualified --
+        which was row one -- and then reported columns named after that row's
+        values, so the answer was wrong rather than merely incomplete.
+        """
+
+        root = self.create_scenario("repeated-column", 182)
+        records = root / "project" / "traigent-runs" / "events.csv"
+        records.parent.mkdir()
+        rows = "".join(
+            f"{index},{'SEV1' if index % 2 else 'SEV2'},SEV1\n" for index in range(20)
+        )
+        records.write_text("id,severity,severity\n" + rows, encoding="utf-8")
+        manifest = valid_manifest("repeated-column", 182)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/traigent-runs/events.csv"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a repeated column name")
+
+        status, output, error = self.run_cli("check", "repeated-column")
+
+        self.assertNotEqual(0, status, output)
+        self.assertIn("repeats a column name", error)
+
+    def test_prose_that_reads_as_a_header_is_not_a_table_that_failed(self) -> None:
+        """The refusal must not fire on a document that is simply not a table.
+
+        One sentence carrying two commas reads as a three-column header, and
+        the lines after it are prose of every other width. That is honestly
+        "this file is not a table", not "this table could not be read" -- and
+        the first draft of the refusal got it wrong, turning a shipped
+        handbook page into a failed check.
+        """
+
+        root = self.create_scenario("handbook-page", 183)
+        page = root / "project" / "handbook.md"
+        page.write_text(
+            "# Remote and hybrid working\n\n"
+            "Office-based roles are hybrid: you must work at least 3 days per\n"
+            "week from your contracted site. Operational roles, meaning\n"
+            "drivers, warehouse operatives and yard staff, are not eligible\n"
+            "for remote working because the work cannot be done away from the\n"
+            "site.\n",
+            encoding="utf-8",
+        )
+        manifest = valid_manifest("handbook-page", 183)
+        catalog = manifest["catalog"]
+        assert isinstance(catalog, dict)
+        catalog["non_dataset_files"] = ["project/handbook.md"]
+        self.write_manifest(root, manifest)
+        self.commit_repository_paths(root, message="Ship a handbook page")
+
+        status, output, error = self.run_cli("check", "handbook-page")
+
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: handbook-page", output)
 
     def test_a_declared_record_with_a_line_too_long_to_read_is_refused(self) -> None:
         """A line this check cannot read is not a line it may vouch for."""
@@ -4742,6 +5636,347 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(0, prepare_status, prepare_error)
         self.assertEqual(0, verify_status, verify_error)
         self.assertFalse(sentinel.exists())
+
+    def copy_read_dependent_scenario(self) -> Path:
+        """The published case 58, committed into this test's repository."""
+        source = scenario.REPOSITORY_ROOT / "scenarios" / "regex-rule-authoring"
+        root = self.scenarios_dir / source.name
+        shutil.copytree(source, root, ignore=shutil.ignore_patterns("__pycache__"))
+        self.commit_repository_paths(root, message="Copy regex-rule-authoring")
+        return root
+
+    def write_read(self, verdicts: dict[str, str], *, name: str) -> Path:
+        return self.write_result(
+            {
+                "reviewer": "assistant",
+                "rows": [
+                    {
+                        "id": row_id,
+                        "origin": "collected",
+                        "verdict": verdict,
+                        "note": "read",
+                    }
+                    for row_id, verdict in verdicts.items()
+                ],
+            },
+            name=name,
+        )
+
+    def test_verify_compares_with_the_contract_for_the_read_the_worker_gave(
+        self,
+    ) -> None:
+        root = self.copy_read_dependent_scenario()
+        run_record = self.prepare_run_record("58", name="read-dependent-run")
+        published = json.loads((root / "verifier/expected-opening.json").read_text())
+        sound = json.loads(
+            (root / "verifier/expected-opening-sound-read.json").read_text()
+        )
+        finds_one = self.write_read(
+            {
+                "line-3": "yes",
+                "line-13": "no",
+                "line-14": "unsure",
+                "line-26": "yes",
+                "line-29": "yes",
+            },
+            name="finds-one.json",
+        )
+        finds_none = self.write_read(
+            {
+                "line-4": "yes",
+                "line-9": "yes",
+                "line-14": "no",
+                "line-17": "yes",
+                "line-30": "yes",
+            },
+            name="finds-none.json",
+        )
+        finds_none_and_unsure = self.write_read(
+            {
+                "line-4": "yes",
+                "line-9": "yes",
+                "line-14": "unsure",
+                "line-17": "yes",
+                "line-30": "yes",
+            },
+            name="finds-none-unsure.json",
+        )
+        cases = (
+            (finds_one, published, 0, "marks an answer unsound"),
+            (finds_none_and_unsure, sound, 0, "finds every answer sound"),
+            # A contestable row marked `no` is a finding the guide acts on.
+            (finds_none, published, 0, "marks an answer unsound"),
+            (finds_none_and_unsure, published, 1, "band: expected 'STRONG'"),
+        )
+        for read, contract, want, message in cases:
+            with self.subTest(read=read.name, band=contract["band"]):
+                status, output, error = self.run_cli(
+                    "verify",
+                    "58",
+                    "--run-record",
+                    str(run_record),
+                    "--result",
+                    str(self.write_result(contract)),
+                    "--row-review",
+                    str(read),
+                )
+                self.assertEqual(want, status, error)
+                self.assertIn(message, output + error)
+
+    def test_verify_fails_a_read_the_row_verdicts_disagree_with(self) -> None:
+        root = self.copy_read_dependent_scenario()
+        run_record = self.prepare_run_record("58", name="graded-read-run")
+        published = self.write_result(
+            json.loads((root / "verifier/expected-opening.json").read_text())
+        )
+        sound = self.write_result(
+            json.loads(
+                (root / "verifier/expected-opening-sound-read.json").read_text()
+            ),
+            name="sound.json",
+        )
+        reads = (
+            (
+                {
+                    "line-13": "yes",
+                    "line-3": "yes",
+                    "line-4": "yes",
+                    "line-9": "yes",
+                    "line-17": "yes",
+                },
+                sound,
+                "line-13: its answer does not answer",
+            ),
+            (
+                {
+                    "line-13": "unsure",
+                    "line-3": "yes",
+                    "line-4": "yes",
+                    "line-9": "yes",
+                    "line-17": "yes",
+                },
+                sound,
+                "line-13: its answer does not answer",
+            ),
+            (
+                {
+                    "line-4": "no",
+                    "line-3": "yes",
+                    "line-9": "yes",
+                    "line-17": "yes",
+                    "line-30": "yes",
+                },
+                published,
+                "line-4: its answer is sound",
+            ),
+            (
+                {"line-4": "yes", "line-9": "yes", "line-17": "yes", "line-30": "yes"},
+                sound,
+                "measured for the 5-row opening read, and this read has 4",
+            ),
+            (
+                {
+                    "line-4": "yes",
+                    "line-9": "yes",
+                    "line-17": "yes",
+                    "line-30": "yes",
+                    "line-99": "yes",
+                },
+                sound,
+                "line-99: not a row",
+            ),
+        )
+        for index, (verdicts, result, reason) in enumerate(reads):
+            with self.subTest(reason=reason):
+                status, output, error = self.run_cli(
+                    "verify",
+                    "58",
+                    "--run-record",
+                    str(run_record),
+                    "--result",
+                    str(result),
+                    "--row-review",
+                    str(self.write_read(verdicts, name=f"r{index}.json")),
+                )
+                self.assertEqual(1, status)
+                self.assertEqual("", output)
+                self.assertIn(reason, error)
+
+    def test_verify_reads_the_opening_read_the_way_readiness_does(self) -> None:
+        root = self.copy_read_dependent_scenario()
+        run_record = self.prepare_run_record("58", name="read-shape-run")
+        sound = self.write_result(
+            json.loads((root / "verifier/expected-opening-sound-read.json").read_text())
+        )
+        verdicts = {
+            " line-4 ": "yes",
+            "line-9": "yes",
+            "line-15": "yes",
+            "line-17": "yes",
+            "line-30": "yes",
+        }
+        padded = self.write_read(verdicts, name="padded.json")
+        status, output, error = self.run_cli(
+            "verify",
+            "58",
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(sound),
+            "--row-review",
+            str(padded),
+        )
+        self.assertEqual(0, status, error)
+        self.assertIn("finds every answer sound", output)
+
+        declared = json.loads(padded.read_text())
+        for row in declared["rows"]:
+            row["in_run"] = True
+        membership = self.write_result(declared, name="membership.json")
+        status, output, error = self.run_cli(
+            "verify",
+            "58",
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(sound),
+            "--row-review",
+            str(membership),
+        )
+        self.assertEqual(1, status)
+        self.assertIn("declares in_run", error)
+
+    def test_verify_grades_the_read_against_the_recorded_verdicts(self) -> None:
+        root = self.copy_read_dependent_scenario()
+        run_record = self.prepare_run_record("58", name="recorded-verdicts-run")
+        published = self.write_result(
+            json.loads((root / "verifier/expected-opening.json").read_text())
+        )
+        key = root / "verifier" / "row-verdicts.json"
+        text = key.read_text(encoding="utf-8")
+        self.assertEqual(3, text.count('"class": "unsound"'))
+        key.write_text(text.replace('"class": "unsound"', '"class": "sound"'))
+        self.commit_repository_paths(key, message="Change the verdicts later")
+        read = self.write_read(
+            {
+                "line-3": "yes",
+                "line-13": "no",
+                "line-14": "unsure",
+                "line-26": "yes",
+                "line-29": "yes",
+            },
+            name="published-read.json",
+        )
+        status, output, error = self.run_cli(
+            "verify",
+            "58",
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(published),
+            "--row-review",
+            str(read),
+        )
+        self.assertEqual(0, status, error)
+        self.assertIn("marks an answer unsound", output)
+
+    def test_verify_requires_the_read_exactly_where_the_contract_depends_on_it(
+        self,
+    ) -> None:
+        root = self.copy_read_dependent_scenario()
+        self.create_scenario("one-contract", 20)
+        dependent_record = self.prepare_run_record("58", name="dependent-run")
+        plain_record = self.prepare_run_record("one-contract", name="plain-run")
+        read = self.write_read(
+            {
+                "line-4": "yes",
+                "line-9": "yes",
+                "line-15": "yes",
+                "line-17": "yes",
+                "line-30": "yes",
+            },
+            name="read.json",
+        )
+        published = self.write_result(
+            json.loads((root / "verifier/expected-opening.json").read_text())
+        )
+        for arguments, reason in (
+            (
+                (
+                    "58",
+                    "--run-record",
+                    str(dependent_record),
+                    "--result",
+                    str(published),
+                ),
+                "pass the read the worker gave readiness as --row-review",
+            ),
+            (
+                (
+                    "one-contract",
+                    "--run-record",
+                    str(plain_record),
+                    "--result",
+                    str(self.write_result(expected_opening(), name="p.json")),
+                    "--row-review",
+                    str(read),
+                ),
+                "--row-review is not read for it",
+            ),
+        ):
+            with self.subTest(case=arguments[0]):
+                status, output, error = self.run_cli("verify", *arguments)
+                self.assertEqual(1, status)
+                self.assertEqual("", output)
+                self.assertIn(reason, error)
+
+    def test_check_refuses_row_verdicts_that_do_not_hold_the_reads_or_the_rows(
+        self,
+    ) -> None:
+        edits = (
+            (
+                "verifier/row-verdicts.json",
+                '"line-32": {',
+                '"line-99": {',
+                "must give a verdict for every row",
+            ),
+            (
+                "verifier/row-verdicts.json",
+                '"class": "unsound"',
+                '"class": "sound"',
+                "its answer is sound, and the read says 'no'",
+            ),
+            (
+                "verifier/measurement/row-review-sound-read.json",
+                '"id": "line-4",\n      "origin": "collected",\n      "verdict": "yes"',
+                '"id": "line-14",\n      "origin": "collected",\n      "verdict": "no"',
+                "must mark no answer 'no'",
+            ),
+            (
+                "verifier/row-verdicts.json",
+                '"class": "contestable"',
+                '"class": "maybe"',
+                "must be one of sound, unsound, contestable",
+            ),
+        )
+        root = self.copy_read_dependent_scenario()
+        status, output, error = self.run_cli("check", "58")
+        self.assertEqual(0, status, error)
+        self.assertIn("OK: regex-rule-authoring", output)
+        for index, (relative, old, new, reason) in enumerate(edits):
+            with self.subTest(reason=reason):
+                target = root / relative
+                original = target.read_text(encoding="utf-8")
+                self.assertGreaterEqual(
+                    original.count(old), 1, "the edit did not apply"
+                )
+                target.write_text(original.replace(old, new, 1), encoding="utf-8")
+                self.commit_repository_paths(target, message=f"Break {index}")
+                status, _, error = self.run_cli("check", "58")
+                target.write_text(original, encoding="utf-8")
+                self.commit_repository_paths(target, message=f"Restore {index}")
+                self.assertEqual(1, status, error)
+                self.assertIn(reason, error)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]

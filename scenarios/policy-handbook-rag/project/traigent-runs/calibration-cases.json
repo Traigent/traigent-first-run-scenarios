@@ -1,0 +1,56 @@
+[
+  {
+    "name": "a number of weeks - the recorded answer and its spelled-out form",
+    "score_mode": "binary",
+    "expected": "16 weeks",
+    "input_data": {
+      "question": "How many weeks of maternity leave are paid at full pay?"
+    },
+    "metadata": {
+      "scoring_path": "normalised-answer-or-alias",
+      "aliases": ["16", "sixteen weeks", "the first 16 weeks"]
+    },
+    "probes": {
+      "good": "16 weeks",
+      "equivalent_good": "Sixteen weeks.",
+      "partial": "16 weeks, then statutory pay to week 39",
+      "bad": "39 weeks"
+    }
+  },
+  {
+    "name": "a team name - articles and case must not matter, a second team must",
+    "score_mode": "binary",
+    "expected": "the IT Service Desk",
+    "input_data": {
+      "question": "Which team must approve a software subscription costing £150?"
+    },
+    "metadata": {
+      "scoring_path": "normalised-answer-or-alias",
+      "aliases": ["IT Service Desk", "IT", "the IT service desk", "IT approval"]
+    },
+    "probes": {
+      "good": "the IT Service Desk",
+      "equivalent_good": "IT service desk",
+      "partial": "the IT Service Desk or the Procurement team",
+      "bad": "the Procurement team"
+    }
+  },
+  {
+    "name": "a yes/no answer - a hedge is not a no",
+    "score_mode": "binary",
+    "expected": "no",
+    "input_data": {
+      "question": "Can I be paid company sick pay during probation?"
+    },
+    "metadata": {
+      "scoring_path": "normalised-answer-or-alias",
+      "aliases": ["no, only statutory sick pay", "statutory sick pay only", "no, statutory sick pay only"]
+    },
+    "probes": {
+      "good": "no",
+      "equivalent_good": "No, statutory sick pay only.",
+      "partial": "not usually",
+      "bad": "yes"
+    }
+  }
+]

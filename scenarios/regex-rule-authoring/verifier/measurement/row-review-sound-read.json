@@ -1,0 +1,41 @@
+{
+  "reviewer": "assistant",
+  "draw": {
+    "method": "chosen, not drawn: five rows verifier/row-verdicts.json classes sound, one from each difficulty stratum and one held-out, to measure the opening a read that finds nothing wrong produces",
+    "seed": null,
+    "reviewed": 5,
+    "provided": 32
+  },
+  "rows": [
+    {
+      "id": "line-4",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "One or two capitals then one or two digits is the outward code as described."
+    },
+    {
+      "id": "line-9",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Four, two and two digits joined by hyphens is the ISO shape the description spells out."
+    },
+    {
+      "id": "line-15",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Hyphenated lower-case groups of 8-4-4-4-12 with the version nibble fixed at 4 and the variant nibble in 8-b."
+    },
+    {
+      "id": "line-17",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "Bracketed alternation of exactly the four levels named."
+    },
+    {
+      "id": "line-30",
+      "origin": "collected",
+      "verdict": "yes",
+      "note": "A captured word, one space, and a backreference to it, bounded as whole words."
+    }
+  ]
+}

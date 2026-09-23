@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "phase-a-opening",
+  "band": "WORKABLE",
+  "status": "OK",
+  "recommended_action": "review-answer-key",
+  "caps": [
+    "dataset-generated-answer-key"
+  ],
+  "display": {
+    "overall": {
+      "score": 74,
+      "confidence": 0.86
+    },
+    "pillars": {
+      "agent": {
+        "score": 100,
+        "confidence": 0.77
+      },
+      "dataset": {
+        "score": 91,
+        "confidence": 0.8
+      },
+      "evaluation": {
+        "score": 100,
+        "confidence": 1.0
+      }
+    }
+  }
+}

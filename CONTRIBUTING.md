@@ -84,8 +84,27 @@ Two spellings of the same severity are two label strings here, because two
 strings are what the file carries. Whether an evaluator folds them together is
 a property of the evaluator at run time; it is not asserted, so it cannot be
 forged. `components.evaluator.method` is carried as a description of the
-scenario and checked only for being one of `exact-match` or
-`normalized-exact-match`; no count and no gate is derived from it.
+scenario and checked only for being one of the published spellings: the
+guide's own `--evaluator-method` names (`GUIDE_EVALUATOR_METHODS` in
+`scenario.py`, the fifteen its `METHOD_PROFILES` accepts), plus the two the
+first scenario shipped with, `exact-match` and `normalized-exact-match`. Those
+two are this catalog's spellings and not the guide's: the guide calls the same
+methods `exact` and `normalized-exact`, and its argument parser rejects the
+`-match` suffix. So a catalog entry is a description a reader can map onto the
+guide's vocabulary, not a string that can be passed to `readiness.py`
+unchanged -- drop the suffix if you are passing one through. No count and no
+gate is derived from it.
+
+`datasets[].task` and `datasets[].guide_task_kind` are the same pair of ideas,
+and the second is NOT decoration. `task` is this catalog's own description and
+is free to read `tool-call-selection` or `queue-routing`; `guide_task_kind` is
+one of the ten names the guide's `TASK_KINDS` accepts, and it is the string the
+guide was actually given when that scenario's opening was measured. The declared
+task kind changes what the readiness read reports, so a contract that does not
+record it cannot be re-derived -- the value used to live only in the notes of
+whoever ran the measurement. It is optional in the schema because the first
+scenario's pinned manifest predates it; every scenario in the tree carries it,
+and a test holds that rather than this paragraph.
 
 **Not established here, on purpose:** whether the shipped evaluator actually
 distinguishes the classes a scenario is built around, and what a constant answer
@@ -183,7 +202,22 @@ the limits are worth stating rather than leaving to be discovered:
   A record that is neither -- free-form prose carrying `INC-001: SEV1` on every
   line, say -- is reported as carrying no closed label surface. That is the one
   place left where "I could not establish this is a label surface" is answered
-  as "it is not one", and it is stated here rather than implied. The scan's
+  as "it is not one", and it is stated here rather than implied. A shipped
+  binary record named in `non_dataset_files` -- a SQLite database, say -- is
+  read the same way: a file carrying a NUL byte is bytes rather than text, so
+  it reads as an opaque record with no label surface instead of crashing the
+  scan. That is the *only* case answered this way. A record that is text and
+  that the reading cannot get through -- a table whose data lines are not
+  UTF-8, one whose quoted field is never closed, one whose header repeats a
+  column name -- is refused by name rather than reported as carrying no
+  labels, because "I could not read this" and "there is nothing here" are
+  different answers and a latin-1 answer key walked past the scan while they
+  were spelled the same. `scripts/check_public_surface.py` likewise treats a
+  SQLite database as a declared binary format rather than text of an unknown
+  encoding -- the whole header and the page geometry, not the first sixteen
+  bytes, since a prefix is something any blob can wear; every decoded view of
+  it still goes through the denylist, so a secret or a private path inside a
+  database page is found as readily as one in a text file. The scan's
   floor is also relative: a column carried by fewer than one row in ten reads
   as telemetry, so burying a labelled dataset under more than ten junk lines
   per labelled row dilutes it below the floor -- at ten lines of authoring
@@ -242,6 +276,65 @@ directory, historical branch or tag, deleted file, or inherited commit message.
 The public scenario receives a new identity in this repository. Source history
 and unrelated context do not travel with it.
 
+## Adding a scenario
+
+`scenario.py` discovers scenarios from the directory tree, so it costs nothing.
+Everything else that counts them is manual, and this is the list:
+
+1. `scenarios/<slug>/` -- `scenario.json`, `README.md`, `project/`, `verifier/`,
+   per "Required layout and manifest" above.
+2. `presentation/src/content.ts` -- two imports (the manifest and the contract)
+   and one `SCENARIO_BANK` row naming the slug, the legacy id and a family from
+   the closed list already there.
+3. `presentation/src/model.ts` -- **the index slides hold seven scenarios
+   each**, and `catalogSlugs` is bounded at seven. The deck splits the bank in
+   half for its two index slides, so the fifteenth scenario makes one half eight
+   and `npm run validate` fails with `slides.NN.catalogSlugs :: Too big:
+   expected array to have <=7 items`. That is the right failure -- loud,
+   precise, before anything publishes -- but it is a slide-capacity decision,
+   not a typo: add a third index slide, or raise the bound and check the slide
+   still fits. The bound was six until case 58 made one half seven; it was
+   raised against `npm run fit:browser`, which is the gate that decides whether
+   a wider table still fits, so raise it that way or not at all.
+4. The pinned counts in `presentation/tests/validate-content.test.ts` --
+   `scenarioBankSize`, the catalog length, and the legacy-id list. They are pins
+   so that adding a scenario is a decision; the failure names the number to use.
+   The family-row assertion changes too when the new scenario joins a family
+   that already has cases listed.
+5. The count in prose. "Thirteen" is written out in `README.md`,
+   `docs/scenario-coverage.md`, `docs/methodology.md`, `GUIDE.md` and
+   `docs/customer-pc-runbook.md`, and `presentation/README.md` carries it as
+   `thirteen-scenario bank`. The deck derives its own count; the markdown does
+   not. `README.md` and `docs/scenario-coverage.md` each carry a row per
+   scenario and a family table; `tests/test_scenario.py` checks both against
+   the bank, the families the deck's `SCENARIO_BANK` gives, and - in the README
+   - each contract's band, status, action and caps. The tally of committed row
+   reviews in `docs/scenario-coverage.md` is still kept by hand.
+6. The measured opening. `verifier/expected-opening.json` records what the
+   guide at the pinned revision returned for the project as shipped -- it is
+   measured, never authored, and a scenario whose bytes change is re-measured.
+   Commit the measurement beside it under `verifier/measurement/`:
+   `agent-read.json`, `invocation.json`, and `row-review.json` when the contract
+   depends on a review -- either because the band sits above the answer-key hold
+   or because `caps` carries `dataset-unsound-expected-outputs`, which
+   `readiness.py` builds out of a review's verdicts and out of nothing else.
+   `tests/test_scenario.py` derives that set from the contracts, so a review
+   that is needed and missing, or shipped and unnecessary, fails. A step the
+   measurement ran and the guide refused - clinic's calibration, whose readiness
+   command then carries `--calibration-scope-refused` - is named under
+   `refusals` in `invocation.json` with the message it refused with, and
+   `scripts/reproduce_openings.py` requires the same refusal on every replay.
+7. A contract that depends on the draw. When a scenario's opening turns on
+   whether the worker's read finds an unsound answer, and a five-row draw can
+   miss every unsound row, publish both openings: declare
+   `expected_route.read_dependent` in the manifest, give a verdict and a reason
+   for every row in `verifier/row-verdicts.json`, and commit the sound read
+   beside the published one as `verifier/measurement/row-review-sound-read.json`
+   with its measured contract in `verifier/expected-opening-sound-read.json`.
+   Bind the read in `invocation.json` as `$ROW_REVIEW`. `scenario.py check`
+   grades both committed reads against the verdicts, and
+   `scripts/reproduce_openings.py` measures both contracts.
+
 ## Validate the final change
 
 For every scenario change, run:
@@ -250,14 +343,18 @@ For every scenario change, run:
 python -m pip install -r requirements-dev.txt
 black --check scenario.py scripts tests
 ruff check scenario.py scripts tests
-mypy --strict scenario.py scripts/check_public_surface.py
+mypy --strict scenario.py scripts/check_public_surface.py scripts/reproduce_openings.py
 python scenario.py list
 python scenario.py show CASE
 python scenario.py check CASE
 python scenario.py check
 python -m unittest discover -s tests -p 'test_*.py' -v
 python scripts/check_public_surface.py
+GUIDE=/path/to/traigent-first-run python scripts/reproduce_openings.py
 ```
+
+The last command needs a clean guide checkout on the revision the scenarios
+were measured at; CI checks one out and runs it on every change.
 
 `check` validates catalog paths and declared dataset/calibration facts, then the
 strict expected-opening structure and value ranges. Fix the contract rather
@@ -279,6 +376,13 @@ python scenario.py verify CASE \
   --run-record /path/to/run.json \
   --result /path/to/opening-result.json
 ```
+
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
 
 Keep complete command output and final exit statuses. Do not use a successful
 catalog check as evidence that a worker run passed.

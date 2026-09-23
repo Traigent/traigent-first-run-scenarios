@@ -1,0 +1,89 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "openrouter/openai/gpt-4o-mini",
+        "openrouter/anthropic/claude-3.5-haiku",
+        "openrouter/google/gemini-2.0-flash-001"
+      ],
+      "source_lines": [
+        18,
+        51
+      ],
+      "evidence": "agent.py:18 MODELS lists the three OpenRouter ids, :64 reads the choice from config, :65 refuses one outside MODELS, :78 hands it to call_model, and :51 passes it as model= on the litellm completion call."
+    },
+    "prompt_style": {
+      "values": [
+        "direct",
+        "worked"
+      ],
+      "source_lines": [
+        24,
+        81
+      ],
+      "evidence": "agent.py:24 PROMPT_STYLES holds the two instruction texts, :67 reads the key from config, :68 refuses one outside PROMPT_STYLES, and :81 indexes the table into a system message of the messages list that :51 sends as messages= on the completion call."
+    },
+    "units_hint": {
+      "values": [
+        "plain",
+        "reminder"
+      ],
+      "source_lines": [
+        29,
+        82
+      ],
+      "evidence": "agent.py:29 UNITS_HINTS holds the two unit instruction lines, :70 reads the key from config, :71 refuses one outside UNITS_HINTS, and :82 indexes the table into a system message of the messages list that :51 sends as messages= on the completion call."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.3
+      ],
+      "source_lines": [
+        34,
+        51
+      ],
+      "evidence": "agent.py:34 TEMPERATURES is the literal tuple, :73 reads the value from config, :74 refuses one outside TEMPERATURES, :85 hands it to call_model, and :51 passes it as temperature= on the litellm completion call."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        36,
+        80,
+        51
+      ],
+      "evidence": "agent.py:36 TARIFF is the instruction text and carries no worked examples; :80-83 build the four messages that carry it, the two chosen instruction lines and the shipment, and :51 sends them as messages= on the completion call."
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        46,
+        57,
+        60
+      ],
+      "evidence": "agent.py:46 NUMBER_PATTERN pins the answer to a number; :57 finds every number in the reply, :59 raises when there is none, and :60 returns the last one as a float."
+    },
+    "control-flow": {
+      "loop": false,
+      "bounded": true,
+      "source_lines": [
+        63,
+        76
+      ],
+      "evidence": "agent.py:63-87 is one straight-line function with no loop: four reads and guards, then one return that makes one completion call through call_model and parses its reply."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        51
+      ],
+      "evidence": "agent.py:51 makes one plain completion call with model, messages and temperature only; no tools are declared or reached anywhere in the file."
+    }
+  }
+}

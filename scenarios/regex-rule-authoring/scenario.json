@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "slug": "regex-rule-authoring",
+  "legacy_id": 58,
+  "title": "Log-redaction rule authoring with a disputed answer key",
+  "summary": "A customer-shaped code-authoring project: a configurable agent that writes one Python regular expression from a described shape, thirty-two real-declared descriptions with a hand-written expression beside each, a deterministic normalized-text evaluator that never compiles what it is given, and calibration probes. Five of the answers were read; one of them does not answer its own question.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "prompt_style",
+          "flavour",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "limited",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "normalized-exact",
+        "guide_evaluator_method": "normalized-exact",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 3
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "redaction-rules",
+        "state": "limited",
+        "path": "project/dataset.jsonl",
+        "task": "regex-authoring",
+        "guide_task_kind": "code",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 32,
+        "unique_inputs": 32,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 24,
+            "holdout": 8
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 8,
+            "medium": 8,
+            "hard": 8,
+            "very-hard": 8
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance",
+          "metadata.must_match",
+          "metadata.must_reject"
+        ],
+        "label_shape": {
+          "kind": "free-text",
+          "surface_label_count": 0,
+          "label_counts": {}
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "answer-key-disputed-by-review",
+          "one-expression-per-shape-is-a-convention-not-a-fact"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "a-read-row-contradicts-its-own-input",
+      "verifier_contract": "verifier/expected-opening.json",
+      "read_dependent": {
+        "row_verdicts": "verifier/row-verdicts.json",
+        "sound_read_contract": "verifier/expected-opening-sound-read.json"
+      }
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    },
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ]
+  },
+  "tags": [
+    "code-authoring",
+    "regular-expressions",
+    "normalized-exact-evaluator",
+    "answer-key-review",
+    "unsound-expected-output",
+    "synthetic-data"
+  ]
+}

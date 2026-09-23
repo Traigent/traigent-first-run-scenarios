@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "slug": "meeting-notes-summarizer",
+  "legacy_id": 53,
+  "title": "Meeting summaries graded by an evaluator nobody can run",
+  "summary": "A customer-shaped meeting-summarization project with a configurable agent, labeled synthetic transcripts, and an evaluator whose grading is delegated to an in-house package that is not in the project, so nothing can calibrate or run it.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "length",
+          "style",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "ready",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "needs-repair",
+        "path": "project/evaluator.py",
+        "method": "llm-judge-rubric",
+        "calibration": {
+          "path": null,
+          "case_count": 0
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "meeting-transcripts",
+        "state": "ready",
+        "path": "project/dataset.jsonl",
+        "task": "free-text-summarization",
+        "guide_task_kind": "free-text",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 40,
+        "unique_inputs": 40,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 34,
+            "holdout": 6
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 10,
+            "medium": 10,
+            "hard": 10,
+            "very-hard": 10
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "free-text",
+          "surface_label_count": 0,
+          "label_counts": {}
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "free-text-task",
+          "single-reference-summary"
+        ]
+      }
+    ],
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ],
+    "expected_route": {
+      "rationale": "evaluator-present-but-unrunnable",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    }
+  },
+  "tags": [
+    "free-text",
+    "summarization",
+    "opaque-evaluator",
+    "evaluator-needs-repair",
+    "labeled-data",
+    "synthetic-data",
+    "openrouter"
+  ]
+}

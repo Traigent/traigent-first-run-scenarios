@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "slug": "helpdesk-queue-router",
+  "legacy_id": 47,
+  "title": "Optimization-ready helpdesk queue router",
+  "summary": "A customer-shaped support-desk routing project with a configurable agent, labeled synthetic tickets across six queues, a deterministic queue evaluator that folds three ticketing tools' spellings together, and calibration probes.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "all-components-ready",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "prompt_style",
+          "few_shot_count",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "ready",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "normalized-exact-match",
+        "guide_evaluator_method": "normalized-exact",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 3
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "support-tickets",
+        "state": "ready",
+        "path": "project/dataset.jsonl",
+        "task": "queue-routing",
+        "guide_task_kind": "routing",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 96,
+        "unique_inputs": 96,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 80,
+            "holdout": 16
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 24,
+            "medium": 24,
+            "hard": 24,
+            "very-hard": 24
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "mapped-labels",
+          "surface_label_count": 18,
+          "label_counts": {
+            "Billing": 9,
+            "billing-payments": 4,
+            "BILL": 3,
+            "Access & Login": 9,
+            "access": 4,
+            "ACC": 3,
+            "Integrations": 9,
+            "integrations-api": 4,
+            "INTG": 3,
+            "Data Export": 9,
+            "data-export": 4,
+            "EXPT": 3,
+            "Outage": 9,
+            "outage-incident": 4,
+            "OUT": 3,
+            "Feature Request": 9,
+            "feature-request": 4,
+            "FEAT": 3
+          }
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "closed-label-task"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "all-required-components-ready",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    },
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ]
+  },
+  "tags": [
+    "routing",
+    "closed-label",
+    "exact-evaluator",
+    "support-desk",
+    "labeled-data",
+    "optimization-ready",
+    "synthetic-data"
+  ]
+}

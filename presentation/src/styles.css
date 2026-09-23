@@ -593,6 +593,45 @@ h1 {
   margin: 1rem 0 0;
 }
 
+.catalog-index-wrap {
+  flex: 0 0 auto;
+  margin-top: 0.8rem;
+}
+
+.catalog-index {
+  font-size: clamp(0.72rem, 0.76vw, 0.84rem);
+  line-height: 1.24;
+}
+
+.catalog-index th,
+.catalog-index td {
+  padding: 0.34rem 0.5rem;
+}
+
+.catalog-index tbody th {
+  width: 6%;
+}
+
+.catalog-index th:nth-child(2) {
+  width: 32%;
+}
+
+.catalog-index th:nth-child(3) {
+  width: 15%;
+}
+
+.catalog-index th:nth-child(4) {
+  width: 15%;
+}
+
+.catalog-index-slug {
+  display: block;
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+}
+
 .catalog-card {
   border: 1px solid var(--border);
   border-radius: 0.9rem;

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "slug": "contract-clause-extractor",
+  "legacy_id": 54,
+  "title": "Lease clause extraction with a model-written answer key",
+  "summary": "A customer-shaped structured-extraction project: a configurable agent that reads four facts out of a lease clause, sixty real-declared clause excerpts whose expected answers were drafted by a model and never reviewed, a deterministic field-level F1 evaluator, and calibration probes.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "prompt_style",
+          "output_format",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "limited",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "set-f1",
+        "guide_evaluator_method": "set-f1",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 3
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "lease-clauses",
+        "state": "limited",
+        "path": "project/dataset.jsonl",
+        "task": "structured-extraction",
+        "guide_task_kind": "extraction",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 60,
+        "unique_inputs": 60,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 50,
+            "holdout": 10
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 15,
+            "medium": 15,
+            "hard": 15,
+            "very-hard": 15
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance",
+          "metadata.output_provenance"
+        ],
+        "label_shape": {
+          "kind": "structured",
+          "surface_label_count": 0,
+          "label_counts": {}
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "model-written-answer-key",
+          "answer-key-not-reviewed"
+        ]
+      }
+    ],
+    "expected_route": {
+      "rationale": "answer-key-written-by-a-model",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    },
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ]
+  },
+  "tags": [
+    "structured-extraction",
+    "set-f1-evaluator",
+    "lease-clauses",
+    "model-written-answer-key",
+    "evidence-strength",
+    "synthetic-data"
+  ]
+}

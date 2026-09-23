@@ -1,0 +1,186 @@
+{
+  "flow_id": "flw_7c1e_claims_intake",
+  "name": "Ilex Mutual claims intake assistant",
+  "version": 14,
+  "exported_at": "2026-08-27T09:14:00Z",
+  "export_format": "conversa-flow/1.2",
+  "runtime": {
+    "platform": "Conversa Flows",
+    "classifier_model": "conversa-intent-v3",
+    "language": "en-GB",
+    "entry_node": "welcome"
+  },
+  "settings": {
+    "confidence_threshold": 0.62,
+    "fallback_node": "clarify",
+    "max_clarify_turns": 2,
+    "handoff_queue": "claims-intake-webchat"
+  },
+  "intents": [
+    {
+      "key": "new_claim",
+      "label": "New Claim",
+      "description": "The customer wants to tell us about a loss or incident that has not been reported to us before.",
+      "route_to": "new_claim_intake",
+      "examples": [
+        "I need to report an accident",
+        "someone has broken into my house and I want to claim",
+        "my suitcase never arrived at the airport",
+        "how do I claim for storm damage to the roof"
+      ]
+    },
+    {
+      "key": "claim_status",
+      "label": "Claim Status",
+      "description": "The customer has a claim open with us already and wants to know where it has got to.",
+      "route_to": "claim_status_lookup",
+      "examples": [
+        "where is my claim up to",
+        "has the assessor sent in the report yet",
+        "when will the payment for my claim arrive",
+        "any update on CLM-000000"
+      ]
+    },
+    {
+      "key": "policy_question",
+      "label": "Policy Question",
+      "description": "The customer is asking what their cover includes or how the policy works. Nothing has happened and nothing needs changing.",
+      "route_to": "policy_answer",
+      "examples": [
+        "am I covered for accidental damage",
+        "what is my excess",
+        "does the travel policy include winter sports",
+        "can my partner drive my car on my insurance"
+      ]
+    },
+    {
+      "key": "update_details",
+      "label": "Update Details",
+      "description": "The customer wants something on their record changed - a name, an address, contact or bank details, a vehicle, a named driver or a home improvement.",
+      "route_to": "update_details_form",
+      "examples": [
+        "I have moved house",
+        "please change my email address",
+        "I have a new car to put on the policy",
+        "add my wife as a named driver"
+      ]
+    },
+    {
+      "key": "complaint",
+      "label": "Complaint",
+      "description": "The customer is dissatisfied with something we or a supplier acting for us have done and wants that recorded.",
+      "route_to": "complaint_capture",
+      "examples": [
+        "I want to make a complaint",
+        "the service I have had is unacceptable",
+        "your repairer damaged my car and nobody cares",
+        "I have been waiting months and nobody calls me back"
+      ]
+    },
+    {
+      "key": "human_agent",
+      "label": "Human Agent",
+      "description": "The customer asks to deal with a person rather than the assistant - a call, a call back, a transfer or a colleague taking over the chat.",
+      "route_to": "human_handoff",
+      "examples": [
+        "can I talk to a person",
+        "put me through to an agent",
+        "is there someone I can ring",
+        "I would rather speak to a human about this"
+      ]
+    }
+  ],
+  "routing_rules": {
+    "single_intent_only": true,
+    "precedence": [
+      "human_agent",
+      "complaint",
+      "new_claim",
+      "update_details",
+      "claim_status",
+      "policy_question"
+    ],
+    "note": "A first message that asks for more than one thing is routed to the earliest intent in the precedence list. A request for a person is honoured before anything else. A dissatisfied customer reaches the complaints team before we handle anything else for them. A new loss is opened before a record is changed. A record is changed before a claim is looked up so the lookup reads the corrected record. A policy question is answered last because the answer is self-service."
+  },
+  "nodes": [
+    {
+      "id": "welcome",
+      "type": "message",
+      "template": "Hello and welcome to Ilex Mutual. I am the claims assistant. Tell me in your own words what you need help with today.",
+      "next": "classify_intent"
+    },
+    {
+      "id": "classify_intent",
+      "type": "intent_classifier",
+      "input": "{{ customer.first_message }}",
+      "intents_ref": "intents",
+      "prompt": "You route the first message a customer sends to the Ilex Mutual claims assistant. Choose exactly one intent from the list: new_claim - the customer is reporting a loss or incident we do not know about yet. claim_status - the customer wants to know where an existing claim has got to. policy_question - the customer is asking what their cover includes or how it works. update_details - the customer wants something on their record changed. complaint - the customer is dissatisfied with how they have been treated. human_agent - the customer asks for a person. If the message asks for more than one thing route it by this order: human_agent first then complaint then new_claim then update_details then claim_status and policy_question last. Reply with the intent key only.",
+      "output_variable": "routed_intent",
+      "on_below_threshold": "clarify"
+    },
+    {
+      "id": "new_claim_intake",
+      "type": "collect",
+      "template": "I am sorry to hear that. I can open a claim for you now. First, which policy is this under - home, motor or travel?",
+      "fields": [
+        "policy_line",
+        "incident_date",
+        "incident_summary"
+      ],
+      "next": "closing"
+    },
+    {
+      "id": "claim_status_lookup",
+      "type": "lookup",
+      "template": "I can check that for you. What is the claim reference? It starts with CLM and is on every letter we have sent about the claim.",
+      "source": "claims_api.status",
+      "next": "closing"
+    },
+    {
+      "id": "policy_answer",
+      "type": "message",
+      "template": "Happy to help with that. I have your policy documents to hand - here is what your cover says: {{ knowledge.answer }}",
+      "knowledge_base": "policy-wordings-2026",
+      "next": "closing"
+    },
+    {
+      "id": "update_details_form",
+      "type": "collect",
+      "template": "I can update that for you. Which detail is changing, and what should it read from now on?",
+      "fields": [
+        "detail_type",
+        "new_value",
+        "effective_date"
+      ],
+      "next": "closing"
+    },
+    {
+      "id": "complaint_capture",
+      "type": "message",
+      "template": "I am sorry you have had a poor experience. I am logging this as a formal complaint now and a member of our complaints team will contact you within two working days. Please tell me what happened in as much detail as you like.",
+      "next": "human_handoff"
+    },
+    {
+      "id": "human_handoff",
+      "type": "handoff",
+      "template": "I am connecting you with a colleague now. Please stay in this chat - the wait is usually under five minutes.",
+      "queue": "{{ settings.handoff_queue }}",
+      "context_to_pass": [
+        "customer.first_message",
+        "routed_intent"
+      ]
+    },
+    {
+      "id": "clarify",
+      "type": "message",
+      "template": "I want to make sure I send you to the right place. Are you reporting something new, checking on an existing claim, asking about your cover, changing your details, or making a complaint?",
+      "next": "classify_intent"
+    },
+    {
+      "id": "closing",
+      "type": "message",
+      "template": "Is there anything else I can help you with today?",
+      "end": true
+    }
+  ]
+}

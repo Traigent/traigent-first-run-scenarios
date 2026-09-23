@@ -1,0 +1,95 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "gpt-4o-mini",
+        "gpt-4o",
+        "claude-3-5-haiku-latest"
+      ],
+      "source_lines": [
+        14
+      ],
+      "evidence": "agent.py:13-17 MODELS = {\"gpt-4o-mini\": \"openai\", \"gpt-4o\": \"openai\", \"claude-3-5-haiku-latest\": \"anthropic\"} is where every model id this agent accepts is written down; agent.py:100-102 model = config.get(\"model\", \"gpt-4o-mini\") is read by executable code and refused unless it is a key of that table; agent.py:81 branches on MODELS[model] to choose which provider client is called"
+    },
+    "prompt_style": {
+      "values": [
+        "plain",
+        "step_by_step",
+        "rubric"
+      ],
+      "source_lines": [
+        20
+      ],
+      "evidence": "agent.py:19-23 PROMPT_STYLES = {\"plain\": \"Give the severity of this incident.\", \"step_by_step\": \"Work through blast radius, then customer impact, then answer.\", \"rubric\": \"Apply the rubric: SEV1 outage or data loss, SEV2 major degradation, SEV3 limited impact with a workaround, SEV4 cosmetic.\"} is where all three wordings this setting can select are written down; agent.py:53 PROMPT_STYLES[config.get(\"prompt_style\", \"plain\")] is executable code choosing one of them for the first line of the prompt"
+    },
+    "retrieval": {
+      "values": [
+        0,
+        2,
+        4
+      ],
+      "source_lines": [
+        26
+      ],
+      "evidence": "agent.py:25 CONTEXT_DEPTHS = (0, 2, 4) is where the three depths this setting accepts are written down; agent.py:49-51 depth = config.get(\"retrieval\", 0) is read by executable code and refused unless it is one of them; agent.py:58 PAST_INCIDENTS[:depth] slices that many earlier incidents into the prompt, so 0 sends none and 4 sends the whole tuple declared at agent.py:27-32"
+    },
+    "output_format": {
+      "values": [
+        "label",
+        "json"
+      ],
+      "source_lines": [
+        35
+      ],
+      "evidence": "agent.py:34-37 FORMAT_INSTRUCTIONS = {\"label\": \"Answer with the severity label alone.\", \"json\": 'Answer with {\"severity\": \"<label>\"} and nothing else.'} is where both options this setting can take are written down; agent.py:54 selects the instruction line for one of them and agent.py:66 parse_reply branches on the same setting, so the value changes both what the model is asked for and how its reply is read"
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 2,
+      "evidence": "agent.py:48-61 build_prompt assembles the request and agent.py:102-103 run hands it to call_model, which sends it to a provider at agent.py:87 or agent.py:95; agent.py:40-42 WORKED_EXAMPLES holds two report/severity pairs that agent.py:57-57 appends to every prompt whatever the settings are",
+      "source_lines": [
+        54,
+        55,
+        57,
+        58,
+        61,
+        62,
+        106
+      ]
+    },
+    "output-contract": {
+      "present": true,
+      "evidence": "agent.py:45 SEVERITY_PATTERN = re.compile(r\"SEV[1-4]\") and agent.py:65-76 parse_reply, which returns one of the four severities or raises; agent.py:35-37 also tells the model which shape to answer in",
+      "source_lines": [
+        35,
+        45,
+        67,
+        69,
+        76,
+        79
+      ]
+    },
+    "control-flow": {
+      "loop": false,
+      "bounded": true,
+      "evidence": "agent.py:102-103 run makes exactly one call_model per report; the two for statements at agent.py:57-59 append prompt lines and reach no provider",
+      "source_lines": [
+        57,
+        59,
+        106
+      ]
+    },
+    "tools": {
+      "used": false,
+      "evidence": "agent.py:14-103 declares no tools and passes none to either provider client",
+      "source_lines": [
+        87,
+        95,
+        106
+      ]
+    }
+  }
+}

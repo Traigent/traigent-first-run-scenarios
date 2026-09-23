@@ -1,0 +1,90 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "claude-haiku-4-5",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6"
+      ],
+      "source_lines": [
+        20,
+        118
+      ],
+      "evidence": "agent.py:20 lists the alternatives, run reads the choice from config and checks it with `in`, :133 hands it to call_model, and :118 passes it as model= on the messages.create request whose text :123 returns."
+    },
+    "context_format": {
+      "values": [
+        "quoted",
+        "bullets",
+        "raw"
+      ],
+      "source_lines": [
+        22,
+        95
+      ],
+      "evidence": "agent.py:22 holds the three framing instructions and :95 indexes the table by the config read straight into the prompt lines that are joined and sent at :121."
+    },
+    "prompt_style": {
+      "values": [
+        "direct",
+        "reasoned"
+      ],
+      "source_lines": [
+        28,
+        94
+      ],
+      "evidence": "agent.py:28 holds the two instruction texts and :94 indexes it by the config read straight into the prompt lines that are joined and sent at :121."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.5
+      ],
+      "source_lines": [
+        33,
+        120
+      ],
+      "evidence": "agent.py:33 lists the two literal values, run reads the choice from config and checks it with `in`, :133 hands it to call_model, and :120 passes it as temperature= on the messages.create request."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        93,
+        121
+      ],
+      "evidence": "agent.py:93 starts the prompt from the two instruction tables and carries no worked examples; :121 passes the joined text as the single user message"
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        28,
+        109,
+        111
+      ],
+      "evidence": "agent.py:28 instructs a bare short answer (or an 'Answer:' last line), :109 parses the last non-empty line and strips the prefix and quotes, and :111 raises on an empty reply, so one trimmed string is what comes back"
+    },
+    "control-flow": {
+      "loop": true,
+      "bounded": true,
+      "source_lines": [
+        97,
+        88
+      ],
+      "evidence": "agent.py:126-133 is straight-line, but the helper it calls loops at :97 over retrieve(), which :88 caps at TOP_K passages, so the loop is bounded by a constant"
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        117,
+        121
+      ],
+      "evidence": "agent.py:117-121 is one messages.create request with no tools argument and declares no tools anywhere"
+    }
+  }
+}

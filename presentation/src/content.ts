@@ -1,13 +1,169 @@
 import { z } from "zod";
 
-import scenarioManifestJson from "../../scenarios/incident-severity-triage/scenario.json";
-import expectedOpeningJson from "../../scenarios/incident-severity-triage/verifier/expected-opening.json";
-import { parsePresentation, type PresentationSpec } from "./model";
+import bookingAssistantManifest from "../../scenarios/booking-assistant-next-action/scenario.json";
+import bookingAssistantOpening from "../../scenarios/booking-assistant-next-action/verifier/expected-opening.json";
+import chatbotVendorFlowManifest from "../../scenarios/chatbot-on-vendor-flow/scenario.json";
+import chatbotVendorFlowOpening from "../../scenarios/chatbot-on-vendor-flow/verifier/expected-opening.json";
+import clinicSqlExecManifest from "../../scenarios/clinic-scheduling-sql-exec/scenario.json";
+import clinicSqlExecOpening from "../../scenarios/clinic-scheduling-sql-exec/verifier/expected-opening.json";
+import contractClauseManifest from "../../scenarios/contract-clause-extractor/scenario.json";
+import contractClauseOpening from "../../scenarios/contract-clause-extractor/verifier/expected-opening.json";
+import freightQuoteManifest from "../../scenarios/freight-quote-estimator/scenario.json";
+import freightQuoteOpening from "../../scenarios/freight-quote-estimator/verifier/expected-opening.json";
+import helpdeskRouterManifest from "../../scenarios/helpdesk-queue-router/scenario.json";
+import helpdeskRouterOpening from "../../scenarios/helpdesk-queue-router/verifier/expected-opening.json";
+import incidentTriageManifest from "../../scenarios/incident-severity-triage/scenario.json";
+import incidentTriageOpening from "../../scenarios/incident-severity-triage/verifier/expected-opening.json";
+import meetingNotesManifest from "../../scenarios/meeting-notes-summarizer/scenario.json";
+import meetingNotesOpening from "../../scenarios/meeting-notes-summarizer/verifier/expected-opening.json";
+import policyHandbookManifest from "../../scenarios/policy-handbook-rag/scenario.json";
+import policyHandbookOpening from "../../scenarios/policy-handbook-rag/verifier/expected-opening.json";
+import regexRuleManifest from "../../scenarios/regex-rule-authoring/scenario.json";
+import regexRuleOpening from "../../scenarios/regex-rule-authoring/verifier/expected-opening.json";
+import regexRuleSoundReadOpening from "../../scenarios/regex-rule-authoring/verifier/expected-opening-sound-read.json";
+import returnsEmailManifest from "../../scenarios/returns-email-replies/scenario.json";
+import returnsEmailOpening from "../../scenarios/returns-email-replies/verifier/expected-opening.json";
+import toolDispatchManifest from "../../scenarios/tool-dispatch-selector/scenario.json";
+import toolDispatchOpening from "../../scenarios/tool-dispatch-selector/verifier/expected-opening.json";
+import warehouseSqlManifest from "../../scenarios/warehouse-text-to-sql/scenario.json";
+import warehouseSqlOpening from "../../scenarios/warehouse-text-to-sql/verifier/expected-opening.json";
+import {
+  parsePresentation,
+  type CatalogEntry,
+  type PresentationSpec,
+} from "./model";
+
+// The route families the deck files scenarios under. They are deck authorship:
+// the coverage slides group the bank by the behavior each scenario exercises,
+// and the same labels head the rows there, so a family named here and absent
+// from a coverage row - or the reverse - is caught by the derivation below.
+const FAMILIES = [
+  "Ready reference",
+  "Missing material",
+  "Dataset integrity",
+  "Evidence strength",
+  "Evaluator quality",
+  "Execution safety",
+  "Search-space readiness",
+] as const;
+type Family = (typeof FAMILIES)[number];
+
+// The bank: every scenario the repository publishes, in case-number order.
+// The manifest schema below accepts only these slugs, and the pair check under
+// it refuses a manifest whose case number disagrees with this table, so a
+// scenario added to `scenarios/` without a row here - or a row whose number
+// drifts from its manifest - fails the build rather than missing the deck.
+const SCENARIO_BANK = [
+  {
+    slug: "incident-severity-triage",
+    legacyId: 46,
+    family: "Ready reference",
+    manifest: incidentTriageManifest,
+    opening: incidentTriageOpening,
+  },
+  {
+    slug: "helpdesk-queue-router",
+    legacyId: 47,
+    family: "Ready reference",
+    manifest: helpdeskRouterManifest,
+    opening: helpdeskRouterOpening,
+  },
+  {
+    slug: "policy-handbook-rag",
+    legacyId: 48,
+    family: "Ready reference",
+    manifest: policyHandbookManifest,
+    opening: policyHandbookOpening,
+  },
+  {
+    slug: "warehouse-text-to-sql",
+    legacyId: 49,
+    family: "Evaluator quality",
+    manifest: warehouseSqlManifest,
+    opening: warehouseSqlOpening,
+  },
+  {
+    slug: "clinic-scheduling-sql-exec",
+    legacyId: 50,
+    family: "Execution safety",
+    manifest: clinicSqlExecManifest,
+    opening: clinicSqlExecOpening,
+  },
+  {
+    slug: "booking-assistant-next-action",
+    legacyId: 51,
+    family: "Dataset integrity",
+    manifest: bookingAssistantManifest,
+    opening: bookingAssistantOpening,
+  },
+  {
+    slug: "tool-dispatch-selector",
+    legacyId: 52,
+    family: "Search-space readiness",
+    manifest: toolDispatchManifest,
+    opening: toolDispatchOpening,
+  },
+  {
+    slug: "meeting-notes-summarizer",
+    legacyId: 53,
+    family: "Evaluator quality",
+    manifest: meetingNotesManifest,
+    opening: meetingNotesOpening,
+  },
+  {
+    slug: "contract-clause-extractor",
+    legacyId: 54,
+    family: "Evidence strength",
+    manifest: contractClauseManifest,
+    opening: contractClauseOpening,
+  },
+  {
+    slug: "returns-email-replies",
+    legacyId: 55,
+    family: "Missing material",
+    manifest: returnsEmailManifest,
+    opening: returnsEmailOpening,
+  },
+  {
+    slug: "freight-quote-estimator",
+    legacyId: 56,
+    family: "Evidence strength",
+    manifest: freightQuoteManifest,
+    opening: freightQuoteOpening,
+  },
+  {
+    slug: "chatbot-on-vendor-flow",
+    legacyId: 57,
+    family: "Missing material",
+    manifest: chatbotVendorFlowManifest,
+    opening: chatbotVendorFlowOpening,
+  },
+  {
+    slug: "regex-rule-authoring",
+    legacyId: 58,
+    family: "Dataset integrity",
+    manifest: regexRuleManifest,
+    opening: regexRuleOpening,
+    soundReadOpening: regexRuleSoundReadOpening,
+  },
+] as const satisfies readonly {
+  slug: string;
+  legacyId: number;
+  family: Family;
+  manifest: unknown;
+  opening: unknown;
+  soundReadOpening?: unknown;
+}[];
+
+const SCENARIO_SLUGS = SCENARIO_BANK.map((entry) => entry.slug) as [
+  string,
+  ...string[],
+];
 
 const scenarioManifestSchema = z
   .object({
-    slug: z.literal("incident-severity-triage"),
-    legacy_id: z.literal(46),
+    slug: z.enum(SCENARIO_SLUGS),
+    legacy_id: z.number().int().positive(),
     title: z.string().min(1),
     summary: z.string().min(1),
     phase: z.literal("phase-a-opening"),
@@ -40,9 +196,13 @@ const scenarioManifestSchema = z
                 state: z.string().min(1),
                 path: z.string().min(1).nullable(),
                 method: z.string().min(1).nullable(),
+                // The `--evaluator-method` the guide was actually given when this
+                // opening was measured, beside the catalog's own spelling of it.
+                // Optional: the first scenario's pinned manifest predates it.
+                guide_evaluator_method: z.string().min(1).optional(),
                 calibration: z
                   .object({
-                    path: z.string().min(1),
+                    path: z.string().min(1).nullable(),
                     case_count: z.number().int().nonnegative(),
                   })
                   .nullable(),
@@ -58,6 +218,10 @@ const scenarioManifestSchema = z
                 state: z.string().min(1),
                 path: z.string().min(1).nullable(),
                 task: z.string().min(1).nullable(),
+                // The guide's own word for the same task, recorded because the
+                // declared kind changes what the readiness read reports. Optional:
+                // the first scenario's pinned manifest predates it.
+                guide_task_kind: z.string().min(1).optional(),
                 format: z.string().min(1).nullable(),
                 input_field: z.string().min(1).nullable(),
                 label_field: z.string().min(1).nullable(),
@@ -103,10 +267,24 @@ const scenarioManifestSchema = z
               .strict(),
           )
           .min(1),
+        // Worker-visible project files that are not the dataset: a database,
+        // a schema, a knowledge folder, a requirements file. Absent only when
+        // the project is the dataset and the code alone.
+        non_dataset_files: z.array(z.string().min(1)).optional(),
         expected_route: z
           .object({
             rationale: z.string().min(1),
             verifier_contract: z.string().min(1),
+            // Present when the opening turns on what the worker's read of the
+            // answers found; the second contract covers a read that finds
+            // every answer sound.
+            read_dependent: z
+              .object({
+                row_verdicts: z.string().min(1),
+                sound_read_contract: z.string().min(1),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
         evidence: z
@@ -127,7 +305,7 @@ const expectedOpeningSchema = z
     band: z.enum(["NOT READY", "PARTIAL", "WORKABLE", "STRONG", "EXCELLENT"]),
     status: z.enum(["OK", "BLOCKED"]),
     recommended_action: z.string().min(1),
-    caps: z.array(z.unknown()),
+    caps: z.array(z.string().min(1)),
     display: z
       .object({
         overall: z
@@ -163,8 +341,58 @@ const expectedOpeningSchema = z
   })
   .strict();
 
-const scenario = scenarioManifestSchema.parse(scenarioManifestJson);
-const expected = expectedOpeningSchema.parse(expectedOpeningJson);
+type ScenarioManifest = z.infer<typeof scenarioManifestSchema>;
+type ExpectedOpening = z.infer<typeof expectedOpeningSchema>;
+
+interface BankScenario {
+  slug: string;
+  legacyId: number;
+  family: Family;
+  scenario: ScenarioManifest;
+  expected: ExpectedOpening;
+  soundReadExpected: ExpectedOpening | null;
+}
+
+const bank: readonly BankScenario[] = SCENARIO_BANK.map((entry) => {
+  const scenario = scenarioManifestSchema.parse(entry.manifest);
+  const expected = expectedOpeningSchema.parse(entry.opening);
+  const soundRead = "soundReadOpening" in entry ? entry.soundReadOpening : null;
+  if (
+    (soundRead === null) !==
+    (scenario.catalog.expected_route.read_dependent === undefined)
+  ) {
+    throw new Error(
+      `Scenario bank row ${entry.legacyId} ${entry.slug} must import a sound-read contract exactly when its manifest declares one`,
+    );
+  }
+  if (scenario.slug !== entry.slug || scenario.legacy_id !== entry.legacyId) {
+    throw new Error(
+      `Scenario bank row ${entry.legacyId} ${entry.slug} does not match its manifest ${scenario.legacy_id} ${scenario.slug}`,
+    );
+  }
+  return {
+    slug: entry.slug,
+    legacyId: entry.legacyId,
+    family: entry.family,
+    scenario,
+    expected,
+    soundReadExpected:
+      soundRead === null ? null : expectedOpeningSchema.parse(soundRead),
+  };
+});
+
+if (new Set(bank.map((entry) => entry.legacyId)).size !== bank.length) {
+  throw new Error("Scenario bank case numbers must be unique");
+}
+
+// The walkthrough slides keep one focal scenario: the ready reference that
+// starts complete, so the route it shows is the shortest one.
+const workedExample = bank.find((entry) => entry.legacyId === 46);
+if (workedExample === undefined) {
+  throw new Error("The worked example, case 46, is missing from the bank");
+}
+const scenario = workedExample.scenario;
+const expected = workedExample.expected;
 const dataset = scenario.catalog.datasets[0];
 
 function humanize(value: string): string {
@@ -180,39 +408,197 @@ function sentenceCase(value: string): string {
   return `${text.slice(0, 1).toLocaleUpperCase("en")}${text.slice(1)}`;
 }
 
-function countsSummary(counts: Record<string, number>): string {
-  return Object.entries(counts)
-    .map(([label, count]) => `${count} ${humanize(label)}`)
-    .join(" / ");
+function countsSummary(counts: Record<string, number>, absent: string): string {
+  const entries = Object.entries(counts);
+  return entries.length === 0
+    ? absent
+    : entries
+        .map(([label, count]) => `${count} ${humanize(label)}`)
+        .join(" / ");
 }
 
-const splitSummary = countsSummary(dataset.splits.counts);
-const difficultySummary = countsSummary(dataset.difficulty_strata.counts);
-const calibrationCount =
-  scenario.catalog.components.evaluator.calibration?.case_count ?? 0;
+function caseList(entries: readonly BankScenario[]): string {
+  const numbers = entries.map((entry) => entry.legacyId);
+  return numbers.length === 1
+    ? `Case ${numbers[0]}`
+    : `Cases ${numbers.join(", ")}`;
+}
+
+function casesInFamily(family: Family): readonly BankScenario[] {
+  return bank.filter((entry) => entry.family === family);
+}
+
+function casesWithCap(...caps: readonly string[]): readonly BankScenario[] {
+  return bank.filter((entry) =>
+    entry.expected.caps.some((cap) => caps.includes(cap)),
+  );
+}
+
+function casesWithoutCaps(): readonly BankScenario[] {
+  return bank.filter((entry) => entry.expected.caps.length === 0);
+}
+
+function contentOriginLabel(manifest: ScenarioManifest): string {
+  return manifest.content.origin === "traigent-authored"
+    ? "Traigent-authored"
+    : sentenceCase(manifest.content.origin);
+}
+
+function expectedRouteSummary(opening: ExpectedOpening): string {
+  return `band ${opening.band} · status ${opening.status}${
+    opening.status === "OK" ? " (not blocked)" : ""
+  } · action ${opening.recommended_action} · ${
+    opening.caps.length === 0 ? "caps none" : `caps ${opening.caps.join(", ")}`
+  }`;
+}
+
 // The catalog states the label strings the rows carry and how many rows carry
 // each. What the evaluator folds together is a property of the evaluator when
 // it runs, which the manifest does not claim, so neither does this summary.
-const labelSummary =
-  dataset.label_shape.surface_label_count !== undefined &&
-  dataset.label_shape.surface_label_count > 0
-    ? `${dataset.label_shape.surface_label_count} distinct label strings across ${dataset.rows} rows`
-    : humanize(dataset.label_shape.kind);
-const expectedRouteSummary = `band ${expected.band} · status ${expected.status}${
-  expected.status === "OK" ? " (not blocked)" : ""
-} · action ${expected.recommended_action} · ${
-  expected.caps.length === 0 ? "caps none" : `caps ${expected.caps.length}`
-}`;
-const contentOriginLabel =
-  scenario.content.origin === "traigent-authored"
-    ? "Traigent-authored"
-    : sentenceCase(scenario.content.origin);
+function labelSummaryFor(row: ScenarioManifest["catalog"]["datasets"][number]) {
+  if (row.label_shape.kind === "absent") {
+    return "no expected outputs on any row";
+  }
+  return row.label_shape.surface_label_count !== undefined &&
+    row.label_shape.surface_label_count > 0
+    ? `${row.label_shape.surface_label_count} distinct label strings across ${row.rows} rows`
+    : `${humanize(row.label_shape.kind)} expected outputs`;
+}
+
+function catalogEntryFor(entry: BankScenario): CatalogEntry {
+  const manifest = entry.scenario;
+  const opening = entry.expected;
+  const row = manifest.catalog.datasets[0];
+  const { agent, data, evaluator } = manifest.catalog.components;
+  const calibrationCount = evaluator.calibration?.case_count ?? 0;
+  const splits = countsSummary(row.splits.counts, "no declared split");
+  const difficulty = countsSummary(
+    row.difficulty_strata.counts,
+    "no difficulty strata",
+  );
+  return {
+    slug: entry.slug,
+    legacyId: entry.legacyId,
+    label: `Case ${entry.legacyId}: ${manifest.title}`,
+    publication: "published",
+    family: entry.family,
+    startingState: `${sentenceCase(manifest.catalog.starting_condition)}: agent ${humanize(agent.state)}, data ${humanize(data.state)}, evaluator ${humanize(evaluator.state)} - the states the manifest declares for the material the worker receives.`,
+    components: [
+      agent.state === "missing"
+        ? `Agent (${agent.state}): no agent in the project`
+        : agent.controls.length > 0
+          ? `Agent (${agent.state}): ${agent.controls.length} tunable settings - ${agent.controls.map(humanize).join(", ")}`
+          : `Agent (${agent.state}): no varying setting declared`,
+      `Dataset (${data.state}): ${row.rows} rows / ${row.unique_inputs} unique inputs`,
+      `Evaluator (${evaluator.state}): ${humanize(evaluator.method ?? "no evaluator method declared")}`,
+      calibrationCount > 0
+        ? `Calibration material: ${calibrationCount} deterministic ${calibrationCount === 1 ? "case" : "cases"} supplied`
+        : "Calibration material: none supplied",
+    ],
+    dataset: `${contentOriginLabel(manifest)} content under ${manifest.content.license}; ${row.rows} rows (${row.unique_inputs} unique); ${splits}; difficulty: ${difficulty}; ${labelSummaryFor(row)}. Limitations: ${row.limitations.map(humanize).join(", ")}. Row provenance values are the simulated user's declarations read by the readiness scorer, not source-origin claims.`,
+    evaluator:
+      evaluator.method === null
+        ? `${sentenceCase(row.task ?? "task not declared")} with no evaluator present; nothing scores a draft, and no calibration case is supplied.`
+        : `${sentenceCase(row.task ?? "task not declared")} with ${humanize(evaluator.method)}; ${
+            calibrationCount > 0
+              ? `${calibrationCount} deterministic calibration ${calibrationCount === 1 ? "case is" : "cases are"} supplied, but no calibration execution or model accuracy is claimed.`
+              : "no calibration case is supplied, and no calibration execution or model accuracy is claimed."
+          }`,
+    expectedBand: opening.band,
+    expectedStatus: opening.status,
+    expectedAction: opening.recommended_action,
+    expectedCaps: [...opening.caps],
+    expectedRouting: `Case-specific opening contract: ${expectedRouteSummary(opening)}. Rationale: ${humanize(manifest.catalog.expected_route.rationale)}.${
+      entry.soundReadExpected === null
+        ? ""
+        : ` A read of the answers that finds every one sound opens instead at ${expectedRouteSummary(entry.soundReadExpected)}.`
+    }`,
+    testedLayer: `${manifest.catalog.evidence.demonstrates.map(sentenceCase).join("; ")}. No recorded coding-agent run is supplied in this release.`,
+    notProven: manifest.catalog.evidence.does_not_demonstrate
+      .map(sentenceCase)
+      .map((value) =>
+        value.replace(/\bworker\b/gi, (match) =>
+          match[0] === "W" ? "Coding-agent" : "coding-agent",
+        ),
+      ),
+  };
+}
+
+const splitSummary = countsSummary(dataset.splits.counts, "no declared split");
+const difficultySummary = countsSummary(
+  dataset.difficulty_strata.counts,
+  "no difficulty strata",
+);
+const calibrationCount =
+  scenario.catalog.components.evaluator.calibration?.case_count ?? 0;
+const labelSummary = labelSummaryFor(dataset);
+const workedExampleOrigin = contentOriginLabel(scenario);
+const gapScenarioCount = bank.filter(
+  (entry) =>
+    entry.scenario.catalog.starting_condition !== "all-components-ready",
+).length;
+const bankSize = bank.length;
+const firstIndexHalf = bank.slice(0, Math.ceil(bankSize / 2));
+const secondIndexHalf = bank.slice(firstIndexHalf.length);
+const caseRange = (entries: readonly BankScenario[]) =>
+  `${entries[0]!.legacyId} to ${entries[entries.length - 1]!.legacyId}`;
+const NUMBER_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+] as const;
+const numberWord = (value: number): string =>
+  NUMBER_WORDS[value] ?? String(value);
+
+const readyCases = casesInFamily("Ready reference");
+const missingMaterialCases = casesInFamily("Missing material");
+const datasetIntegrityCases = casesInFamily("Dataset integrity");
+const evidenceStrengthCases = casesInFamily("Evidence strength");
+const evaluatorQualityCases = casesInFamily("Evaluator quality");
+const executionSafetyCases = casesInFamily("Execution safety");
+const searchSpaceCases = casesInFamily("Search-space readiness");
+for (const family of FAMILIES) {
+  if (casesInFamily(family).length === 0) {
+    throw new Error(`Scenario family ${family} has no scenario in the bank`);
+  }
+}
+const noCapCases = casesWithoutCaps();
+const ceiling45Cases = casesWithCap(
+  "evaluator-unvalidated",
+  "agent-no-varying-knobs",
+);
+const generatedKeyCases = casesWithCap("dataset-generated-answer-key");
+const unsoundAnswerCases = casesWithCap("dataset-unsound-expected-outputs");
+const executionRefusalCases = casesWithCap("evaluator-calibration-refused");
+for (const [label, cases] of [
+  ["no-cap", noCapCases],
+  ["ceiling-45", ceiling45Cases],
+  ["generated-answer-key", generatedKeyCases],
+  ["unsound-answers", unsoundAnswerCases],
+  ["calibration-refused", executionRefusalCases],
+] as const) {
+  if (cases.length === 0) {
+    throw new Error(`The deck names ${label} scenarios that the bank lacks`);
+  }
+}
 
 const customerPrompt =
   "Help me run my first Traigent optimization.\nClone https://github.com/Traigent/traigent-first-run and follow GUIDE.md.";
 
-const guideRevision = "6ec2b9c161400cd91faea9c8cdb1c4e00d21c8d9";
+const guideRevision = "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199";
 const readinessEvidence = `Traigent/traigent-first-run@${guideRevision.slice(0, 8)} readiness scorer`;
+const bankEvidence = `${bankSize} scenario manifests and expected-opening contracts under scenarios/`;
 
 const rawPresentation = {
   schemaVersion: 2,
@@ -226,31 +612,7 @@ const rawPresentation = {
     expectedBand: expected.band,
     phase: scenario.phase,
   },
-  catalog: [
-    {
-      slug: scenario.slug,
-      label: `Case ${scenario.legacy_id}: ${scenario.title}`,
-      publication: "published",
-      startingState: `${sentenceCase(scenario.catalog.starting_condition)}: the declared agent, dataset, and evaluator material are present.`,
-      components: [
-        `Agent (${scenario.catalog.components.agent.state}): ${scenario.catalog.components.agent.controls.length} tunable settings - ${scenario.catalog.components.agent.controls.map(humanize).join(", ")}`,
-        `Dataset (${scenario.catalog.components.data.state}): ${dataset.rows} rows / ${dataset.unique_inputs} unique inputs`,
-        `Evaluator (${scenario.catalog.components.evaluator.state}): ${humanize(scenario.catalog.components.evaluator.method ?? "not declared")}`,
-        `Calibration material: ${calibrationCount} deterministic ${calibrationCount === 1 ? "case" : "cases"} supplied`,
-      ],
-      dataset: `${contentOriginLabel} content under ${scenario.content.license}; ${dataset.rows} rows (${dataset.unique_inputs} unique); ${splitSummary}; difficulty: ${difficultySummary}; ${labelSummary}. Limitations: ${dataset.limitations.map(humanize).join(", ")}. Row provenance values are the simulated user's declarations read by the readiness scorer, not source-origin claims.`,
-      evaluator: `${sentenceCase(dataset.task ?? "task not declared")} with ${humanize(scenario.catalog.components.evaluator.method ?? "no evaluator method declared")}; ${calibrationCount} deterministic calibration ${calibrationCount === 1 ? "case is" : "cases are"} supplied, but no calibration execution or model accuracy is claimed.`,
-      expectedRouting: `Case-specific opening contract: ${expectedRouteSummary}. Rationale: ${humanize(scenario.catalog.expected_route.rationale)}.`,
-      testedLayer: `${scenario.catalog.evidence.demonstrates.map(sentenceCase).join("; ")}. No recorded coding-agent run is supplied in this release.`,
-      notProven: scenario.catalog.evidence.does_not_demonstrate
-        .map(sentenceCase)
-        .map((value) =>
-          value.replace(/\bworker\b/gi, (match) =>
-            match[0] === "W" ? "Coding-agent" : "coding-agent",
-          ),
-        ),
-    },
-  ],
+  catalog: bank.map(catalogEntryFor),
   slides: [
     {
       id: "ready-to-optimize",
@@ -259,7 +621,7 @@ const rawPresentation = {
       title:
         "Start with the project you have. Leave with a justified next step.",
       accent: "justified next step",
-      body: "The open-source guide helps a coding agent inspect what exists, preserve useful material, and choose the safest next action. Ready foundations move to baseline approval; gaps lead to a human decision, repair, or stronger evidence. When inspection identifies an evaluator path that would execute generated code or SQL, this guide run ends before candidate output executes. The starting state determines the route and ceiling - not a promised grade.",
+      body: "The open-source guide helps a coding agent inspect what exists, preserve useful material, and choose the safest next action. Ready foundations move to baseline approval; gaps lead to a human decision, repair, or stronger evidence. When inspection identifies an evaluator path that would execute generated code or SQL, the guide declines to calibrate that scorer on its own initiative, records a containment warning, discloses the refusal on the readiness card, and continues. The starting state determines the route and ceiling - not a promised grade.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -272,6 +634,7 @@ const rawPresentation = {
         "Lead with routing. Never promise a band - the customer's own material decides the ceiling before we run anything.",
         "The coding agent inspects and prepares. The human owns domain choices and approvals. The Traigent service is used only later for an explicitly approved enhanced run.",
         'Talk track: the deliverable of the first run is a truthful position and a next step, not a score. A project told "your evaluator is broken, fix it first" would still have received a useful answer without a paid optimization.',
+        "An executing evaluator is a boundary of the guide, not a defect of the project: the guide will not run the customer's scorer against the customer's engine on its own initiative, says so on the card, and leaves the paid run a decision the customer takes with that disclosure in hand.",
       ],
     },
     {
@@ -279,7 +642,7 @@ const rawPresentation = {
       kind: "journey",
       eyebrow: "AGENT-LED, HUMAN-GOVERNED",
       title: "Five stages. Three actors. Human approval stays explicit.",
-      body: "Every supported project enters Inspect. Gaps loop through a human choice, creation, repair, or review. Ready foundations move only after approval. When inspection identifies an evaluator path that would execute candidate code or SQL, this guide run ends before candidate output executes; containment and any restart are separate. The coding agent coordinates, the human governs, and Traigent runs only an approved, bounded enhanced search.",
+      body: "Every supported project enters Inspect. Gaps loop through a human choice, creation, repair, or review. Ready foundations move only after approval. When inspection identifies an evaluator path that would execute candidate code or SQL, the guide refuses to run that scorer itself, discloses the refusal, and continues; containment design stays outside the guide. The coding agent coordinates, the human governs, and Traigent runs only an approved, bounded enhanced search.",
       bullets: [],
       metrics: [],
       steps: [
@@ -387,7 +750,7 @@ const rawPresentation = {
         "Limited evidence: allow only a clearly bounded demonstration or request stronger material",
         "Evaluator quality: calibrate or defer an unvalidated evaluator; inspect, repair, or replace an invalid evaluator, then revalidate before any paid comparison",
         "Evaluator timeout: present the bounded human choice; do not call the evaluator broken merely because it was slow",
-        "Candidate code/SQL execution path: end this guide run before candidate output executes; containment design and any restart are separately reviewed outside the guide",
+        "Candidate code/SQL execution path: decline to calibrate the original scorer, record a containment warning, disclose evaluator-calibration-refused on the card, and continue; the read-only question is put once, at pre-spend approval",
       ],
       metrics: [],
       steps: [],
@@ -399,6 +762,7 @@ const rawPresentation = {
       notes: [
         "Readiness weights dataset, evaluation, and agent evidence, then applies caps so strength in one pillar cannot hide a broken foundation.",
         "The opening score describes the customer's starting point. A later re-score verifies that a remedy cleared its gate; it is not a new claim about the original project.",
+        "The refusal on an executing path is a check the guide declines to perform, never one the customer is forbidden to make: a project's own complete passing result earns ordinary calibration credit, and the guide's contained copied-actor route can calibrate an eligible copy of the evaluator against a byte copy of a local database file - never the original target.",
       ],
     },
     {
@@ -409,7 +773,7 @@ const rawPresentation = {
       body: "Readiness runs 14 checks across the three things that decide success: your dataset, your evaluation method, and your agent. Each area carries a different weight - dataset the most, because an optimization cannot outrun the material it is measured on. The scorer itself makes no model-provider or Traigent calls.",
       bullets: [
         "Dataset - 40 points: answers to score against; examples to compare on; range of difficulty; repeated or dominant answers; where the rows came from",
-        "Evaluation - 35 points: checked on known-good and known-bad; right kind of check for this output; same answer every time; separates good answers from bad",
+        "Evaluation - 35 points: tried on answers already known right and wrong; right kind of check for this output; same answer every time; separates good answers from bad",
         "Agent - 25 points: settings-combinations to try; what the model is told and shown; whether the answer shape is pinned down; whether the agent is guaranteed to stop, and what stops it; tools it declares and can reach",
         "Bands: NOT READY 0-29; PARTIAL 30-54; WORKABLE 55-74; STRONG 75-89; EXCELLENT 90-100",
         "Thin-evidence rule: below 0.75 confidence overall or in any area, a score that would land STRONG or EXCELLENT is held at WORKABLE; lower bands are unchanged",
@@ -424,6 +788,7 @@ const rawPresentation = {
         "Each applicable check is measured, withheld, or not applicable. A withheld check keeps its weight and earns no points; it is not dropped from the denominator to flatter the score.",
         "Confidence is the share of check weight the scorer could actually measure - measurement coverage, not statistical confidence.",
         "The confidence rule is a ceiling, not a floor. It never promotes NOT READY or PARTIAL to WORKABLE.",
+        "A second hold shares the same WORKABLE ceiling: until a read of the expected answers has entered - whether they answer their own questions - STRONG and EXCELLENT are withheld too. It is a hold on the band, not a number on the score, and the card reports each hold separately.",
       ],
     },
     {
@@ -431,13 +796,13 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - FOUNDATION CAPS",
       title: "Broken measurement sets the lowest ceilings.",
-      body: "A cap is a ceiling on the total score out of 100 - the maximum the evidence allows, applied after the three weighted areas are summed; it is not a deduction. The ready row matches the worked example; the other rows are shipped scorer rules whose example scenarios are planned; not yet published.",
+      body: "A cap is a ceiling on the total score out of 100 - the maximum the evidence allows, applied after the three weighted areas are summed; it is not a deduction. Where a row names a case, that scenario's expected-opening contract carries the cap; the invalid-evaluator row is a shipped scorer rule whose public scenario is still planned.",
       bullets: [],
       metrics: [],
       steps: [],
       matrix: [
         {
-          startingPoint: "Agent, data, and evaluator are usable; no cap fires",
+          startingPoint: `Agent, data, and evaluator are usable; no cap fires (${caseList(noCapCases)})`,
           safestNextStep:
             "No ceiling from a cap; explain readiness and stop at baseline approval",
           coverage: "published",
@@ -450,19 +815,19 @@ const rawPresentation = {
           coverage: "coverage-target",
         },
         {
-          startingPoint:
-            "The evaluator is unvalidated, or nothing in the agent varies",
+          startingPoint: `The evaluator is unvalidated, or nothing in the agent varies (${caseList(ceiling45Cases)}: nothing varies)`,
           safestNextStep:
             "Ceiling 45; validate the evaluator or wire a setting worth searching",
-          coverage: "coverage-target",
+          coverage: "published",
         },
       ],
       evidenceState: "guide-contract",
       sourceRevision: guideRevision,
-      evidence: [readinessEvidence],
+      evidence: [readinessEvidence, bankEvidence],
       notes: [
         "A capped project is not a failed project. A truthful 65 with visible limits is more useful than an unsupported 90.",
-        "Only the ready-reference route has a downloadable scenario here. Do not say the other rows passed a public scenario test.",
+        "A named case means the bank ships a scenario whose expected opening carries that cap, measured with the guide's own scripts over the project bytes. It is a contract to verify against, not a recorded coding-agent run and not a pass.",
+        `No scenario in the bank exercises evaluator-invalid: ${caseList(ceiling45Cases)} shows the 45 ceiling through an agent with nothing to vary, not through an unvalidated evaluator.`,
       ],
     },
     {
@@ -470,7 +835,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - EVIDENCE CAPS",
       title: "Generated data still runs - it only caps the top score.",
-      body: "Nothing stops here: the run continues end to end. Rows declared as generated, or an answer key written by a model, only cap how high the score can go until real rows arrive - a caveat for the summary, not a blocker.",
+      body: "Nothing stops here: the run continues end to end. Rows declared as generated, an answer key written by a model, or an answer a reader found does not answer its own question all cap how high the score can go until the evidence is settled - a caveat for the summary, not a blocker.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -483,19 +848,25 @@ const rawPresentation = {
           coverage: "coverage-target",
         },
         {
-          startingPoint:
-            "Rows are declared real, but a model generated the answer key",
+          startingPoint: `Rows are declared real, but a model generated the answer key (${caseList(generatedKeyCases)})`,
           safestNextStep:
             "Ceiling 74; compare cautiously and obtain human review before trusting the margin",
-          coverage: "coverage-target",
+          coverage: "published",
+        },
+        {
+          startingPoint: `The answers were read, and one of them does not answer its own question (${caseList(unsoundAnswerCases)})`,
+          safestNextStep:
+            "Ceiling 70; put the row and the reason to the customer, and edit nothing until they answer",
+          coverage: "published",
         },
       ],
       evidenceState: "guide-contract",
       sourceRevision: guideRevision,
-      evidence: [readinessEvidence],
+      evidence: [readinessEvidence, bankEvidence],
       notes: [
-        "A fully generated dataset caps at 65, so STRONG and EXCELLENT are arithmetically unreachable until the evidence changes.",
-        "These caps read the fictional user's row declarations. Repository authorship is a separate contract: case 46 is Traigent-authored synthetic content whose in-world provenance values simulate a user declaration.",
+        "A fully generated dataset caps at 65, so STRONG and EXCELLENT are arithmetically unreachable until the evidence changes. No scenario in the bank declares every row generated; that row stays a coverage target.",
+        "These caps read the fictional user's row declarations. Repository authorship is a separate contract: every scenario in the bank is Traigent-authored synthetic content whose in-world provenance values simulate a user declaration.",
+        `The 70 ceiling is the one cap on this slide that no declaration can raise: it comes from the coding assistant's own read of five drawn rows, so ${caseList(unsoundAnswerCases)} reaches it only because something actually read a row and said what was wrong with it.`,
       ],
     },
     {
@@ -593,12 +964,13 @@ const rawPresentation = {
       sourceRevision: guideRevision,
       evidence: [
         `Traigent/traigent-first-run@${guideRevision.slice(0, 8)} comparison contract`,
-        "The published scenario declares separate tuning and holdout pools",
+        "The worked example, case 46, declares separate tuning and holdout pools",
       ],
       notes: [
         "Case 46 declares 100 tuning and 20 holdout rows. That is the public dataset inventory, not a claim that every paid first run uses all 120 rows; the run plan must record the selected row IDs and any bounded subset.",
         "Selecting the best of several configurations on the same tuning rows partly selects sample noise. Held-out scoring checks that risk; it does not eliminate it or prove generalization.",
         "When the coding agent has seen or authored the reserved rows, the guide calls the result held-back and non-blind - kept out of tuning but not hidden from the agent - rather than a sealed holdout.",
+        `${caseList(datasetIntegrityCases)} is the bank's counter-example: its holdout side repeats tuning transcripts, and its expected opening blocks on that overlap before any comparison is run.`,
       ],
     },
     {
@@ -630,8 +1002,8 @@ const rawPresentation = {
       id: "credible-reproduction",
       kind: "statement",
       eyebrow: "OPEN AND REPRODUCIBLE",
-      title: "Anyone can re-run the example and check the result themselves.",
-      body: "A fresh coding-agent session receives a clean copy of the customer-shaped project, including its evaluator, plus the guide and handoff. The scenario verifier, expected result, and previous outputs stay outside that session's assigned context.",
+      title: "Anyone can re-run a scenario and check the result themselves.",
+      body: `A fresh coding-agent session receives a clean copy of the customer-shaped project, including its evaluator, plus the guide and handoff. The scenario verifier, expected result, and previous outputs stay outside that session's assigned context. The same protocol applies to each of the ${numberWord(bankSize)} scenarios.`,
       bullets: [
         "Everything needed to re-run it is in this repository - no Traigent account, model key, or prior run required, only a coding agent",
         "The coding-agent session is not given the expected result or the verifier kept by the test operator",
@@ -651,7 +1023,7 @@ const rawPresentation = {
       eyebrow: "TEST DATA - EVERY SCENARIO",
       title:
         "Synthetic test data is useful when its origin and limits stay visible.",
-      body: `Every test scenario ships purpose-written synthetic data - authored for the test, never customer material - so runs are reproducible and safe to share. The example's rows are ${contentOriginLabel}, licensed under ${scenario.content.license}; no upstream dataset license travels with them, so you may run, copy and adapt the material under that license. The worked example shows the pattern; future scenarios will start from broken states on purpose.`,
+      body: `Every test scenario ships purpose-written synthetic data - authored for the test, never customer material - so runs are reproducible and safe to share. The example's rows are ${workedExampleOrigin}, licensed under ${scenario.content.license}; no upstream dataset license travels with them, so you may run, copy and adapt the material under that license. The worked example shows the pattern; ${gapScenarioCount} of the ${bankSize} scenarios start from a gap on purpose.`,
       bullets: [
         `In the example: ${dataset.rows} authored incident reports, ${dataset.unique_inputs} unique inputs; the declared pool is ${splitSummary}`,
         `Even difficulty coverage: ${difficultySummary}, so the row pool does not win its score by concentrating only on easy cases`,
@@ -670,6 +1042,7 @@ const rawPresentation = {
       notes: [
         "Repository origin and in-world row provenance are two different contracts. Never describe these rows as collected customer incidents.",
         "Public inspectability makes the test explainable. Context isolation keeps the expected result out of the assigned coding-agent context; it does not claim secrecy against deliberate lookup.",
+        "The gap scenarios are gaps by construction - a leaky split, an unrunnable grader, a missing evaluator, an absent agent - written so the guide's route through each can be checked against a contract, not defects that crept in.",
       ],
     },
     {
@@ -678,7 +1051,7 @@ const rawPresentation = {
       eyebrow: "A WORKED EXAMPLE",
       title:
         "One excellent-readiness scenario: incident severity triage (scenario 46).",
-      body: "A complete, known-good starting point: agent, labeled data, and evaluator all present, so its expected readiness grade is Excellent from the start. It exists to prove the whole flow end to end - the number 46 is just its catalog ID. Its expected result is specific to this scenario, not a score promised to other projects.",
+      body: "A complete, known-good starting point: agent, labeled data, and evaluator all present, so its expected readiness grade is Excellent from the start. It is the bank's worked example because it shows the shortest route end to end - the number 46 is its catalog case number. Its expected result is specific to this scenario, not a score promised to other projects.",
       bullets: [],
       metrics: [
         {
@@ -719,7 +1092,7 @@ const rawPresentation = {
       notes: [
         "Talk track: this is the ready-components route in the matrix, not evidence that gap repair has passed.",
         "Expected top band because this case starts complete. It is a reference, not a product success threshold.",
-        "Case 46 is a stable numeric alias for incident-severity-triage. It does not mean 46 scenarios are published here.",
+        `Case 46 is a stable numeric alias for incident-severity-triage. The bank numbers its ${bankSize} cases ${caseRange(bank)}; the numbers are aliases, not a count of anything.`,
         'If a prospect asks "will we get Excellent?", the honest answer is: show me your data, your evaluator, and whether anything in your agent varies - those three set your ceiling before we run anything.',
         `The ${dataset.rows} incident reports are Traigent-authored synthetic data under ${scenario.content.license}; they contain no customer or third-party dataset.`,
       ],
@@ -729,7 +1102,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "THREE DIFFERENT CHECKS",
       title: "Three checks, three different proofs.",
-      body: "Passing one check proves only that check - never the next one. Today this repository ships the scenario files and the expected result to compare against; no recorded agent run is included yet. Nothing here requires a prior run: anyone can run all three from a fresh clone - the paid layer with their own approved keys and spend.",
+      body: `Passing one check proves only that check - never the next one. Today this repository ships ${bankSize} scenarios in full, each with the expected opening to compare against; no recorded agent run is included. Nothing here requires a prior run: anyone can run all three from a fresh clone - the paid layer with their own approved keys and spend.`,
       bullets: [],
       metrics: [],
       testMatrix: [
@@ -761,6 +1134,7 @@ const rawPresentation = {
         "Catalog check validates the package; it does not run a coding agent.",
         "Phase A covers Inspect and Readiness. Phase B covers approved Baseline, Optimize, and Results.",
         "No prior run is needed for any layer; each one can be run today from a fresh clone.",
+        "An expected opening is a captain measurement of the guide's own scripts over the project bytes at the pinned revision. It says what the readiness card should read; it does not say a coding agent has produced that card.",
       ],
     },
     {
@@ -799,6 +1173,7 @@ const rawPresentation = {
       evidence: ["Scenario CLI and customer-PC runbook"],
       notes: [
         "The public verifier remains with the test operator, outside the coding agent's project copy.",
+        "The same four steps apply to any case number in the bank; the runbook uses case 46 as its example.",
       ],
     },
     {
@@ -831,12 +1206,12 @@ const rawPresentation = {
       kind: "statement",
       eyebrow: "TWO WAYS TO USE THIS MATERIAL",
       title:
-        "Two ways to try it today: run the example, or point the guide at your project.",
-      accent: "run the example",
-      body: "The two paths are independent, and neither needs any prior run. Trying the example is not a prerequisite for using the guide on a real project, and neither path authorizes later paid work - provider calls, Traigent service use, and spend each need their own approval.",
+        "Two ways to try it today: run a scenario, or point the guide at your project.",
+      accent: "run a scenario",
+      body: "The two paths are independent, and neither needs any prior run. Trying a scenario is not a prerequisite for using the guide on a real project, and neither path authorizes later paid work - provider calls, Traigent service use, and spend each need their own approval.",
       bullets: [
-        "Try the example: check and prepare the example scenario; give a fresh coding agent only the printed instructions",
-        "Then verify: save the readiness answer the agent produced and compare it with the expected result that ships in this repository",
+        `Try a scenario: check and prepare any of the ${bankSize} cases; give a fresh coding agent only the printed instructions`,
+        "Then verify: save the readiness answer the agent produced and compare it with the expected opening that ships in this repository",
         "Your project: paste the clone prompt from earlier into the coding agent already working in your repository",
         "Shared boundary: neither path authorizes later provider calls, Traigent service use, managed search, or spend",
         "After a first result, the guide offers the SDK skills: npx skills add Traigent/traigent-skills --list",
@@ -849,7 +1224,7 @@ const rawPresentation = {
         `Published guide and scenario handoff boundaries at Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; no live outcome claimed`,
       ],
       notes: [
-        "The two available paths are alternatives: audit the public scenario, or try the guide on the customer's own project.",
+        "The two available paths are alternatives: audit a public scenario, or try the guide on the customer's own project.",
         "The context-isolated audit uses the separate handoff printed by prepare, while the real project uses the clone prompt.",
         "The SDK skills are Apache-2.0 documentation; the SDK they drive is licensed separately (AGPL-3.0-only or commercial). Installing skills authorizes nothing - Phase B still needs its own approval.",
       ],
@@ -860,13 +1235,13 @@ const rawPresentation = {
       eyebrow: "FROM STARTING STATE TO NEXT ACTION",
       title:
         "The goal is justified movement toward optimization - not the same score for everyone.",
-      body: "The guide routes every condition below toward optimization, creating or repairing what is missing with the user's approval - every route works today. The next slide shows one worked example: a project that starts ready. The same flow carries a broken or half-ready project to the same finish line.",
+      body: "The guide routes every condition below toward optimization, creating or repairing what is missing with the user's approval - every route is implemented at the pinned guide revision. The next slide shows one worked example: a project that starts ready. The same flow carries a broken or half-ready project to the same finish line.",
       bullets: [
         "Ready → explain readiness; stop at baseline approval",
         "Missing or invalid material → preserve, resolve the human choice, create or repair, then re-check",
         "Weak evidence → bound the demonstration or request stronger material",
         "Evaluator unvalidated, invalid, or timing out → calibrate, repair or replace, or, on a timeout, ask the human how to proceed",
-        "Unsafe execution path identified → end this guide run before candidate output executes",
+        "Executing evaluator path identified → decline to calibrate it here, disclose the refusal on the card, and continue",
         "No meaningful request variation → wire and locally prove a tunable setting",
       ],
       metrics: [],
@@ -879,114 +1254,146 @@ const rawPresentation = {
       notes: [
         "Do not promise an Excellent opening. A gap, cap, repair, or stop can be the correct and useful outcome for the material the customer brought.",
         "The six bullets summarize next-action families; they are not an exhaustive taxonomy of every project condition.",
-        "Only case 46 is downloadable here today. The other routes ship in the guide, but their public context-isolated scenario tests are roadmap items.",
+        `Every family here has at least one downloadable scenario in the bank of ${bankSize}, each shipping an expected opening measured from the guide's scripts - not a recorded coding-agent run. Not every condition inside a family has one: no scenario exercises an invalid evaluator or an evaluator timeout.`,
       ],
     },
     {
-      id: "coverage-roadmap-material",
+      id: "scenario-families-material",
       kind: "matrix",
-      eyebrow: "APPENDIX - TEST SCENARIO ROADMAP 1 OF 2",
+      eyebrow: "APPENDIX - SCENARIO FAMILIES 1 OF 2",
       title: "Material and evidence routes remain separate test families.",
-      body: "These are roadmap themes for future test scenarios - the routes themselves already work in the guide today. A theme can need multiple cases; publishing one case does not cover its whole theme.",
+      body: "Each family below has at least one published scenario in the bank. A family can need multiple cases, and publishing one case does not cover its whole family. The status column says the case exists with an expected opening to verify against - not that a coding agent has run it.",
       bullets: [],
       metrics: [],
       steps: [],
       scenarioMatrix: [
         {
           family: "Ready reference",
-          setup: `${dataset.rows} labeled synthetic incident reports (${splitSummary}); usable tunable settings; deterministic non-executing evaluator`,
+          setup: `${caseList(readyCases)}: labeled synthetic rows with tuning and holdout pools; usable tunable settings; a deterministic non-executing evaluator with calibration probes`,
           expectedRoute:
             "Recognize that the components are ready, explain the opening, and stop at baseline approval",
           coverage: "published",
         },
         {
           family: "Missing material",
-          setup:
-            "Agent, dataset, expected outputs, or evaluator absent while other customer material may still be usable",
+          setup: `${caseList(missingMaterialCases)}: inbound emails with no expected replies and no evaluator (55); a hosted vendor flow where no local agent exists (57)`,
           expectedRoute:
             "Preserve what exists; ask only for an unresolved human or domain choice; create or repair a required dependency; re-check before paid work",
-          coverage: "coverage-target",
+          coverage: "published",
         },
         {
           family: "Dataset integrity",
-          setup:
-            "Malformed rows; missing answer labels; empty or overlapping tuning/held-out splits; duplicate rows leaking between them",
+          setup: `${caseList(datasetIntegrityCases)}: a review set that repeats six tuning transcripts on the holdout side`,
           expectedRoute:
             "Repair invalid comparison material; do not optimize against a split or answer key that cannot support the claim",
-          coverage: "coverage-target",
+          coverage: "published",
         },
         {
           family: "Evidence strength",
-          setup:
-            "Small, synthetic, undeclared, or mixed-provenance rows; model-generated answer keys; small comparison sets, or coarse pass/fail-style outcomes",
+          setup: `${caseList(evidenceStrengthCases)}: an answer key drafted by a model and never reviewed (54); 24 worked quotes, too few for a fine-grained comparison (56)`,
           expectedRoute:
             "Label a bounded demonstration honestly, ask for human review where required, and limit the claim",
-          coverage: "coverage-target",
+          coverage: "published",
         },
       ],
       evidenceState: "guide-contract",
       sourceRevision: guideRevision,
       evidence: [
-        `Route contracts in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; scenario status in this repository`,
+        `Route contracts in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; ${bankEvidence}`,
       ],
       notes: [
-        "Ready reference is the only public scenario today. Every other row is a planned public scenario test, not a passed result.",
-        "Repository origin and the fictional row provenance declarations are different facts; case 46 is Traigent-authored synthetic content.",
+        "Published means the scenario ships in full with an expected opening measured from the guide's own scripts over the project bytes. Do not say any row passed: no recorded coding-agent run exists for any case.",
+        "Repository origin and the fictional row provenance declarations are different facts; every case in the bank is Traigent-authored synthetic content.",
+        "Conditions the family covers but the bank does not yet exercise stay open: malformed rows, an empty split, and a fully generated dataset have no scenario.",
       ],
     },
     {
-      id: "coverage-roadmap-gates",
+      id: "scenario-families-gates",
       kind: "matrix",
-      eyebrow: "APPENDIX - TEST SCENARIO ROADMAP 2 OF 2",
+      eyebrow: "APPENDIX - SCENARIO FAMILIES 2 OF 2",
       title:
         "Evaluator, execution, and search-space gates need distinct tests.",
-      body: "These roadmap themes can require multiple cases because their conditions lead to materially different actions. A repair route, a human timeout choice, and a hard safety stop must not be presented as the same tested behavior. As on the previous slide, these are public scenario-test themes, not additional product capability: each gate below ships in the guide today, and what is planned is the public case that lets you reproduce it.",
+      body: "These families can require multiple cases because their conditions lead to materially different actions. A repair route, a human timeout choice, and a disclosed refusal to run an executing scorer must not be presented as the same tested behavior. Each gate ships in the guide today; the case named is the public scenario that lets you reproduce it.",
       bullets: [],
       metrics: [],
       steps: [],
       scenarioMatrix: [
         {
           family: "Evaluator quality",
-          setup:
-            "A present evaluator is unvalidated, opaque, inconsistent, invalid on known cases, or timing out",
+          setup: `${caseList(evaluatorQualityCases)}: SQL compared as normalized text, which the card flags as a task-fit warning without a cap (49); grading delegated to a package nobody can run (53)`,
           expectedRoute:
             "Calibrate, repair, or replace it; on a timeout, ask the human one bounded question - never call a slow evaluator broken",
-          coverage: "coverage-target",
+          coverage: "published",
         },
         {
           family: "Execution safety",
-          setup:
-            "Inspection identifies a resolved path that would execute or import candidate code or SQL, shell out with it, or submit it to an execution engine",
+          setup: `${caseList(executionSafetyCases)}: the evaluator scores by running the generated SQL against the shipped clinic database`,
           expectedRoute:
-            "End this guide run before candidate output executes; containment design and any restart are separately human-governed",
-          coverage: "coverage-target",
+            "Decline to calibrate the original scorer; record a containment warning; disclose evaluator-calibration-refused on the card; continue, with the read-only question put once at pre-spend approval",
+          coverage: "published",
         },
         {
           family: "Search-space readiness",
-          setup:
-            "The agent has no meaningful varying tunable setting, or a declared setting is not wired into requests",
+          setup: `${caseList(searchSpaceCases)}: one fixed model and instruction, so no setting varies between requests`,
           expectedRoute:
             "Establish and locally verify real request variation before requesting approval for paid search",
-          coverage: "coverage-target",
+          coverage: "published",
         },
       ],
       evidenceState: "guide-contract",
       sourceRevision: guideRevision,
       evidence: [
-        `Route contracts in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; test scenarios planned`,
+        `Route contracts in Traigent/traigent-first-run@${guideRevision.slice(0, 8)}; ${bankEvidence}`,
       ],
       notes: [
-        "An evaluator timeout is not proof that the evaluator is broken. The guide presents a bounded human choice rather than silently changing the limit.",
-        "The guide's offline isolated behavioral suite exercises the execution-safety stop contract without executing candidate output. That is a code/contract test, not a public coding-agent scenario run.",
-        "The guide supplies neither containment design nor an automatic restart after the execution-safety stop.",
+        "An evaluator timeout is not proof that the evaluator is broken. The guide presents a bounded human choice rather than silently changing the limit. No scenario in the bank exercises a timeout or an evaluator that fails on known cases.",
+        `${caseList(executionRefusalCases)} carries evaluator-calibration-refused, which does not block: the card says the check was declined and why, claims neither that the evaluator is sound nor that it is broken, and the run continues on that disclosure.`,
+        "The guide supplies no containment design for the original target; its contained copied-actor route calibrates an eligible copy against a byte copy of a local database file, and a manual containment review stays available outside the guide.",
+      ],
+    },
+    {
+      id: "scenario-bank-1",
+      kind: "catalog",
+      eyebrow: "SCENARIO CATALOG 1 OF 2",
+      title: `${sentenceCase(numberWord(bankSize))} scenarios, one contract each: cases ${caseRange(firstIndexHalf)}.`,
+      body: "Each row is a scenario the repository ships in full, with the opening its expected-opening contract records - band, status, action, and caps, the four fields the verifier compares. The captain measured them with the guide's own scripts over the project bytes at the pinned revision; no row is a recorded coding-agent run.",
+      bullets: [],
+      metrics: [],
+      steps: [],
+      catalogView: "index",
+      catalogSlugs: firstIndexHalf.map((entry) => entry.slug),
+      evidenceState: "scenario-contract",
+      evidence: [bankEvidence],
+      notes: [
+        "Read the family column as the deck's grouping and the other columns as the manifest's and the contract's own values.",
+        `The ready references are ${numberWord(readyCases.length)} because a ready project is the shortest route; the bank exists for the other ${numberWord(gapScenarioCount)}.`,
+        "Case 49 is a ready-looking opening with a warning inside it: the card flags SQL compared as text as a task-fit concern without capping the score, which is why the deck files it under evaluator quality.",
+      ],
+    },
+    {
+      id: "scenario-bank-2",
+      kind: "catalog",
+      eyebrow: "SCENARIO CATALOG 2 OF 2",
+      title: `Cases ${caseRange(secondIndexHalf)}: the gaps a project usually arrives with.`,
+      body: "Every row on this slide starts from a gap by construction. Blocked rows stop at a human decision or a repair; the others continue with a cap or a disclosure. The action and caps are the exact identifiers the readiness card prints and the verifier compares.",
+      bullets: [],
+      metrics: [],
+      steps: [],
+      catalogView: "index",
+      catalogSlugs: secondIndexHalf.map((entry) => entry.slug),
+      evidenceState: "scenario-contract",
+      evidence: [bankEvidence],
+      notes: [
+        "A BLOCKED status is a routing outcome, not a failed test: the scenario exists to check that the guide stops where its contract says it stops.",
+        "Case 57 has no local agent at all; its score is the lowest in the bank because the agent pillar cannot be measured, not because the data or evaluator are weak.",
       ],
     },
     {
       id: "published-scenario-catalog",
       kind: "catalog",
-      eyebrow: "SCENARIO CATALOG APPENDIX",
-      title: "One scenario is released today, with its boundaries visible.",
-      body: "The catalog records what each published test represents, what route it expects, and what it does not prove. New entries can be added without turning coverage targets into pass claims.",
+      eyebrow: "WORKED EXAMPLE IN FULL",
+      title: "One entry in full: what case 46 contains and expects.",
+      body: `The catalog records what each published scenario represents, what route it expects, and what it does not prove. The two index slides list all ${numberWord(bankSize)}; these two show the worked example's entry in full.`,
       bullets: [],
       metrics: [],
       steps: [],
@@ -998,7 +1405,7 @@ const rawPresentation = {
         "Published dataset and expected opening result",
       ],
       notes: [
-        "This appendix answers what the published scenario actually contains.",
+        "This appendix answers what the worked example actually contains; every other case has the same fields in its own scenario.json and README.",
         "Synthetic describes repository origin. The row value provenance: real is simulated scorer metadata inside the scenario.",
         "Nothing here is observed accuracy or evidence of a live optimization.",
         `Calibration is a sample by design: ${calibrationCount} ${calibrationCount === 1 ? "case carries" : "cases carry"} four probes each - a correct answer, an equivalent answer spelled differently, a near-miss and a wrong one. That asks whether the scorer agrees with itself, which is a property of the scorer rather than of the row count, so running it over all ${dataset.rows} rows would cost more and would not change what the probes already establish. Where inputs are expensive - long documents in, prose out - a handful of probes is the only practical check, and it is sound for the same reason.`,
@@ -1007,9 +1414,9 @@ const rawPresentation = {
     {
       id: "published-scenario-data",
       kind: "catalog",
-      eyebrow: "SCENARIO CATALOG APPENDIX",
+      eyebrow: "WORKED EXAMPLE IN FULL",
       title: "Synthetic origin and evaluation limits stay explicit.",
-      body: "The published scenario makes data shape, evaluator behavior, expected routing, and unsupported claims visible without presenting synthetic rows as customer evidence.",
+      body: "The worked example makes data shape, evaluator behavior, expected routing, and unsupported claims visible without presenting synthetic rows as customer evidence. The same limits apply to every case in the bank.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -1054,8 +1461,10 @@ const appendixSlideIds = [
   "stage-results",
   "credible-reproduction",
   "dataset-origin",
-  "coverage-roadmap-material",
-  "coverage-roadmap-gates",
+  "scenario-families-material",
+  "scenario-families-gates",
+  "scenario-bank-1",
+  "scenario-bank-2",
   "published-scenario-catalog",
   "published-scenario-data",
 ] as const;
@@ -1087,6 +1496,7 @@ const appendixSlides = appendixSlideIds.map((id) => ({
 }));
 
 export const coreSlideCount = coreSlides.length;
+export const scenarioBankSize = bankSize;
 export const presentation = parsePresentation({
   ...rawPresentation,
   slides: [...coreSlides, ...appendixSlides],

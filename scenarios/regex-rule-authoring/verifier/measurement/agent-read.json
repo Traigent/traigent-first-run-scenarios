@@ -1,0 +1,50 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "gpt-4o-mini",
+        "claude-3-5-haiku-latest"
+      ],
+      "source_lines": [
+        18,
+        47
+      ],
+      "evidence": "agent.py:18 MODELS lists the two model ids this agent accepts, :64 reads the choice from config, :65 refuses one outside MODELS, :78 hands it to call_model, and :47 passes it as model= on the litellm completion call."
+    },
+    "prompt_style": {
+      "values": [
+        "plain",
+        "anchored",
+        "explained"
+      ],
+      "source_lines": [
+        23,
+        80
+      ],
+      "evidence": "agent.py:23 PROMPT_STYLES holds the three instruction texts, :67 reads the key from config, :68 refuses one outside PROMPT_STYLES, and :80 indexes the table into a system message of the messages list that :47 sends as messages= on the completion call."
+    },
+    "flavour": {
+      "values": [
+        "bare",
+        "fenced"
+      ],
+      "source_lines": [
+        35,
+        81
+      ],
+      "evidence": "agent.py:35 FLAVOURS holds the two return-shape instructions, :70 reads the key from config, :71 refuses one outside FLAVOURS, and :81 indexes the table into a system message of the messages list that :47 sends as messages= on the completion call."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.3
+      ],
+      "source_lines": [
+        40,
+        47
+      ],
+      "evidence": "agent.py:40 TEMPERATURES is the pair this agent accepts, :73 reads it from config, :74 refuses one outside TEMPERATURES, :84 hands it to call_model, and :47 passes it as temperature= on the completion call."
+    }
+  }
+}

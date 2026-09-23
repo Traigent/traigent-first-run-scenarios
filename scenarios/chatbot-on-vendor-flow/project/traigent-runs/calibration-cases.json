@@ -1,0 +1,36 @@
+[
+  {
+    "name": "reported loss - the intent written the way the weekly routing report writes it",
+    "score_mode": "binary",
+    "expected": "new_claim",
+    "input_data": {
+      "message": "I'd like to start a new claim for water damage in my kitchen."
+    },
+    "metadata": {
+      "scoring_path": "intent-table"
+    },
+    "probes": {
+      "good": "new_claim",
+      "equivalent_good": "New Claim",
+      "partial": "claim_status",
+      "bad": "policy_question"
+    }
+  },
+  {
+    "name": "asks for a person - the intent written with the review spreadsheet's hyphen",
+    "score_mode": "binary",
+    "expected": "human_agent",
+    "input_data": {
+      "message": "Please put me through to an agent."
+    },
+    "metadata": {
+      "scoring_path": "intent-table"
+    },
+    "probes": {
+      "good": "human_agent",
+      "equivalent_good": "Human-Agent",
+      "partial": "complaint",
+      "bad": "new_claim"
+    }
+  }
+]

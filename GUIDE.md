@@ -6,12 +6,12 @@ opening run. It does not authorize a credentialed optimization.
 In this guide, **captain** means the human test operator who prepares the run,
 controls the worker handoff and stop point, and retains evidence.
 
-The repository currently releases one reference scenario and its expected
-opening contract as reviewed, versioned files — not a recorded worker result.
-Until a fresh run is captured and verified, describe the opening as
-**expected**, not **verified**. Every step below works the same way
-for any scenario `scenario.py list` shows; case `46` is the one released
-today.
+The repository releases thirteen scenarios, each with its expected opening
+contract, as reviewed, versioned files — not recorded worker results. Until a
+fresh run is captured and verified, describe an opening as **expected**, not
+**verified**. Every step below works the same way for any scenario
+`scenario.py list` shows; case `46` is the one the commands show, and an
+output path is named after the scenario you run.
 
 ## 1. Create two clean checkouts
 
@@ -131,7 +131,10 @@ nothing beyond the prepared project and the printed handoff, and its opening
 reflects what a fresh agent would actually do.
 
 The captain observes the run and stops it at the first question or decision
-that belongs to the human. For this Phase A opening:
+that belongs to the human. Where the guide declines to calibrate an
+evaluator whose path would execute candidate code or SQL, it discloses the
+declined check on the readiness card and continues; that disclosure is part
+of the opening, not a stop. For this Phase A opening:
 
 - do not provide a Traigent or model-provider credential;
 - do not approve a paid or remote Traigent or model-provider call;
@@ -164,6 +167,13 @@ recorded in `run.json`, and compares these top-level semantic fields:
 - `status`
 - `recommended_action`
 - `caps`
+
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
 
 Expected `caps` are condition slugs. When captured readiness contains full cap
 objects, verification compares their `condition` fields and ignores

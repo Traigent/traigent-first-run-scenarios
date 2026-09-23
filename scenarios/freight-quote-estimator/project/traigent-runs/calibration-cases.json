@@ -1,0 +1,36 @@
+[
+  {
+    "name": "bulky standard job - a quote five percent out is still a wrong quote under our two percent tolerance",
+    "score_mode": "binary",
+    "expected": "432",
+    "input_data": {
+      "shipment": "Foam packaging inserts, light but bulky: 40 kg, 150 x 120 x 100 cm, 180 km, standard service to a packing plant."
+    },
+    "metadata": {
+      "scoring_path": "numeric-tolerance"
+    },
+    "probes": {
+      "good": "432",
+      "equivalent_good": "432.0",
+      "partial": "455",
+      "bad": "290"
+    }
+  },
+  {
+    "name": "express hazardous home delivery - the number written with a thousands separator is the same quote",
+    "score_mode": "binary",
+    "expected": "1065",
+    "input_data": {
+      "shipment": "Express, hazardous: pool chlorine tubs on a pallet, 80 kg, 200 x 120 x 100 cm, 280 km, delivered to a private house."
+    },
+    "metadata": {
+      "scoring_path": "numeric-tolerance"
+    },
+    "probes": {
+      "good": "1065",
+      "equivalent_good": "1,065",
+      "partial": "1120",
+      "bad": "710"
+    }
+  }
+]

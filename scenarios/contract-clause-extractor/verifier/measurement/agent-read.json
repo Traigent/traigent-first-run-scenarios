@@ -1,0 +1,87 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "gpt-4o-mini",
+        "gpt-4o"
+      ],
+      "source_lines": [
+        20,
+        117
+      ],
+      "evidence": "agent.py:20 MODELS lists the two alternatives, :125 reads the choice from the settings mapping and the next line checks it against the table, and :117 passes it as model= on the provider request."
+    },
+    "prompt_style": {
+      "values": [
+        "direct",
+        "checklist"
+      ],
+      "source_lines": [
+        22,
+        44
+      ],
+      "evidence": "agent.py:22 PROMPT_STYLES holds the two instruction wordings and :44 indexes it with the settings choice as the first line of the prompt that :49 joins and :119 sends as the request content."
+    },
+    "output_format": {
+      "values": [
+        "json",
+        "lines"
+      ],
+      "source_lines": [
+        27,
+        45
+      ],
+      "evidence": "agent.py:27 FORMAT_INSTRUCTIONS holds the two answer-shape instructions and :45 indexes it with the settings choice as the second line of the prompt that :49 joins and :119 sends; :131 parses the reply in that same shape."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.3
+      ],
+      "source_lines": [
+        32,
+        118
+      ],
+      "evidence": "agent.py:32 TEMPERATURES lists the two values, :128 reads the choice from the settings mapping and the next line checks it with in, and :118 passes it as temperature= on the provider request."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        49,
+        119
+      ],
+      "evidence": "agent.py:49 joins the chosen instruction, the answer shape, a one-sentence definition of the renewal types and the clause into one request text with no worked examples, and :119 sends it as the single user message."
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        85,
+        131
+      ],
+      "evidence": "agent.py:85 raises when any of the four fields is missing from the parsed reply, :90 refuses a renewal type outside the three the desk uses, and :131 returns the four-field object as a JSON string."
+    },
+    "control-flow": {
+      "loop": false,
+      "bounded": true,
+      "source_lines": [
+        125,
+        131
+      ],
+      "evidence": "agent.py:125-131 is one straight-line pass: read the settings, one provider call, parse, return; the only loop on the way is the line reader's for over the finite reply text."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        116,
+        132
+      ],
+      "evidence": "agent.py:116 makes one chat completion request with a messages list and no tools argument; :132 is the only provider call the selected callable makes."
+    }
+  }
+}

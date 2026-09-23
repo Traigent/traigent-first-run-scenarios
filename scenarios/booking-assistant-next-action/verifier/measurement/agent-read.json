@@ -1,0 +1,99 @@
+{
+  "source": "agent.py",
+  "knobs": {
+    "model": {
+      "values": [
+        "claude-haiku-4-5",
+        "claude-sonnet-4-6"
+      ],
+      "source_lines": [
+        21,
+        101
+      ],
+      "evidence": "agent.py:21 lists the two model ids in MODELS, :110 reads the choice from config and :111 checks it against the tuple, and :101 passes it as model= on the Messages request."
+    },
+    "history_window": {
+      "values": [
+        1,
+        3,
+        8
+      ],
+      "source_lines": [
+        23,
+        64
+      ],
+      "evidence": "agent.py:23 lists the three windows in HISTORY_WINDOWS, :113-114 read and check the choice, :69 reads it again in build_prompt, and :64 slices the transcript to that many trailing turns, which :76-77 append to the prompt that :104 sends."
+    },
+    "prompt_style": {
+      "values": [
+        "direct",
+        "precedence"
+      ],
+      "source_lines": [
+        25,
+        71
+      ],
+      "evidence": "agent.py:25 holds the two instruction wordings in PROMPT_STYLES, :116-117 read and check the key, and :71 indexes the table with the config read itself into the first line of the prompt that :104 sends."
+    },
+    "output_format": {
+      "values": [
+        "label",
+        "json"
+      ],
+      "source_lines": [
+        38,
+        73
+      ],
+      "evidence": "agent.py:38 holds the two answer-shape instructions in OUTPUT_FORMATS, :119-120 read and check the key, :73 indexes the table with the config read itself into the prompt that :104 sends, and :82-85 parse the reply the way that format writes it."
+    },
+    "temperature": {
+      "values": [
+        0.0,
+        0.4
+      ],
+      "source_lines": [
+        43,
+        103
+      ],
+      "evidence": "agent.py:43 lists the two sampling temperatures in TEMPERATURES, :122-123 read and check the value, and :103 passes it as temperature= on the Messages request."
+    }
+  },
+  "build": {
+    "prompt": {
+      "present": true,
+      "few_shot": 0,
+      "source_lines": [
+        71,
+        104
+      ],
+      "evidence": "agent.py:67-78 assemble the instruction, the action list, the format line and the sliced transcript into one string, and :104 sends it as the user message; the prompt carries no worked examples."
+    },
+    "output-contract": {
+      "present": true,
+      "source_lines": [
+        58,
+        92
+      ],
+      "evidence": "agent.py:58 compiles the eight action names into ACTION_PATTERN, :85 unwraps the JSON shape when that format was asked for, and :90-93 return the matched action or raise at :92 when the reply carries none."
+    },
+    "control-flow": {
+      "loop": false,
+      "bounded": true,
+      "source_lines": [
+        110,
+        125
+      ],
+      "evidence": "agent.py:109-127 is one straight-line run: five reads and checks, then one nested return that builds the prompt, places the request and parses the reply, with no loop in the callable's body."
+    },
+    "tools": {
+      "used": false,
+      "declared": [],
+      "unreachable": [],
+      "source_lines": [
+        100,
+        104
+      ],
+      "evidence": "agent.py:100-104 is a plain messages.create call with no tools argument; nothing in the file declares or reaches a tool."
+    }
+  }
+}

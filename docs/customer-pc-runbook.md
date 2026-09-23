@@ -61,9 +61,9 @@ checkout.
 
 ## 3. Validate the scenario package
 
-The commands below use case `46`, today's released scenario. Substitute any
-case number shown by `scenario.py list`, and name the step-4 output path
-after the scenario you run.
+The commands below use case `46`, one of the thirteen released scenarios.
+Substitute any case number shown by `scenario.py list`, and name the step-4
+output path after the scenario you run.
 
 ```bash
 python scenario.py list
@@ -158,7 +158,10 @@ or coaching.
 
 The captain may allow local inspection and the deterministic evaluator
 calibration only when the first-run guide admits the exact path through its
-safety gate. During Phase A, do not:
+safety gate. Where that gate declines the path because the evaluator would
+execute candidate code or SQL, the guide discloses the declined check on the
+readiness card and continues; do not calibrate the original evaluator on the
+guide's behalf. During Phase A, do not:
 
 - provide a Traigent or provider credential;
 - approve a paid or remote Traigent or model-provider request;
@@ -186,6 +189,13 @@ scenario Git revision in `run.json`, and compares only `band`, `status`,
 `recommended_action`, and `caps` with that recorded expected opening. Expected
 caps are condition slugs; full captured cap objects are compared by their
 `condition` fields. It reports every mismatch and does not execute the verifier.
+
+One scenario, `regex-rule-authoring` (58), publishes two contracts because its
+opening turns on what the worker's read of its answers found. For it, also pass
+the row review the worker gave readiness as `--row-review FILE`: `verify` grades
+that read against the scenario's verdict for every row, then compares the
+result with the contract for the read the worker gave. `--row-review` is
+refused for every other scenario.
 
 A matching result may be labeled **Verified run evidence** only when the report
 also retains the captured result, both repository revisions, `run.json`, worker

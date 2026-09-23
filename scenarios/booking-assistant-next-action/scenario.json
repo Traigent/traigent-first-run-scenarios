@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "slug": "booking-assistant-next-action",
+  "legacy_id": 51,
+  "title": "Booking assistant next-action with a leaky holdout split",
+  "summary": "A customer-shaped ferry-booking chat project whose configurable agent picks the assistant's next action from a plain-text transcript, with a deterministic action evaluator and calibration probes, but whose review set repeats six tuning transcripts on the holdout side.",
+  "phase": "phase-a-opening",
+  "content": {
+    "origin": "traigent-authored",
+    "license": "Apache-2.0"
+  },
+  "paths": {
+    "project": "project",
+    "verifier": "verifier"
+  },
+  "catalog": {
+    "starting_condition": "gaps-present",
+    "components": {
+      "agent": {
+        "state": "ready",
+        "path": "project/agent.py",
+        "controls": [
+          "model",
+          "history_window",
+          "prompt_style",
+          "output_format",
+          "temperature"
+        ]
+      },
+      "data": {
+        "state": "needs-repair",
+        "paths": [
+          "project/dataset.jsonl"
+        ]
+      },
+      "evaluator": {
+        "state": "ready",
+        "path": "project/evaluator.py",
+        "method": "normalized-exact-match",
+        "guide_evaluator_method": "normalized-exact",
+        "calibration": {
+          "path": "project/traigent-runs/calibration-cases.json",
+          "case_count": 2
+        }
+      }
+    },
+    "datasets": [
+      {
+        "id": "booking-chat-next-actions",
+        "state": "needs-repair",
+        "path": "project/dataset.jsonl",
+        "task": "closed-label-classification",
+        "guide_task_kind": "closed-label",
+        "format": "jsonl",
+        "input_field": "input",
+        "label_field": "output",
+        "rows": 100,
+        "unique_inputs": 94,
+        "splits": {
+          "field": "metadata.split",
+          "counts": {
+            "tuning": 83,
+            "holdout": 17
+          }
+        },
+        "difficulty_strata": {
+          "field": "metadata.difficulty",
+          "counts": {
+            "easy": 25,
+            "medium": 25,
+            "hard": 25,
+            "very-hard": 25
+          }
+        },
+        "passthrough_fields": [
+          "metadata.provenance"
+        ],
+        "label_shape": {
+          "kind": "mapped-labels",
+          "surface_label_count": 8,
+          "label_counts": {
+            "ask_dates": 11,
+            "ask_passengers": 13,
+            "quote_fare": 12,
+            "confirm_booking": 11,
+            "offer_alternative": 11,
+            "explain_policy": 13,
+            "escalate_to_agent": 15,
+            "cancel_booking": 14
+          }
+        },
+        "limitations": [
+          "traigent-authored-synthetic",
+          "no-customer-data",
+          "no-observed-model-performance",
+          "closed-label-task",
+          "tune-holdout-overlap",
+          "repeated-rows"
+        ]
+      }
+    ],
+    "non_dataset_files": [
+      "project/requirements.txt"
+    ],
+    "expected_route": {
+      "rationale": "dataset-integrity-tune-holdout-overlap",
+      "verifier_contract": "verifier/expected-opening.json"
+    },
+    "evidence": {
+      "demonstrates": [
+        "catalog-contract",
+        "phase-a-opening-contract"
+      ],
+      "does_not_demonstrate": [
+        "captured-worker-run",
+        "provider-paid-baseline",
+        "managed-optimization",
+        "business-outcome"
+      ]
+    }
+  },
+  "tags": [
+    "closed-label",
+    "conversational-assistant",
+    "dataset-integrity",
+    "exact-evaluator",
+    "labeled-data",
+    "needs-repair",
+    "synthetic-data"
+  ]
+}
