@@ -192,14 +192,18 @@ class ReproduceOpeningsTests(unittest.TestCase):
         read = {"reviewer": "assistant", "rows": [{"id": "line-1", "verdict": verdict}]}
         (self.scenario / "verifier" / "measurement" / name).write_text(json.dumps(read))
 
-    def run_script(self, guide: Path | None = None) -> tuple[int, str]:
+    def run_script(self, guide: Path | None = None, *arguments: str) -> tuple[int, str]:
         environment = {
             key: value for key, value in os.environ.items() if key != "GUIDE"
         }
         if guide is not None:
             environment["GUIDE"] = str(guide)
         done = subprocess.run(
-            [sys.executable, str(self.repository / "scripts" / SCRIPT.name)],
+            [
+                sys.executable,
+                str(self.repository / "scripts" / SCRIPT.name),
+                *arguments,
+            ],
             capture_output=True,
             text=True,
             env=environment,
@@ -522,6 +526,115 @@ class ReproduceOpeningsTests(unittest.TestCase):
                 self.assertEqual(2, status, output)
                 self.assertIn("contains a symbolic link", output)
                 self.assertIn(str(link), output)
+
+    def test_against_head_replays_any_revision_and_calls_a_difference_drift(
+        self,
+    ) -> None:
+        pinned = "0" * 40
+        self.write_invocation(
+            {
+                "preflight": step("preflight.py"),
+                "readiness": step("readiness.py", *READS_PREFLIGHT),
+            },
+            revision=pinned,
+        )
+        status, output = self.run_script(self.guide)
+        self.assertEqual(2, status, output)
+        self.assertIn("measured at 00000000", output)
+
+        status, output = self.run_script(self.guide, "--against-head")
+        self.assertEqual(0, status, output)
+        self.assertIn(f"guide {self.revision}, clean checkout", output)
+        self.assertIn("pinned at 00000000", output)
+        self.assertIn("MATCH", output)
+        self.assertNotIn("DRIFT", output)
+
+        self.write_contract(opening(band="EXCELLENT"))
+        status, output = self.run_script(self.guide, "--against-head")
+        self.assertEqual(1, status, output)
+        self.assertIn("DRIFT", output)
+        self.assertIn("band got 'STRONG' published 'EXCELLENT'", output)
+        self.assertIn("not a defect in a scenario", output)
+
+    def test_against_head_reports_what_stopped_before_the_guide_ran_as_unread(
+        self,
+    ) -> None:
+        """Only what the guide did can drift; a refused record is not the guide."""
+        outside = self.root / "host-file.txt"
+        outside.write_text("private\n")
+        link = self.scenario / "project" / "notes.txt"
+        readiness = step("readiness.py", *READS_PREFLIGHT)
+        for label, prepare, reason in (
+            (
+                "a refused record",
+                lambda: self.write_invocation(
+                    {
+                        "preflight": step("preflight.py"),
+                        "readiness": [*readiness, "--report", "report.md"],
+                    }
+                ),
+                "'--report' is not a flag",
+            ),
+            ("a link", lambda: link.symlink_to(outside), "contains a symbolic link"),
+        ):
+            with self.subTest(label=label):
+                prepare()
+                status, output = self.run_script(self.guide, "--against-head")
+                if link.is_symlink():
+                    link.unlink()
+                self.write_invocation(
+                    {"preflight": step("preflight.py"), "readiness": readiness}
+                )
+                self.assertEqual(2, status, output)
+                self.assertIn("COULD NOT READ", output)
+                self.assertIn(reason, output)
+                self.assertNotIn("DRIFT", output)
+                self.assertNotIn("has moved", output)
+
+    def test_against_head_calls_a_guide_that_fails_after_starting_drift(
+        self,
+    ) -> None:
+        self.write_invocation(
+            {
+                "preflight": step("preflight.py"),
+                "calibration": step("calibrate_evaluator.py", "--task-kind", "numeric"),
+                "readiness": step(
+                    "readiness.py",
+                    *READS_PREFLIGHT,
+                    "--calibration",
+                    "$MEASURE/03-calibration.json",
+                ),
+            },
+            revision="0" * 40,
+        )
+        status, output = self.run_script(self.guide, "--against-head")
+        self.assertEqual(1, status, output)
+        self.assertIn("DRIFT", output)
+        self.assertIn("calibration wrote nothing", output)
+        self.assertIn("the guide has moved", output)
+
+    def test_against_head_on_the_pinned_revision_does_not_say_the_guide_moved(
+        self,
+    ) -> None:
+        self.write_contract(opening(band="EXCELLENT"))
+        status, output = self.run_script(self.guide, "--against-head")
+        self.assertEqual(1, status, output)
+        self.assertIn("DRIFT", output)
+        self.assertIn(f"pinned at {self.revision[:8]}", output)
+        self.assertNotIn("has moved", output)
+        self.assertIn("the pinned revision", output)
+        self.assertIn("the pinned replay fails the same way", output)
+
+    def test_against_head_still_refuses_a_checkout_with_local_changes(self) -> None:
+        (self.guide / "stray.py").write_text("")
+        status, output = self.run_script(self.guide, "--against-head")
+        self.assertEqual(2, status, output)
+        self.assertIn("has local changes", output)
+
+    def test_an_unknown_argument_is_refused(self) -> None:
+        status, output = self.run_script(self.guide, "--against-pin")
+        self.assertEqual(2, status, output)
+        self.assertIn("unrecognized arguments: --against-pin", output)
 
 
 if __name__ == "__main__":

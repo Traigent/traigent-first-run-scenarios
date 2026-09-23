@@ -51,8 +51,18 @@ Exit 0 when every published contract reproduces, 1 when any disagrees, 2 when a
 contract could not be measured at all -- including when the checkout cannot be
 trusted to be the recorded revision. A disagreement outranks a contract that
 could not be read, since it is the more specific finding; both are printed.
+
+`--against-head` replays against a checkout on any revision -- the head of the
+guide's default branch, weekly in `.github/workflows/guide-drift.yml`. What the
+guide did is labelled MATCH or DRIFT: a measurement that differs, or a step
+that ran and produced none. What stopped before the guide ran -- a refused
+record, a link, a missing read -- stays COULD NOT READ, as against the pin.
+Exit 1 on any drift, else 2 on anything unread. Drift against a moved guide is
+a warning that the guide has moved, not a defect in a scenario; the pinned
+replay is what vouches for the scenarios.
 """
 
+import argparse
 import json
 import os
 import re
@@ -108,8 +118,31 @@ class CouldNotMeasure(Exception):
     """One contract could not be measured; the others still are."""
 
 
+class StepFailed(CouldNotMeasure):
+    """The guide ran and did not produce a measurement.
+
+    Everything checked before the first step runs -- the record, links, the
+    committed read, the placeholders -- is about the scenario. This is about the
+    guide, so against a moved guide it is drift rather than an unread record.
+    """
+
+
 if set(STEP_TIMEOUT_SECONDS) != set(REPLAY_STEPS):
     fail("every replayable step needs a deadline in STEP_TIMEOUT_SECONDS")
+
+_parser = argparse.ArgumentParser(
+    description="Re-measure every published opening against a guide checkout."
+)
+_parser.add_argument(
+    "--against-head",
+    action="store_true",
+    help=(
+        "replay against a guide checkout on any revision, such as the head of "
+        "its default branch, and report what the guide measured as MATCH or "
+        "DRIFT"
+    ),
+)
+AGAINST_HEAD: bool = _parser.parse_args().against_head
 
 _root = os.environ.get("GUIDE")
 if not _root:
@@ -227,6 +260,9 @@ def replay(
         if row_review is not None:
             bound["$ROW_REVIEW"] = str(row_review)
         refusals = invocation.get("refusals", {})
+        # Every command is bound before any runs, so a record that cannot be
+        # bound is refused before the guide has done anything.
+        commands: dict[str, list[str]] = {}
         for name, recorded in invocation["steps"].items():
             cmd: list[str] = []
             for argument in recorded:
@@ -236,11 +272,13 @@ def replay(
                 for token, value in bound.items():
                     argument = argument.replace(token, value)
                 cmd.append(argument)
+            commands[name] = cmd
+        for name, cmd in commands.items():
             budget = STEP_TIMEOUT_SECONDS[name]
             try:
                 done = run(cmd, project, budget)
             except subprocess.TimeoutExpired as expired:
-                raise CouldNotMeasure(
+                raise StepFailed(
                     f"step {name!r} was still running after its {budget}-second "
                     "replay budget and was stopped"
                 ) from expired
@@ -252,20 +290,27 @@ def replay(
             # failure, a crash included, is not that refusal.
             if name in refusals:
                 if wrote or done.returncode == 0 or refusals[name] not in done.stderr:
-                    raise CouldNotMeasure(
+                    raise StepFailed(
                         f"{name} was recorded refusing with {refusals[name]!r} and "
                         f"now does not (rc={done.returncode}): {last_line(done.stderr)}"
                     )
                 continue
             if not wrote:
-                raise CouldNotMeasure(
+                raise StepFailed(
                     f"{name} wrote nothing (rc={done.returncode}): "
                     + last_line(done.stderr)
                 )
             (measure / REPLAY_STEPS[name].output).write_text(done.stdout)
-        result: dict[str, Any] = json.loads(
-            (measure / REPLAY_STEPS["readiness"].output).read_text()
-        )
+        try:
+            result: dict[str, Any] = json.loads(
+                (measure / REPLAY_STEPS["readiness"].output).read_text()
+            )
+            measured_fields(result)
+        except (AttributeError, KeyError, TypeError, ValueError) as unreadable:
+            raise StepFailed(
+                f"readiness wrote no readable result: {type(unreadable).__name__}: "
+                f"{unreadable}"
+            ) from unreadable
         return result
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -328,6 +373,7 @@ def contracts(scenario: Path) -> list[tuple[str, Path, Path | None]]:
 
 
 AT = guide_revision()
+pins: set[str] = set()
 rows: list[tuple[str, str, str]] = []
 for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
     scenario = manifest.parent
@@ -340,7 +386,8 @@ for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
                 )
             except ScenarioError as refusal:
                 raise CouldNotMeasure(str(refusal)) from refusal
-            if invocation["guide_revision"] != AT:
+            pins.add(invocation["guide_revision"])
+            if invocation["guide_revision"] != AT and not AGAINST_HEAD:
                 raise CouldNotMeasure(
                     f"measured at {invocation['guide_revision'][:8]}, "
                     f"GUIDE is on {AT[:8]}"
@@ -354,6 +401,10 @@ for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
                 f"{key} got {got[key]!r} published {want[key]!r}" for key in differing
             )
             rows.append((label, "DIFFERS" if differing else "MATCH", detail))
+        except StepFailed as reason:
+            rows.append(
+                (label, "DRIFT" if AGAINST_HEAD else "COULD NOT READ", str(reason))
+            )
         except CouldNotMeasure as reason:
             rows.append((label, "COULD NOT READ", str(reason)))
         except (AttributeError, OSError, KeyError, TypeError, ValueError) as failure:
@@ -363,16 +414,45 @@ for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
 
 if not rows:
     fail("no scenario was found, so nothing was checked")
-print(f"  guide {AT[:8]}, clean checkout\n")
+if AGAINST_HEAD:
+    # Against a moving guide, what the guide did can drift: a measurement that
+    # differs, or a step that ran and produced none. What stopped before the
+    # guide ran -- a refused record, a link, a missing read -- is about the
+    # scenario, and stays COULD NOT READ as it does against the pin.
+    rows = [
+        (label, "DRIFT" if verdict == "DIFFERS" else verdict, detail)
+        for label, verdict, detail in rows
+    ]
+    pinned = ", ".join(pin[:8] for pin in sorted(pins)) or "no record read"
+    print(f"  guide {AT}, clean checkout; the scenarios are pinned at {pinned}\n")
+else:
+    print(f"  guide {AT[:8]}, clean checkout\n")
 width = max(len(row[0]) for row in rows)
 for label, verdict, detail in rows:
     print(f"  {label:{width}}  {verdict:14} {detail}")
 matched = sum(1 for row in rows if row[1] == "MATCH")
 print(f"\n  matched: {matched} of {len(rows)} contracts")
-differs = sum(1 for row in rows if row[1] == "DIFFERS")
+differs = sum(1 for row in rows if row[1] in ("DIFFERS", "DRIFT"))
 unread = len(rows) - matched - differs
+if AGAINST_HEAD and differs:
+    if any(pin != AT for pin in pins):
+        print(
+            f"  drifted: {differs} of {len(rows)} contracts at guide {AT[:8]}. This "
+            "is a warning that the guide has moved since the scenarios were "
+            "measured, not a defect in a scenario: the pinned replay in CI is what "
+            "vouches for them. Re-measure at the new revision to move the pin.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"  drifted: {differs} of {len(rows)} contracts at guide {AT[:8]}, "
+            "which is the pinned revision, so the guide has not moved: the "
+            "pinned replay fails the same way.",
+            file=sys.stderr,
+        )
+if unread:
+    print(f"  could not measure: {unread}", file=sys.stderr)
 if differs:
     raise SystemExit(1)
 if unread:
-    print(f"  could not measure: {unread}", file=sys.stderr)
     raise SystemExit(2)

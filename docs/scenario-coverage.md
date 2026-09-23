@@ -178,7 +178,9 @@ record to the guide commands a replay may run -- the validator `scenario.py
 check` applies -- and refuses a scenario containing a link, and each step runs
 under a deadline derived from the guide's own calibration ceiling. It reads and
 never writes, and it has no mode that does. CI runs it against the pinned guide
-revision.
+revision, and weekly against the head of the guide's default branch with
+`--against-head`, where a DRIFT row is a warning that the guide has moved rather
+than a defect in a scenario.
 
     GUIDE=~/code/traigent-first-run python3 scripts/reproduce_openings.py
 

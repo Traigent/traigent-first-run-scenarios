@@ -438,6 +438,14 @@ GUIDE=/path/to/traigent-first-run python scripts/reproduce_openings.py
 Run it as a user whose files and environment hold no credentials: the
 evaluator can read whatever that user can.
 
+The weekly `guide-drift` workflow replays the same records against the head of
+the guide's default branch with `--against-head`, which accepts a checkout on
+any revision and prints the revision it used. A contract the guide measured is
+MATCH or DRIFT -- a step that ran and produced nothing counts as drift -- and
+one refused before the guide ran stays COULD NOT READ. Against a moved guide, a
+drift is a warning that the guide has moved since the scenarios were measured,
+not a defect in a scenario; re-measure at the new revision to move the pin.
+
 If presentation content changes, also run from `presentation/`:
 
 ```bash
