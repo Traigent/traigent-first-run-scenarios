@@ -93,8 +93,9 @@ result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
 
 Verification binds the contract to the scenario Git revision in `run.json`,
-then compares `band`, `status`, `recommended_action`, and `caps`. It never
-executes verifier code. Report every mismatch and retain the complete
+then compares `band`, `status`, `recommended_action`, and `caps` - each cap's
+condition, ceiling, blocks and asks - at the readiness `schema_version` the
+contract was measured at. It never executes verifier code. Report every mismatch and retain the complete
 output and final status.
 
 Guide behavior pinned to an exact public guide revision, without a referenced

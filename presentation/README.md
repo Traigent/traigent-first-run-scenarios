@@ -54,8 +54,10 @@ three commands.
   no scenario or guide code and makes no network request.
 - `scenario.py verify 46 --run-record RUN_JSON --result FILE` validates the
   recorded contract against its Git revision, reads strict JSON, and compares
-  only `band`, `status`, `recommended_action`, and `caps`. It executes no
-  verifier code.
+  only `band`, `status`, `recommended_action`, and `caps` - each cap's
+  condition, ceiling, blocks and asks - at the readiness `schema_version` the
+  contract was measured at. It executes no verifier code. The deck prints each
+  cap's condition.
 
 The current deck has the published expectation for each of the thirteen
 scenarios but no referenced captured worker result for any of them. An expected

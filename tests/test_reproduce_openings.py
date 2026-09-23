@@ -74,10 +74,13 @@ if "--row-review" in arguments:
     read = json.load(open(arguments[arguments.index("--row-review") + 1]))
     flagged = any(row["verdict"] == "no" for row in read["rows"])
 print(json.dumps({
+    "schema_version": 6,
     "band": "WORKABLE" if flagged else "STRONG",
     "status": "OK",
     "recommended_action": "review-answer-key" if flagged else "proceed",
-    "caps": [{"condition": "dataset-coarse-resolution"}],
+    "caps": [{"condition": "dataset-coarse-resolution", "ceiling": 89,
+              "blocks": False, "asks": False, "reason": "coarse",
+              "action_kind": "add-examples"}],
     "overall": 70 if flagged else 82,
     "confidence": 0.86,
     "pillars": [{"name": "dataset", "score": 84, "confidence": 0.8}],
@@ -87,12 +90,20 @@ print(json.dumps({
 
 def opening(band: str = "STRONG", action: str = "proceed", overall: int = 82) -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "readiness_schema_version": 6,
         "scope": "phase-a-opening",
         "band": band,
         "status": "OK",
         "recommended_action": action,
-        "caps": ["dataset-coarse-resolution"],
+        "caps": [
+            {
+                "condition": "dataset-coarse-resolution",
+                "ceiling": 89,
+                "blocks": False,
+                "asks": False,
+            }
+        ],
         "display": {
             "overall": {"score": overall, "confidence": 0.86},
             "pillars": {"dataset": {"score": 84, "confidence": 0.8}},
@@ -216,11 +227,21 @@ class ReproduceOpeningsTests(unittest.TestCase):
         self.assertIn("matched: 1 of 1 contracts", output)
 
     def test_every_published_field_is_compared(self) -> None:
-        for field, value in (("band", "EXCELLENT"), ("overall", 81)):
-            with self.subTest(field=field):
+        for field, value in (
+            ("band", "EXCELLENT"),
+            ("overall", 81),
+            ("readiness_schema_version", 5),
+            ("caps", "asks"),
+            ("caps", "blocks"),
+            ("caps", "ceiling"),
+        ):
+            with self.subTest(field=field, value=value):
                 contract = opening()
                 if field == "overall":
                     contract["display"]["overall"]["score"] = value
+                elif field == "caps":
+                    cap = contract["caps"][0]
+                    cap[value] = None if value == "ceiling" else not cap[value]
                 else:
                     contract[field] = value
                 self.write_contract(contract)

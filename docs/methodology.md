@@ -205,13 +205,17 @@ captured result as strict JSON, and compares four top-level fields:
 - `recommended_action`
 - `caps`
 
-The public contract records `caps` as condition slugs. A captured readiness
-payload may contain full cap objects; verification normalizes those objects to
-their `condition` fields before an order-independent comparison. All mismatches
-are reported. The verifier never imports or executes scenario
-or verifier code. Display scores in the expected contract support an honest
-preview of the scenario's intended opening; they do not broaden the semantic
-match and are not recorded-run evidence.
+The public contract records each cap whole - its condition, its ceiling, and
+whether it blocks the run or asks first - because two caps with one condition
+can route a run differently. A captured readiness payload carries cap objects;
+verification compares those four fields of each, order-independent, and
+requires the payload's `schema_version` to be the readiness schema the contract
+was measured at. A contract recorded before this (schema 1) is compared on
+conditions only, and the output says so. All mismatches are reported. The
+verifier never imports or executes scenario or verifier code. Display scores in
+the expected contract support an honest preview of the scenario's intended
+opening; they do not broaden the semantic match and are not recorded-run
+evidence.
 
 ## Phase B live value path
 

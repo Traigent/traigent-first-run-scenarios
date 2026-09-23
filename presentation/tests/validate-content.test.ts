@@ -155,6 +155,56 @@ describe("presentation content validation", () => {
     expect(rows[0]!.startingPoint).toContain("Cases 46, 47, 48, 49");
   });
 
+  it("quotes each published cap's ceiling and routing from its contract", () => {
+    const rows = presentation.slides
+      .filter((slide) => slide.id.startsWith("readiness-ceilings-"))
+      .flatMap((slide) => slide.matrix ?? []);
+    const capOf = (slug: string, condition: string) => {
+      const contract = JSON.parse(
+        readFileSync(
+          path.join(
+            repositoryRoot,
+            "scenarios",
+            slug,
+            "verifier",
+            "expected-opening.json",
+          ),
+          "utf8",
+        ),
+      ) as {
+        caps: { condition: string; ceiling: number; asks: boolean }[];
+      };
+      return contract.caps.find((cap) => cap.condition === condition)!;
+    };
+    for (const [slug, condition, caseName] of [
+      ["tool-dispatch-selector", "agent-no-varying-knobs", "Case 52"],
+      ["contract-clause-extractor", "dataset-generated-answer-key", "Case 54"],
+      ["regex-rule-authoring", "dataset-unsound-expected-outputs", "Case 58"],
+    ] as const) {
+      const row = rows.find((candidate) =>
+        candidate.startingPoint.includes(caseName),
+      )!;
+      expect(row.safestNextStep).toContain(
+        `Ceiling ${capOf(slug, condition).ceiling};`,
+      );
+    }
+    const evidence = presentation.slides.find(
+      (slide) => slide.id === "readiness-ceilings-evidence",
+    )!;
+    expect(
+      capOf("contract-clause-extractor", "dataset-generated-answer-key").asks,
+    ).toBe(true);
+    expect(evidence.body).not.toContain("Nothing stops here");
+    expect(evidence.body).toContain("also ask");
+    // Neither answer-key question rides on the opening's one ask: the unsound
+    // rows are put after selection, and the model-written key at the
+    // pre-spend approval, which puts that cap's question.
+    expect(evidence.body).not.toContain("pauses on its one question");
+    expect(evidence.body).toContain(
+      "put to the customer at the pre-spend approval",
+    );
+  });
+
   it("lists every catalog entry exactly once across the index slides", () => {
     const indexSlides = presentation.slides.filter(
       (slide) => slide.catalogView === "index",

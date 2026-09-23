@@ -186,9 +186,10 @@ python scenario.py verify 46 \
 
 Verification reads JSON as data, validates the contract inventory against the
 scenario Git revision in `run.json`, and compares only `band`, `status`,
-`recommended_action`, and `caps` with that recorded expected opening. Expected
-caps are condition slugs; full captured cap objects are compared by their
-`condition` fields. It reports every mismatch and does not execute the verifier.
+`recommended_action`, and `caps` with that recorded expected opening, at the
+readiness `schema_version` it was measured at. Each expected cap records its
+condition, ceiling, blocks and asks, and each captured cap object is compared on
+those four fields. It reports every mismatch and does not execute the verifier.
 
 One scenario, `regex-rule-authoring` (58), publishes two contracts because its
 opening turns on what the worker's read of its answers found. For it, also pass

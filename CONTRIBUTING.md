@@ -253,14 +253,20 @@ current verifier compares:
 - `recommended_action`
 - `caps`
 
-The contract itself must contain `schema_version: 1`,
-`scope: phase-a-opening`, non-empty strings for the three verdict fields, and a
-unique array of non-empty strings for `caps`. `display` must contain an
+The contract itself must contain `schema_version: 2`,
+`readiness_schema_version` (the `schema_version` of the readiness payload it
+was measured from, which a result must match), `scope: phase-a-opening`, a band
+and a status the guide prints, a non-empty `recommended_action`, and `caps`:
+one object per cap with exactly `condition` (unique), `ceiling` (an integer 0
+to 100, or null for a cap that discloses and bounds nothing), `blocks` and
+`asks` (booleans), copied from the measurement. `display` must contain an
 `overall` score and at least one named pillar. Every display score is finite and
 between 0 and 100; every confidence is finite and between 0 and 1. Pillar names
 are scenario-defined rather than hard-coded by the catalog.
-Unknown top-level, `display`, and scorecard keys are rejected for schema version
-1.
+Unknown top-level, cap, `display`, and scorecard keys are rejected. `check`
+refuses a schema 1 contract, which recorded cap conditions only; `verify` still
+reads one at a recorded revision that predates schema 2 and compares
+conditions there.
 
 Any display scores must remain explicitly informational until a referenced run
 artifact has been captured and verified. Never turn an expected value into a

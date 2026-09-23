@@ -135,7 +135,8 @@ def valid_manifest(slug: str, legacy_id: int) -> dict[str, object]:
 
 def expected_opening() -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "readiness_schema_version": 6,
         "scope": "phase-a-opening",
         "band": "EXCELLENT",
         "status": "OK",
@@ -148,6 +149,36 @@ def expected_opening() -> dict[str, object]:
             },
         },
     }
+
+
+def readiness_result(contract: dict[str, object]) -> dict[str, object]:
+    """The readiness payload a worker would capture for this contract.
+
+    Carries what readiness adds and `verify` does not compare - each cap's
+    reason and action kind, a score - so a match is a match on the compared
+    fields rather than on a copy of the contract.
+    """
+    caps = contract["caps"]
+    assert isinstance(caps, list)
+    return {
+        "schema_version": contract["readiness_schema_version"],
+        "band": contract["band"],
+        "status": contract["status"],
+        "recommended_action": contract["recommended_action"],
+        "caps": [
+            {**cap, "reason": "measured", "action_kind": "remedy"} for cap in caps
+        ],
+        "overall": 90,
+    }
+
+
+# A schema 2 cap, whose condition the leak scan reads as a tell.
+SYNTHETIC_CAP = {
+    "condition": "dataset-fully-synthetic",
+    "ceiling": 65,
+    "blocks": False,
+    "asks": False,
+}
 
 
 # The guide withholds these two bands until a read of the answers enters, so a
@@ -262,8 +293,11 @@ def _opening_needs_a_row_review(opening: dict[str, object]) -> bool:
     instead of being maintained beside it.
     """
     caps = opening.get("caps") or []
+    assert isinstance(caps, list)
+    conditions = {cap["condition"] for cap in caps}
     return (
-        opening["band"] in BANDS_ABOVE_THE_ANSWER_KEY_HOLD or REVIEW_DERIVED_CAP in caps
+        opening["band"] in BANDS_ABOVE_THE_ANSWER_KEY_HOLD
+        or REVIEW_DERIVED_CAP in conditions
     )
 
 
@@ -2235,7 +2269,8 @@ class ScenarioBankTests(unittest.TestCase):
     def test_the_scenarios_sharing_a_contract_are_the_ones_written_down(self) -> None:
         """A new scenario landing on an existing contract is a decision.
 
-        The contract is four fields, so two scenarios that differ in agent type,
+        The contract is four fields, each cap with its ceiling and routing, so
+        two scenarios that differ in agent type,
         dataset and evaluator can still read the same. Four of the thirteen do,
         on purpose -- "nothing is wrong with this project" is one reading and
         there is only one of it. An accidental fifth should not look the same as
@@ -2256,7 +2291,12 @@ class ScenarioBankTests(unittest.TestCase):
                 contract["band"],
                 contract["status"],
                 contract["recommended_action"],
-                tuple(sorted(contract.get("caps") or [])),
+                tuple(
+                    sorted(
+                        (cap["condition"], cap["ceiling"], cap["blocks"], cap["asks"])
+                        for cap in contract["caps"]
+                    )
+                ),
             )
             by_contract.setdefault(key, []).append(slug)
         self.assertGreaterEqual(len(by_contract), 1, "no contract was read")
@@ -2388,7 +2428,7 @@ class ScenarioBankTests(unittest.TestCase):
             caps = re.split(r"[;(]", text[len(prefix) :], maxsplit=1)[0]
             if contract["caps"]:
                 self.assertEqual(
-                    set(contract["caps"]),
+                    {cap["condition"] for cap in contract["caps"]},
                     set(re.findall(r"`([^`]+)`", caps)),
                 )
             else:
@@ -4707,14 +4747,65 @@ class ScenarioBankTests(unittest.TestCase):
                 "caps: must be an array",
             ),
             (
-                "expected cap object instead of condition slug",
+                "a condition slug where schema 2 records the whole cap",
+                json.dumps({**expected_opening(), "caps": ["dataset-fully-synthetic"]}),
+                "caps[0]: must be an object",
+            ),
+            (
+                "a cap without its routing",
                 json.dumps(
                     {
                         **expected_opening(),
                         "caps": [{"condition": "dataset-fully-synthetic"}],
                     }
                 ),
-                "caps[0]: must be a non-empty string",
+                "caps[0]: missing required key(s): asks, blocks, ceiling",
+            ),
+            (
+                "a cap ceiling that is not a score",
+                json.dumps(
+                    {
+                        **expected_opening(),
+                        "caps": [
+                            {
+                                "condition": "dataset-fully-synthetic",
+                                "ceiling": "65",
+                                "blocks": False,
+                                "asks": False,
+                            }
+                        ],
+                    }
+                ),
+                "caps[0].ceiling: must be null or an integer 0 to 100",
+            ),
+            (
+                "a schema 1 contract in the tree",
+                json.dumps(
+                    {
+                        **{
+                            key: value
+                            for key, value in expected_opening().items()
+                            if key != "readiness_schema_version"
+                        },
+                        "schema_version": 1,
+                    }
+                ),
+                "schema_version: must equal 2",
+            ),
+            (
+                "a schema version written as a float",
+                json.dumps({**expected_opening(), "schema_version": 2.0}),
+                "schema_version: must equal 2",
+            ),
+            (
+                "a band the guide does not print",
+                json.dumps({**expected_opening(), "band": "GOOD"}),
+                "band: must be one of NOT READY, PARTIAL, WORKABLE, STRONG",
+            ),
+            (
+                "no readiness schema",
+                json.dumps({**expected_opening(), "readiness_schema_version": True}),
+                "readiness_schema_version: must be a positive integer",
             ),
             (
                 "empty pillars",
@@ -4809,7 +4900,7 @@ class ScenarioBankTests(unittest.TestCase):
     def test_check_refuses_a_project_that_names_its_own_test(self) -> None:
         root = self.create_scenario("told-apart", 10)
         (root / "verifier" / "expected-opening.json").write_text(
-            json.dumps({**expected_opening(), "caps": ["dataset-fully-synthetic"]})
+            json.dumps({**expected_opening(), "caps": [SYNTHETIC_CAP]})
         )
         evaluator = root / "project" / "evaluator.py"
         status, _, error = self.run_cli("check", "told-apart")
@@ -4920,7 +5011,7 @@ class ScenarioBankTests(unittest.TestCase):
         """Words a real project uses for itself are not the names of its test."""
         root = self.create_scenario("told-apart", 11)
         (root / "verifier" / "expected-opening.json").write_text(
-            json.dumps({**expected_opening(), "caps": ["dataset-fully-synthetic"]})
+            json.dumps({**expected_opening(), "caps": [SYNTHETIC_CAP]})
         )
         evaluator = root / "project" / "evaluator.py"
         # `told-apart` ends exactly where the first read ends, and the word
@@ -5587,7 +5678,7 @@ class ScenarioBankTests(unittest.TestCase):
         root = self.create_scenario("dirty-contract", 14)
         guide_source = self.create_guide_source()
         output_path = Path(self.temporary_directory.name) / "dirty-contract-run"
-        changed = {**expected_opening(), "band": "GOOD"}
+        changed = {**expected_opening(), "band": "PARTIAL"}
         (root / "verifier" / "expected-opening.json").write_text(
             json.dumps(changed) + "\n",
             encoding="utf-8",
@@ -5618,7 +5709,7 @@ class ScenarioBankTests(unittest.TestCase):
             json.dumps(changed) + "\n",
             encoding="utf-8",
         )
-        original_result = self.write_result(expected_opening())
+        original_result = self.write_result(readiness_result(expected_opening()))
 
         status, output, error = self.run_cli(
             "verify",
@@ -5649,7 +5740,7 @@ class ScenarioBankTests(unittest.TestCase):
         ).encode("utf-8")
         contract["sha256"] = hashlib.sha256(canonical).hexdigest()
         run_record.write_text(json.dumps(value) + "\n", encoding="utf-8")
-        result_path = self.write_result(expected_opening())
+        result_path = self.write_result(readiness_result(expected_opening()))
 
         status, output, error = self.run_cli(
             "verify",
@@ -5670,7 +5761,7 @@ class ScenarioBankTests(unittest.TestCase):
             "verified-case",
             name="verified-case-run",
         )
-        result_path = self.write_result(expected_opening())
+        result_path = self.write_result(readiness_result(expected_opening()))
 
         status, output, error = self.run_cli(
             "verify",
@@ -5685,63 +5776,97 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual("", error)
         self.assertEqual(
             "PASS: verified-case opening result matches "
-            "band, status, recommended_action, caps in the "
-            "captain-recorded contract\n",
+            "band, status, recommended_action, caps (condition, ceiling, blocks, "
+            "asks) at readiness schema_version 6 in the captain-recorded contract\n",
             output,
         )
 
-    def test_verify_compares_cap_conditions_from_readiness_objects(self) -> None:
+    def write_contract(
+        self, root: Path, contract: dict[str, object], *, message: str
+    ) -> None:
+        """Commit a contract in place of the fixture's."""
+        (root / "verifier" / "expected-opening.json").write_text(
+            json.dumps(contract) + "\n", encoding="utf-8"
+        )
+        self.commit_repository_paths(
+            root / "verifier" / "expected-opening.json", message=message
+        )
+
+    def test_verify_compares_whole_caps_from_readiness_objects(self) -> None:
+        """A cap is its condition and how readiness routes it, and both compare.
+
+        Schema 1 contracts recorded the condition alone, so a result whose cap
+        stopped the run matched a contract whose cap only bounded the claim.
+        """
         root = self.create_scenario("capped-case", 25)
         expected = {
             **expected_opening(),
-            "caps": ["dataset-fully-synthetic", "evaluator-unvalidated"],
-        }
-        (root / "verifier" / "expected-opening.json").write_text(
-            json.dumps(expected) + "\n",
-            encoding="utf-8",
-        )
-        self.commit_repository_paths(
-            root / "verifier" / "expected-opening.json",
-            message="Add capped opening contract",
-        )
-        run_record = self.prepare_run_record(
-            "capped-case",
-            name="capped-case-run",
-        )
-        result = {
-            **expected,
+            "band": "WORKABLE",
             "caps": [
                 {
                     "condition": "evaluator-unvalidated",
                     "ceiling": 45,
-                    "reason": "the scorer is not calibrated",
-                    "blocks": True,
+                    "blocks": False,
                     "asks": False,
-                    "action_kind": "repair-evaluator",
                 },
                 {
                     "condition": "dataset-fully-synthetic",
                     "ceiling": 65,
-                    "reason": "comparison rows are generated",
                     "blocks": False,
                     "asks": False,
-                    "action_kind": "proceed",
                 },
             ],
         }
-        result_path = self.write_result(result)
-
-        status, output, error = self.run_cli(
-            "verify",
+        self.write_contract(root, expected, message="Add capped opening contract")
+        run_record = self.prepare_run_record(
             "capped-case",
-            "--run-record",
-            str(run_record),
-            "--result",
-            str(result_path),
+            name="capped-case-run",
         )
+        result = readiness_result(expected)
+        assert isinstance(result["caps"], list)
+        result["caps"].reverse()
 
+        def verify(value: dict[str, object]) -> tuple[int, str, str]:
+            return self.run_cli(
+                "verify",
+                "capped-case",
+                "--run-record",
+                str(run_record),
+                "--result",
+                str(self.write_result(value)),
+            )
+
+        status, output, error = verify(result)
         self.assertEqual(0, status, error)
         self.assertIn("PASS: capped-case", output)
+        self.assertIn("caps (condition, ceiling, blocks, asks)", output)
+
+        for field, value in (("blocks", True), ("asks", True), ("ceiling", None)):
+            with self.subTest(field=field):
+                changed = json.loads(json.dumps(result))
+                changed["caps"][0][field] = value
+                status, output, error = verify(changed)
+                self.assertEqual(1, status, error)
+                self.assertEqual("", output)
+                self.assertIn("- caps: expected [dataset-fully-synthetic", error)
+
+        conditions_only = {
+            **result,
+            "caps": ["dataset-fully-synthetic", "evaluator-unvalidated"],
+        }
+        status, output, error = verify(conditions_only)
+        self.assertEqual(1, status)
+        self.assertIn("caps[0]: must be an object", error)
+
+        for schema in (5, None):
+            with self.subTest(schema=schema):
+                status, output, error = verify({**result, "schema_version": schema})
+                self.assertEqual(1, status)
+                self.assertIn(
+                    "schema_version: the contract was measured at readiness "
+                    f"schema_version 6, got {schema!r}",
+                    error,
+                )
 
     def test_verify_rejects_a_cap_object_without_a_condition(self) -> None:
         self.create_scenario("malformed-cap", 26)
@@ -5790,7 +5915,12 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertIn("status: expected 'OK', got <missing>", error)
         self.assertIn("recommended_action: expected 'proceed', got <missing>", error)
         self.assertIn("caps: expected [], got <missing>", error)
-        self.assertEqual(4, error.count("\n- "))
+        self.assertIn(
+            "schema_version: the contract was measured at readiness "
+            "schema_version 6, got <missing>",
+            error,
+        )
+        self.assertEqual(5, error.count("\n- "))
 
     def test_verify_rejects_duplicate_keys_nan_and_non_object_roots(self) -> None:
         self.create_scenario("strict-json", 22)
@@ -5825,7 +5955,9 @@ class ScenarioBankTests(unittest.TestCase):
             "linked-result",
             name="linked-result-run",
         )
-        target = self.write_result(expected_opening(), name="target-result.json")
+        target = self.write_result(
+            readiness_result(expected_opening()), name="target-result.json"
+        )
         linked = Path(self.temporary_directory.name) / "linked-result.json"
         linked.symlink_to(target)
 
@@ -5904,7 +6036,7 @@ class ScenarioBankTests(unittest.TestCase):
             "--output",
             str(output_path),
         )
-        result_path = self.write_result(expected_opening())
+        result_path = self.write_result(readiness_result(expected_opening()))
         verify_status, _, verify_error = self.run_cli(
             "verify",
             "inert-code",
@@ -5997,7 +6129,7 @@ class ScenarioBankTests(unittest.TestCase):
                     "--run-record",
                     str(run_record),
                     "--result",
-                    str(self.write_result(contract)),
+                    str(self.write_result(readiness_result(contract))),
                     "--row-review",
                     str(read),
                 )
@@ -6008,11 +6140,15 @@ class ScenarioBankTests(unittest.TestCase):
         root = self.copy_read_dependent_scenario()
         run_record = self.prepare_run_record("58", name="graded-read-run")
         published = self.write_result(
-            json.loads((root / "verifier/expected-opening.json").read_text())
+            readiness_result(
+                json.loads((root / "verifier/expected-opening.json").read_text())
+            )
         )
         sound = self.write_result(
-            json.loads(
-                (root / "verifier/expected-opening-sound-read.json").read_text()
+            readiness_result(
+                json.loads(
+                    (root / "verifier/expected-opening-sound-read.json").read_text()
+                )
             ),
             name="sound.json",
         )
@@ -6087,7 +6223,11 @@ class ScenarioBankTests(unittest.TestCase):
         root = self.copy_read_dependent_scenario()
         run_record = self.prepare_run_record("58", name="read-shape-run")
         sound = self.write_result(
-            json.loads((root / "verifier/expected-opening-sound-read.json").read_text())
+            readiness_result(
+                json.loads(
+                    (root / "verifier/expected-opening-sound-read.json").read_text()
+                )
+            )
         )
         verdicts = {
             " line-4 ": "yes",
@@ -6131,7 +6271,9 @@ class ScenarioBankTests(unittest.TestCase):
         root = self.copy_read_dependent_scenario()
         run_record = self.prepare_run_record("58", name="recorded-verdicts-run")
         published = self.write_result(
-            json.loads((root / "verifier/expected-opening.json").read_text())
+            readiness_result(
+                json.loads((root / "verifier/expected-opening.json").read_text())
+            )
         )
         key = root / "verifier" / "row-verdicts.json"
         text = key.read_text(encoding="utf-8")
@@ -6179,7 +6321,9 @@ class ScenarioBankTests(unittest.TestCase):
             name="read.json",
         )
         published = self.write_result(
-            json.loads((root / "verifier/expected-opening.json").read_text())
+            readiness_result(
+                json.loads((root / "verifier/expected-opening.json").read_text())
+            )
         )
         for arguments, reason in (
             (
@@ -6198,7 +6342,11 @@ class ScenarioBankTests(unittest.TestCase):
                     "--run-record",
                     str(plain_record),
                     "--result",
-                    str(self.write_result(expected_opening(), name="p.json")),
+                    str(
+                        self.write_result(
+                            readiness_result(expected_opening()), name="p.json"
+                        )
+                    ),
                     "--row-review",
                     str(read),
                 ),
@@ -6301,9 +6449,14 @@ class CommittedContractMatchExampleTests(unittest.TestCase):
         )
 
         self.assertEqual(0, process.returncode, process.stderr)
+        # The example records a revision whose contract is schema 1, so verify
+        # compares what that revision recorded and says what it left out.
         self.assertEqual(
             "PASS: incident-severity-triage opening result matches band, status, "
-            "recommended_action, caps in the captain-recorded contract\n",
+            "recommended_action, caps in the captain-recorded contract\n"
+            "note: the recorded contract is schema 1, which records cap "
+            "conditions only; ceilings, blocks and asks were not compared, and no "
+            "readiness schema_version was required\n",
             process.stdout,
         )
 

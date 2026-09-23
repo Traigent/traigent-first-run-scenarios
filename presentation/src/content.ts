@@ -298,14 +298,28 @@ const scenarioManifestSchema = z
   })
   .passthrough();
 
+// Contract schema 2 records each cap whole: its condition, the ceiling it puts
+// on the score (null where it discloses and bounds nothing), and whether it
+// stops the run or asks first. The deck prints conditions; `verify` compares
+// all four.
 const expectedOpeningSchema = z
   .object({
-    schema_version: z.literal(1),
+    schema_version: z.literal(2),
+    readiness_schema_version: z.number().int().positive(),
     scope: z.literal("phase-a-opening"),
     band: z.enum(["NOT READY", "PARTIAL", "WORKABLE", "STRONG", "EXCELLENT"]),
     status: z.enum(["OK", "BLOCKED"]),
     recommended_action: z.string().min(1),
-    caps: z.array(z.string().min(1)),
+    caps: z.array(
+      z
+        .object({
+          condition: z.string().min(1),
+          ceiling: z.number().int().min(0).max(100).nullable(),
+          blocks: z.boolean(),
+          asks: z.boolean(),
+        })
+        .strict(),
+    ),
     display: z
       .object({
         overall: z
@@ -428,9 +442,13 @@ function casesInFamily(family: Family): readonly BankScenario[] {
   return bank.filter((entry) => entry.family === family);
 }
 
+function capConditions(opening: ExpectedOpening): string[] {
+  return opening.caps.map((cap) => cap.condition);
+}
+
 function casesWithCap(...caps: readonly string[]): readonly BankScenario[] {
   return bank.filter((entry) =>
-    entry.expected.caps.some((cap) => caps.includes(cap)),
+    capConditions(entry.expected).some((cap) => caps.includes(cap)),
   );
 }
 
@@ -448,7 +466,9 @@ function expectedRouteSummary(opening: ExpectedOpening): string {
   return `band ${opening.band} · status ${opening.status}${
     opening.status === "OK" ? " (not blocked)" : ""
   } · action ${opening.recommended_action} · ${
-    opening.caps.length === 0 ? "caps none" : `caps ${opening.caps.join(", ")}`
+    opening.caps.length === 0
+      ? "caps none"
+      : `caps ${capConditions(opening).join(", ")}`
   }`;
 }
 
@@ -507,7 +527,7 @@ function catalogEntryFor(entry: BankScenario): CatalogEntry {
     expectedBand: opening.band,
     expectedStatus: opening.status,
     expectedAction: opening.recommended_action,
-    expectedCaps: [...opening.caps],
+    expectedCaps: capConditions(opening),
     expectedRouting: `Case-specific opening contract: ${expectedRouteSummary(opening)}. Rationale: ${humanize(manifest.catalog.expected_route.rationale)}.${
       entry.soundReadExpected === null
         ? ""
@@ -573,6 +593,39 @@ for (const family of FAMILIES) {
     throw new Error(`Scenario family ${family} has no scenario in the bank`);
   }
 }
+// The deck quotes how a cap routes - its ceiling, and whether it stops the run
+// or asks - only through this, so a quoted number is the one the contracts
+// carry. A condition no contract carries has nothing to be checked against.
+function capRouting(condition: string): {
+  ceiling: number | null;
+  blocks: boolean;
+  asks: boolean;
+} {
+  const found = bank
+    .flatMap((entry) =>
+      entry.soundReadExpected === null
+        ? [entry.expected]
+        : [entry.expected, entry.soundReadExpected],
+    )
+    .flatMap((opening) => opening.caps)
+    .filter((cap) => cap.condition === condition);
+  const [first] = found;
+  if (first === undefined) {
+    throw new Error(`The deck quotes ${condition}, which no contract carries`);
+  }
+  if (
+    found.some(
+      (cap) =>
+        cap.ceiling !== first.ceiling ||
+        cap.blocks !== first.blocks ||
+        cap.asks !== first.asks,
+    )
+  ) {
+    throw new Error(`The contracts route ${condition} in more than one way`);
+  }
+  return first;
+}
+
 const noCapCases = casesWithoutCaps();
 const ceiling45Cases = casesWithCap(
   "evaluator-unvalidated",
@@ -581,6 +634,18 @@ const ceiling45Cases = casesWithCap(
 const generatedKeyCases = casesWithCap("dataset-generated-answer-key");
 const unsoundAnswerCases = casesWithCap("dataset-unsound-expected-outputs");
 const executionRefusalCases = casesWithCap("evaluator-calibration-refused");
+const noKnobsCap = capRouting("agent-no-varying-knobs");
+const generatedKeyCap = capRouting("dataset-generated-answer-key");
+const unsoundAnswerCap = capRouting("dataset-unsound-expected-outputs");
+// The evidence slide says both answer-key caps ask and neither blocks the run,
+// so the contracts must route them that way.
+for (const cap of [generatedKeyCap, unsoundAnswerCap]) {
+  if (cap.blocks || !cap.asks) {
+    throw new Error(
+      "The evidence slide says the answer-key caps ask and do not block; a contract routes one otherwise",
+    );
+  }
+}
 for (const [label, cases] of [
   ["no-cap", noCapCases],
   ["ceiling-45", ceiling45Cases],
@@ -816,8 +881,7 @@ const rawPresentation = {
         },
         {
           startingPoint: `The evaluator is unvalidated, or nothing in the agent varies (${caseList(ceiling45Cases)}: nothing varies)`,
-          safestNextStep:
-            "Ceiling 45; validate the evaluator or wire a setting worth searching",
+          safestNextStep: `Ceiling ${noKnobsCap.ceiling}; validate the evaluator or wire a setting worth searching`,
           coverage: "published",
         },
       ],
@@ -827,7 +891,7 @@ const rawPresentation = {
       notes: [
         "A capped project is not a failed project. A truthful 65 with visible limits is more useful than an unsupported 90.",
         "A named case means the bank ships a scenario whose expected opening carries that cap, measured with the guide's own scripts over the project bytes. It is a contract to verify against, not a recorded coding-agent run and not a pass.",
-        `No scenario in the bank exercises evaluator-invalid: ${caseList(ceiling45Cases)} shows the 45 ceiling through an agent with nothing to vary, not through an unvalidated evaluator.`,
+        `No scenario in the bank exercises evaluator-invalid: ${caseList(ceiling45Cases)} shows the ${noKnobsCap.ceiling} ceiling through an agent with nothing to vary, not through an unvalidated evaluator.`,
       ],
     },
     {
@@ -835,7 +899,7 @@ const rawPresentation = {
       kind: "matrix",
       eyebrow: "STAGE 2 OF 5 - EVIDENCE CAPS",
       title: "Generated data still runs - it only caps the top score.",
-      body: "Nothing stops here: the run continues end to end. Rows declared as generated, an answer key written by a model, or an answer a reader found does not answer its own question all cap how high the score can go until the evidence is settled - a caveat for the summary, not a blocker.",
+      body: "Nothing here blocks the run. Rows declared as generated, an answer key written by a model, or an answer a reader found does not answer its own question all cap how high the score can go until the evidence is settled. The two answer-key caps also ask, and neither question rides on the opening's one ask: rows with an unsound answer are put to the customer after the rows are selected and before the run, with nothing edited until they answer, and a model-written answer key is put to the customer at the pre-spend approval - a caveat and a question, not a blocker.",
       bullets: [],
       metrics: [],
       steps: [],
@@ -849,14 +913,12 @@ const rawPresentation = {
         },
         {
           startingPoint: `Rows are declared real, but a model generated the answer key (${caseList(generatedKeyCases)})`,
-          safestNextStep:
-            "Ceiling 74; compare cautiously and obtain human review before trusting the margin",
+          safestNextStep: `Ceiling ${generatedKeyCap.ceiling}; compare cautiously and obtain human review before trusting the margin`,
           coverage: "published",
         },
         {
           startingPoint: `The answers were read, and one of them does not answer its own question (${caseList(unsoundAnswerCases)})`,
-          safestNextStep:
-            "Ceiling 70; put the row and the reason to the customer, and edit nothing until they answer",
+          safestNextStep: `Ceiling ${unsoundAnswerCap.ceiling}; put the row and the reason to the customer, and edit nothing until they answer`,
           coverage: "published",
         },
       ],
@@ -866,7 +928,7 @@ const rawPresentation = {
       notes: [
         "A fully generated dataset caps at 65, so STRONG and EXCELLENT are arithmetically unreachable until the evidence changes. No scenario in the bank declares every row generated; that row stays a coverage target.",
         "These caps read the fictional user's row declarations. Repository authorship is a separate contract: every scenario in the bank is Traigent-authored synthetic content whose in-world provenance values simulate a user declaration.",
-        `The 70 ceiling is the one cap on this slide that no declaration can raise: it comes from the coding assistant's own read of five drawn rows, so ${caseList(unsoundAnswerCases)} reaches it only because something actually read a row and said what was wrong with it.`,
+        `The ${unsoundAnswerCap.ceiling} ceiling is the one cap on this slide that no declaration can raise: it comes from the coding assistant's own read of five drawn rows, so ${caseList(unsoundAnswerCases)} reaches it only because something actually read a row and said what was wrong with it.`,
       ],
     },
     {

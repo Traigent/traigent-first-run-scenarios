@@ -161,7 +161,9 @@ python scenario.py verify 46 \
 ```
 
 `verify` reads strict JSON, loads the contract from the scenario Git revision
-recorded in `run.json`, and compares these top-level semantic fields:
+recorded in `run.json`, requires the result's readiness `schema_version` to be
+the one the contract was measured at, and compares these top-level semantic
+fields:
 
 - `band`
 - `status`
@@ -175,10 +177,16 @@ that read against the scenario's verdict for every row, then compares the
 result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
 
-Expected `caps` are condition slugs. When captured readiness contains full cap
-objects, verification compares their `condition` fields and ignores
-display-only cap details. It reports every mismatch and never imports or
-executes verifier code. A match supports only this statement:
+Expected `caps` record each cap whole: its `condition`, its `ceiling` (null for
+a cap that discloses and bounds nothing), and whether it `blocks` the run or
+`asks` first. Verification compares those four fields of every captured cap
+object, in any order, and ignores the cap's wording (`reason`) and the routing
+derived from its condition (`action_kind`). A run record naming a revision
+whose contract predates this (contract schema 1) is compared on conditions
+only, and `verify` says so. It reports every mismatch and never imports or
+executes verifier code.
+
+A match supports only this statement:
 
 > The four supplied opening fields matched the published Phase A contract at
 > the scenario revision recorded in `run.json`, and the recorded scenario

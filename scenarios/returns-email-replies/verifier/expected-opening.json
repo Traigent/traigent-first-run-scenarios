@@ -1,12 +1,23 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "readiness_schema_version": 6,
   "scope": "phase-a-opening",
   "band": "PARTIAL",
   "status": "BLOCKED",
   "recommended_action": "label-data",
   "caps": [
-    "dataset-no-expected-outputs",
-    "evaluator-absent"
+    {
+      "condition": "dataset-no-expected-outputs",
+      "ceiling": 30,
+      "blocks": true,
+      "asks": false
+    },
+    {
+      "condition": "evaluator-absent",
+      "ceiling": 40,
+      "blocks": true,
+      "asks": false
+    }
   ],
   "display": {
     "overall": {

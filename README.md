@@ -87,7 +87,9 @@ The expected opening of every row is the four fields `verify` compares —
 `band · status · recommended_action · caps` — as measured by the guide's own
 scripts over the project bytes at guide revision `d07b62cd`. Each is a
 case-specific contract for that scenario at that revision, not a target for
-another project. The evidence scope of every row is the same: an expected
+another project. The caps column names each cap's condition; the contract also
+records its ceiling and whether it blocks the run or asks first, and `verify`
+compares all four. The evidence scope of every row is the same: an expected
 Phase A opening contract, with no captured worker run and no live
 optimization.
 
@@ -240,11 +242,13 @@ python scenario.py verify 46 \
   --result /path/to/opening-result.json
 ```
 
-`verify` compares `band`, `status`, `recommended_action`, and `caps` against
-the contract loaded via local Git at the revision recorded in `run.json`,
-reading the result as data. A `PASS` means the four fields matched the
-contract at that recorded revision — nothing more; [GUIDE.md](GUIDE.md)
-states the exact claim boundary.
+`verify` compares `band`, `status`, `recommended_action`, and `caps` - each
+cap's condition, ceiling, blocks and asks - against the contract loaded via
+local Git at the revision recorded in `run.json`, reading the result as data,
+and requires the result's readiness `schema_version` to be the one the contract
+was measured at. A `PASS` means those fields matched the contract at that
+recorded revision — nothing more; [GUIDE.md](GUIDE.md) states the exact claim
+boundary.
 
 One scenario, `regex-rule-authoring` (58), publishes two contracts because its
 opening turns on what the worker's read of its answers found. For it, also pass

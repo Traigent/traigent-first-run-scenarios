@@ -39,8 +39,10 @@ read_dependent` in its manifest). Both are measured, each with its own read:
 `row-review.json` for the published contract and `row-review-sound-read.json`
 for the other.
 
-Every field a contract publishes is compared: band, status, recommended action,
-caps, and the displayed overall and per-pillar scores and confidences.
+Every field a contract publishes is compared: the readiness schema version it
+was measured at, band, status, recommended action, every cap's condition,
+ceiling, blocks and asks, and the displayed overall and per-pillar scores and
+confidences.
 
 What it needs: a clean `traigent-first-run` checkout on the revision every
 `invocation.json` names, passed as $GUIDE.
@@ -316,13 +318,25 @@ def replay(
         shutil.rmtree(work, ignore_errors=True)
 
 
+def cap_tuples(caps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each cap as the four fields readiness routes it on, in condition order."""
+    return sorted(
+        (
+            {field: cap[field] for field in ("condition", "ceiling", "blocks", "asks")}
+            for cap in caps
+        ),
+        key=lambda cap: str(cap["condition"]),
+    )
+
+
 def published_fields(contract: dict[str, Any]) -> dict[str, Any]:
     display = contract["display"]
     return {
+        "readiness_schema_version": contract["readiness_schema_version"],
         "band": contract["band"],
         "status": contract["status"],
         "recommended_action": contract["recommended_action"],
-        "caps": sorted(contract["caps"]),
+        "caps": cap_tuples(contract["caps"]),
         "overall": display["overall"],
         "pillars": display["pillars"],
     }
@@ -330,10 +344,11 @@ def published_fields(contract: dict[str, Any]) -> dict[str, Any]:
 
 def measured_fields(result: dict[str, Any]) -> dict[str, Any]:
     return {
+        "readiness_schema_version": result["schema_version"],
         "band": result["band"],
         "status": result["status"],
         "recommended_action": result["recommended_action"],
-        "caps": sorted(cap["condition"] for cap in result["caps"]),
+        "caps": cap_tuples(result["caps"]),
         "overall": {"score": result["overall"], "confidence": result["confidence"]},
         "pillars": {
             pillar["name"]: {

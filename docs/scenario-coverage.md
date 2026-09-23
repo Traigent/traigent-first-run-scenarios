@@ -170,7 +170,8 @@ detail.
 `scripts/reproduce_openings.py` re-measures every published contract, fourteen
 across the thirteen scenarios, by replaying each `invocation.json` as recorded
 with only its placeholders bound, and compares every field a contract
-publishes - band, status, action, caps, and the displayed scores and
+publishes - the readiness schema version, band, status, action, every cap's
+condition, ceiling, blocks and asks, and the displayed scores and
 confidences. It refuses a guide checkout with local changes, and a recorded
 step it cannot replay is reported as not measured rather than as a match.
 Replaying runs each scenario's evaluator, so before anything runs it holds every
@@ -187,8 +188,9 @@ than a defect in a scenario.
 ## Where two scenarios read the same
 
 The opening contract this repository publishes is four fields -- band, status,
-recommended action and caps -- so scenarios that differ in every other way can
-land on the same one. Four of the thirteen do:
+recommended action and caps, each cap with its ceiling and routing -- so
+scenarios that differ in every other way can land on the same one. Four of the
+thirteen do:
 
 - `incident-severity-triage` (46), `helpdesk-queue-router` (47),
   `policy-handbook-rag` (48) and `warehouse-text-to-sql` (49) all read

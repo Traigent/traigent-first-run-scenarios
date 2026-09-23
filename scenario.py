@@ -191,7 +191,19 @@ OPENING_READ_ROWS = 5
 PUBLISHED_READ = "measurement/row-review.json"
 SOUND_READ = "measurement/row-review-sound-read.json"
 VERIFICATION_FIELDS = ("band", "status", "recommended_action", "caps")
-EXPECTED_OPENING_KEYS = {
+# Contract schema 2 records every cap as the four fields readiness routes it on:
+# its condition, the ceiling it puts on the score (null for one that discloses
+# and bounds nothing), whether it stops the run, and whether it asks the
+# customer something first. Schema 1 recorded condition slugs only, so two caps
+# that route differently compared equal. Every contract in the tree is schema 2
+# and `check` refuses 1; `verify` still reads a schema 1 contract at a recorded
+# revision that predates the change, and compares what that revision recorded.
+CONTRACT_SCHEMA_VERSION = 2
+LEGACY_CONTRACT_SCHEMA_VERSION = 1
+CAP_FIELDS = ("condition", "ceiling", "blocks", "asks")
+OPENING_BANDS = ("NOT READY", "PARTIAL", "WORKABLE", "STRONG", "EXCELLENT")
+OPENING_STATUSES = ("OK", "BLOCKED")
+LEGACY_EXPECTED_OPENING_KEYS = {
     "schema_version",
     "scope",
     "band",
@@ -200,6 +212,10 @@ EXPECTED_OPENING_KEYS = {
     "caps",
     "display",
 }
+# `readiness_schema_version` is the `schema_version` of the readiness payload the
+# contract was measured from. A result written under another readiness schema
+# was computed under different rules, so `verify` requires the two to agree.
+EXPECTED_OPENING_KEYS = LEGACY_EXPECTED_OPENING_KEYS | {"readiness_schema_version"}
 DISPLAY_KEYS = {"overall", "pillars"}
 SCORECARD_KEYS = {"score", "confidence"}
 RUN_RECORD_KEYS = {"schema_version", "phase", "scenario", "worker", "inputs"}
@@ -3691,13 +3707,17 @@ def _tell_patterns(tokens: Iterable[str]) -> dict[str, re.Pattern[bytes]]:
 
 
 def _published_caps(scenario: Scenario, opening: dict[str, Any]) -> list[str]:
-    caps = list(opening["caps"])
+    """The condition of every cap the scenario's contracts publish.
+
+    A schema 2 contract records each cap whole, so the tell is its condition.
+    """
+    caps = [cap["condition"] for cap in opening["caps"]]
     if "read_dependent" in scenario.manifest["catalog"]["expected_route"]:
         path = scenario.root / READ_DEPENDENT_PATHS["sound_read_contract"]
-        sound = _read_strict_json_object(path, "sound-read opening contract")
-        caps += _normalize_cap_conditions(
-            path, "caps", sound.get("caps", _MISSING), allow_objects=False
+        sound = _validate_expected_opening_value(
+            path, _read_strict_json_object(path, "sound-read opening contract")
         )
+        caps += [cap["condition"] for cap in sound["caps"]]
     return caps
 
 
@@ -4918,7 +4938,10 @@ def _normalize_cap_conditions(
     *,
     allow_objects: bool,
 ) -> list[str]:
-    """Return sorted cap-condition identifiers from a semantic cap payload."""
+    """Return sorted cap-condition identifiers from a semantic cap payload.
+
+    The comparison a schema 1 contract supports: it recorded conditions only.
+    """
 
     if not isinstance(value, list):
         raise _contract_error(path, field, "must be an array")
@@ -4939,42 +4962,152 @@ def _normalize_cap_conditions(
     return sorted(normalized)
 
 
+def _cap_tuples(
+    path: Path,
+    field: str,
+    value: Any,
+    *,
+    exact: bool,
+) -> list[dict[str, Any]]:
+    """Every cap as its condition, ceiling, blocks and asks, sorted by condition.
+
+    `exact` is for a contract, which this repository writes and which carries
+    those four keys and nothing else. A readiness result also carries `reason`
+    and `action_kind`: the first is wording, the second is derived from the
+    condition, and neither is compared.
+    """
+
+    if not isinstance(value, list):
+        raise _contract_error(path, field, "must be an array")
+    caps: list[dict[str, Any]] = []
+    for index, raw in enumerate(value):
+        cap_field = f"{field}[{index}]"
+        cap = _contract_object(path, cap_field, raw)
+        if exact:
+            _require_contract_keys(path, cap_field, cap, set(CAP_FIELDS))
+        condition = _contract_string(
+            path, f"{cap_field}.condition", cap.get("condition", _MISSING)
+        )
+        ceiling = cap.get("ceiling", _MISSING)
+        if ceiling is not None and (
+            isinstance(ceiling, bool)
+            or not isinstance(ceiling, int)
+            or not 0 <= ceiling <= 100
+        ):
+            raise _contract_error(
+                path, f"{cap_field}.ceiling", "must be null or an integer 0 to 100"
+            )
+        for flag in ("blocks", "asks"):
+            if not isinstance(cap.get(flag, _MISSING), bool):
+                raise _contract_error(path, f"{cap_field}.{flag}", "must be a boolean")
+        caps.append(
+            {
+                "condition": condition,
+                "ceiling": ceiling,
+                "blocks": cap["blocks"],
+                "asks": cap["asks"],
+            }
+        )
+    conditions = [cap["condition"] for cap in caps]
+    if len(set(conditions)) != len(conditions):
+        raise _contract_error(path, field, "must contain unique conditions")
+    return sorted(caps, key=lambda cap: str(cap["condition"]))
+
+
+def _render_caps(caps: Any) -> str:
+    """Caps as a reader compares them: one condition and its routing each."""
+    if caps is _MISSING:
+        return "<missing>"
+    if not caps or isinstance(caps[0], str):
+        return repr(caps)
+    return (
+        "["
+        + "; ".join(
+            f"{cap['condition']} (ceiling {cap['ceiling']}, blocks "
+            f"{str(cap['blocks']).lower()}, asks {str(cap['asks']).lower()})"
+            for cap in caps
+        )
+        + "]"
+    )
+
+
+def _contract_choice(path: Path, field: str, value: Any, choices: Sequence[str]) -> str:
+    if value not in choices:
+        raise _contract_error(path, field, f"must be one of {', '.join(choices)}")
+    return str(value)
+
+
 def _validate_expected_opening_value(
     expected_path: Path,
     expected: dict[str, Any],
+    *,
+    legacy_allowed: bool = False,
 ) -> dict[str, Any]:
-    """Validate one decoded public Phase A expected-opening contract."""
+    """Validate one decoded public Phase A expected-opening contract.
 
-    _require_contract_keys(
-        expected_path,
-        "expected opening contract",
-        expected,
-        EXPECTED_OPENING_KEYS,
-    )
+    `legacy_allowed` admits a schema 1 contract, which `verify` still reads at
+    a recorded revision older than cap tuples; the tree itself holds schema 2.
+    """
 
     schema_version = expected.get("schema_version", _MISSING)
+    versions: tuple[int, ...] = (CONTRACT_SCHEMA_VERSION,)
+    if legacy_allowed:
+        versions += (LEGACY_CONTRACT_SCHEMA_VERSION,)
     if (
         isinstance(schema_version, bool)
         or not isinstance(schema_version, int)
-        or schema_version != SCHEMA_VERSION
+        or schema_version not in versions
     ):
         raise _contract_error(
             expected_path,
             "schema_version",
-            f"must equal {SCHEMA_VERSION}",
+            f"must equal {CONTRACT_SCHEMA_VERSION}"
+            + (
+                f", or {LEGACY_CONTRACT_SCHEMA_VERSION} at a revision recorded "
+                "before caps were recorded whole"
+                if legacy_allowed
+                else ""
+            ),
         )
+    legacy = schema_version == LEGACY_CONTRACT_SCHEMA_VERSION
+    _require_contract_keys(
+        expected_path,
+        "expected opening contract",
+        expected,
+        LEGACY_EXPECTED_OPENING_KEYS if legacy else EXPECTED_OPENING_KEYS,
+    )
     if expected.get("scope", _MISSING) != PHASE:
         raise _contract_error(expected_path, "scope", f"must equal {PHASE!r}")
 
-    for field in ("band", "status", "recommended_action"):
-        _contract_string(expected_path, field, expected.get(field, _MISSING))
-
-    expected["caps"] = _normalize_cap_conditions(
-        expected_path,
-        "caps",
-        expected.get("caps", _MISSING),
-        allow_objects=False,
-    )
+    if legacy:
+        for field in ("band", "status", "recommended_action"):
+            _contract_string(expected_path, field, expected.get(field, _MISSING))
+        expected["caps"] = _normalize_cap_conditions(
+            expected_path,
+            "caps",
+            expected.get("caps", _MISSING),
+            allow_objects=False,
+        )
+    else:
+        _contract_choice(expected_path, "band", expected["band"], OPENING_BANDS)
+        _contract_choice(expected_path, "status", expected["status"], OPENING_STATUSES)
+        _contract_string(
+            expected_path, "recommended_action", expected["recommended_action"]
+        )
+        readiness_schema = expected["readiness_schema_version"]
+        if (
+            isinstance(readiness_schema, bool)
+            or not isinstance(readiness_schema, int)
+            or readiness_schema < 1
+        ):
+            raise _contract_error(
+                expected_path,
+                "readiness_schema_version",
+                "must be a positive integer",
+            )
+        expected["caps"] = _cap_tuples(
+            expected_path, "caps", expected["caps"], exact=True
+        )
 
     display = _contract_object(
         expected_path, "display", expected.get("display", _MISSING)
@@ -5221,7 +5354,7 @@ def _recorded_inventory(
 def _recorded_contracts(
     scenario: Scenario,
     run_record_path: Path,
-) -> tuple[Scenario, Callable[[str, str], tuple[Path, dict[str, Any]]]]:
+) -> RecordedRevision:
     """The recorded manifest, and a reader for the verifier files recorded with it."""
     run_record = _validate_run_record_value(
         run_record_path,
@@ -5362,17 +5495,42 @@ def _recorded_contracts(
                 "does not match the recorded Git revision",
             )
 
-    def read_recorded(relative: str, label: str) -> tuple[Path, dict[str, Any]]:
-        """One verifier file as the recorded revision holds it, never the worktree."""
-        path = relative_scenario_root / PurePosixPath(relative)
-        recorded = next(
-            (file for file in contract_files if file.relative_path == path), None
+    return RecordedRevision(
+        scenario=recorded_scenario,
+        run_record=run_record,
+        revision=revision,
+        scenario_root=relative_scenario_root,
+        contract_files=contract_files,
+    )
+
+
+@dataclass(frozen=True)
+class RecordedRevision:
+    """The scenario revision a captain run record names, read from Git."""
+
+    scenario: Scenario
+    run_record: dict[str, Any]
+    revision: str
+    scenario_root: Path
+    contract_files: tuple[GitIndexFile, ...]
+
+    def _file(self, relative: str) -> GitIndexFile | None:
+        path = self.scenario_root / PurePosixPath(relative)
+        return next(
+            (file for file in self.contract_files if file.relative_path == path), None
         )
+
+    def has(self, relative: str) -> bool:
+        return self._file(relative) is not None
+
+    def read(self, relative: str, label: str) -> tuple[Path, dict[str, Any]]:
+        """One verifier file as the recorded revision holds it, never the worktree."""
+        recorded = self._file(relative)
         if recorded is None:
             raise VerificationError(f"recorded scenario revision has no {label}")
         try:
             blob = _run_git(
-                scenario.repository_root,
+                self.scenario.repository_root,
                 ("cat-file", "blob", recorded.object_id),
                 f"read the recorded {label}",
             )
@@ -5380,21 +5538,31 @@ def _recorded_contracts(
             raise VerificationError(
                 f"cannot read the {label} recorded by the captain"
             ) from exc
-        recorded_path = Path(f"{revision}:{path.as_posix()}")
+        recorded_path = Path(f"{self.revision}:{recorded.relative_path.as_posix()}")
         return recorded_path, _parse_strict_json_object_bytes(
             blob, recorded_path, f"recorded {label}"
         )
 
-    return recorded_scenario, read_recorded
+
+@dataclass(frozen=True)
+class Verification:
+    """What `verify` found: its mismatches, what matched, and what to note."""
+
+    mismatches: tuple[str, ...]
+    contract_mismatched: bool
+    matched: str
+    graded: tuple[str, ...]
+    notes: tuple[str, ...]
 
 
-def opening_mismatches(
+def verify_opening(
     scenario: Scenario,
     result_path: Path,
     run_record_path: Path,
+    *,
     row_review_path: Path | None = None,
-) -> tuple[list[str], str]:
-    """Return semantic mismatches and which recorded contract they were read against.
+) -> Verification:
+    """Compare a captured opening with its recorded contract.
 
     A scenario whose opening turns on what a reader of its answers found is
     verified in two parts: the worker's read is graded against the scenario's
@@ -5403,12 +5571,16 @@ def opening_mismatches(
     that marked none.
     """
 
-    recorded_scenario, read_recorded = _recorded_contracts(scenario, run_record_path)
-    route = recorded_scenario.manifest["catalog"]["expected_route"]
+    recorded = _recorded_contracts(scenario, run_record_path)
+    catalog = recorded.scenario.manifest["catalog"]
+    route = catalog["expected_route"]
     read_dependent = route.get("read_dependent")
     contract = EXPECTED_VERIFIER_CONTRACT
     described = "the captain-recorded contract"
     mismatches: list[str] = []
+    graded: list[str] = []
+    notes: list[str] = []
+
     if read_dependent is None:
         if row_review_path is not None:
             raise VerificationError(
@@ -5422,7 +5594,7 @@ def opening_mismatches(
                 "its answers found; pass the read the worker gave readiness as "
                 "--row-review"
             )
-        verdicts_path, verdicts = read_recorded(
+        verdicts_path, verdicts = recorded.read(
             read_dependent["row_verdicts"], "row verdicts"
         )
         problems, marks_unsound = _grade_read(
@@ -5437,27 +5609,65 @@ def opening_mismatches(
             contract = read_dependent["sound_read_contract"]
             described += " for a read that finds every answer sound"
 
-    contract_path, contract_value = read_recorded(contract, "expected-opening contract")
-    expected = _validate_expected_opening_value(contract_path, contract_value)
+    contract_path, contract_value = recorded.read(contract, "expected-opening contract")
+    expected = _validate_expected_opening_value(
+        contract_path, contract_value, legacy_allowed=True
+    )
+    legacy = expected["schema_version"] == LEGACY_CONTRACT_SCHEMA_VERSION
     result = _read_strict_json_object(result_path, "opening result")
-
+    actual: dict[str, Any] = {
+        field: result.get(field, _MISSING) for field in VERIFICATION_FIELDS
+    }
+    if actual["caps"] is not _MISSING:
+        actual["caps"] = (
+            _normalize_cap_conditions(
+                result_path, "caps", actual["caps"], allow_objects=True
+            )
+            if legacy
+            else _cap_tuples(result_path, "caps", actual["caps"], exact=False)
+        )
     for field in VERIFICATION_FIELDS:
-        actual_value = result.get(field, _MISSING)
-        if field == "caps" and actual_value is not _MISSING:
-            actual_value = _normalize_cap_conditions(
-                result_path,
-                "caps",
-                actual_value,
-                allow_objects=True,
-            )
-        if actual_value != expected[field]:
-            rendered_actual = (
-                "<missing>" if actual_value is _MISSING else repr(actual_value)
-            )
+        if actual[field] != expected[field]:
+            if field == "caps":
+                rendered_expected = _render_caps(expected[field])
+                rendered_actual = _render_caps(actual[field])
+            else:
+                rendered_expected = repr(expected[field])
+                rendered_actual = (
+                    "<missing>" if actual[field] is _MISSING else repr(actual[field])
+                )
             mismatches.append(
-                f"{field}: expected {expected[field]!r}, got {rendered_actual}"
+                f"{field}: expected {rendered_expected}, got {rendered_actual}"
             )
-    return mismatches, described
+    if legacy:
+        matched = ", ".join(VERIFICATION_FIELDS)
+        notes.append(
+            "note: the recorded contract is schema 1, which records cap conditions "
+            "only; ceilings, blocks and asks were not compared, and no readiness "
+            "schema_version was required"
+        )
+    else:
+        readiness_schema = expected["readiness_schema_version"]
+        schema = result.get("schema_version", _MISSING)
+        if isinstance(schema, bool) or schema != readiness_schema:
+            mismatches.append(
+                f"schema_version: the contract was measured at readiness "
+                f"schema_version {readiness_schema}, got "
+                + ("<missing>" if schema is _MISSING else repr(schema))
+            )
+        matched = (
+            "band, status, recommended_action, caps (condition, ceiling, blocks, "
+            f"asks) at readiness schema_version {readiness_schema}"
+        )
+    contract_mismatched = bool(mismatches)
+
+    return Verification(
+        mismatches=tuple(mismatches),
+        contract_mismatched=contract_mismatched,
+        matched=f"{matched} in {described}",
+        graded=tuple(graded),
+        notes=tuple(notes),
+    )
 
 
 class ScenarioBank:
@@ -5711,26 +5921,36 @@ def main(
 
         if arguments.command == "verify":
             selected_scenario = bank.resolve(arguments.case, scenarios)
-            mismatches, contract = opening_mismatches(
+            verification = verify_opening(
                 selected_scenario,
                 arguments.result,
                 arguments.run_record,
-                arguments.row_review,
+                row_review_path=arguments.row_review,
             )
-            if mismatches:
+            graded = "".join(f"; {item}" for item in verification.graded)
+            if verification.mismatches:
                 print(
                     f"FAIL: {selected_scenario.slug} opening result "
-                    "does not match its contract",
+                    + (
+                        "does not match its contract"
+                        if verification.contract_mismatched
+                        else f"matches {verification.matched}, and a hand-written "
+                        "grade failed"
+                    ),
                     file=error,
                 )
-                for mismatch in mismatches:
+                for mismatch in verification.mismatches:
                     print(f"- {mismatch}", file=error)
+                for note in verification.notes:
+                    print(note, file=error)
                 return 1
             print(
                 f"PASS: {selected_scenario.slug} opening result matches "
-                f"{', '.join(VERIFICATION_FIELDS)} in {contract}",
+                f"{verification.matched}{graded}",
                 file=output,
             )
+            for note in verification.notes:
+                print(note, file=output)
             return 0
 
         raise AssertionError(f"unhandled command {arguments.command!r}")

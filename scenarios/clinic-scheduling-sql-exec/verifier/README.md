@@ -9,7 +9,7 @@ Semantic verification compares these fields exactly:
 - `band`
 - `status`
 - `recommended_action`
-- `caps`
+- `caps` - each cap's condition, ceiling, blocks and asks
 
 The `display` section records the expected scorecard values for an honest
 customer-facing rendering. It does not broaden the semantic pass criteria and
