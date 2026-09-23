@@ -130,7 +130,7 @@ and fails if they drift from the manifest.
 Each row was assigned one stratum by the hardest feature its answer needs:
 
 - **easy** - one character class and one quantifier, or a literal with one
-  class after it. `\d{4}`, `#(?:[0-9a-f]{3}|[0-9a-f]{6})`.
+  class after it. `\d{4}`, `SID\d{8}`.
 - **medium** - two or more parts joined in sequence, or one optional group.
   `\d{2}:\d{2}(?::\d{2})?`, `[^@\s]+@[^@\s]+\.[^@\s]+`.
 - **hard** - an alternation inside a group, a negated class carrying the work,
