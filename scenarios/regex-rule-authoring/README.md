@@ -23,15 +23,16 @@ two SQL cases are `code-sql`, which the guide treats separately.
 The second is what a customer's own reading of their answers does to the
 opening. The guide asks for five rows drawn at random, and it is the reader's
 verdicts -- not a scan of the file -- that decide whether the answer key is
-credited. Four of the thirty-two answers do not answer their own question
-(lines 13, 16, 21 and 24). A read that marks one of them `no` bounds the
-opening: the cap is `dataset-unsound-expected-outputs`, the routed action is
-`review-answer-key`, and the run is not stopped. The scenario is the only case
+credited. Three of the thirty-two answers do not answer their own question
+(lines 13, 16 and 24), and nine more are ones careful readers settle either
+way. A read that marks any answer `no` bounds the opening: the cap is
+`dataset-unsound-expected-outputs`, the routed action is `review-answer-key`,
+and the run is not stopped. The scenario is the only case
 in either repository where that cap is reached, and the only way to reach it is
 for something to have actually read a row -- which is the property the cap is
 there to have.
 
-Line 13 is the plainest of the four. Its description says "a comma-separated
+Line 13 is the plainest of the three. Its description says "a comma-separated
 list of one or more numbers, no spaces. A single number is a list of one", and
 its recorded rule is `\d+,\d+`, which requires a comma and so never matches `1`
 at all. The row's own `must_reject` of `"1"` is the mistake written down rather
@@ -41,8 +42,8 @@ recorded as the lower-case literal `password`, with `PASSWORD` under
 
 ### Two contracts, because the draw decides
 
-Five rows drawn from thirty-two miss all four unsound answers a little under
-half the time (C(28,5)/C(32,5) is about 0.49 for a uniform draw). A faithful
+Five rows drawn from thirty-two miss all three unsound answers about three
+times in five (C(29,5)/C(32,5) is about 0.59 for a uniform draw). A faithful
 read of such a draw can find nothing wrong, and the guide then opens at `STRONG`
 with `proceed`. That is not a failed run, so this scenario publishes both
 openings, each measured from a committed read:
@@ -52,16 +53,23 @@ openings, each measured from a committed read:
 | marks some answer `no` | `verifier/expected-opening.json` | `WORKABLE` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution` |
 | marks no answer `no` | `verifier/expected-opening-sound-read.json` | `STRONG` / `proceed` / `dataset-coarse-resolution` |
 
-Every published field, scores included, depends on that one fact and nothing
-else about the read: reads with one, two and four `no` verdicts, and reads with
-one or two `unsure`, were each measured and land on one of these two rows.
+For the read the guide asks for at the opening - five rows, with no
+`selected_row_ids` and no `in_run`, since the run's rows are not selected yet -
+every published field, scores included, depends on that one fact: reads with
+one, two and four `no` verdicts, and reads with one or two `unsure`, were each
+measured and land on one of these two rows. A read that declares run membership
+is judged against the selected rows instead, which moves the band and the
+action, so `verify` refuses one rather than compare it with contracts measured
+for a different read.
 
 Which contract applies is decided by the read, so the read is graded too.
 `verifier/row-verdicts.json` gives a verdict for every row with its reason:
 `unsound` rows a faithful read must mark `no`, `sound` rows it must not, and
 `contestable` rows careful readers settle either way. Line 14 is one: its
 description stops at the drive letter and colon while its rule also demands a
-backslash, and nothing in the row says which the desk meant. The key reads every
+backslash, and nothing in the row says which the desk meant. Others are rules
+that would mask only part of what they describe, such as line 5's token class,
+which lacks characters bearer tokens can carry. The key reads every
 rule the way the desk uses it -- as a masking rule searched over a log line --
 and says so in its `convention`.
 
@@ -142,12 +150,14 @@ for readability; the JSONL file stores it on one physical line:
   guided run reads them**: the evaluator compares expression text and never
   compiles anything.
 
-  On two of the four unsound rows the note contradicts the recorded rule, which
-  makes the finding mechanical: search a log line with the rule, give it the
-  row's own `must_reject` string, and it matches. `ERROR` (line 16) is written
-  without word boundaries so it finds `ERRORS`, and the stack-frame rule (line
-  21) is written without a `^` so it finds `  at ` in the middle of a line. On
-  lines 13 and 24 the note agrees with the rule - `\d+,\d+` really does reject
+  On two rows the note contradicts the recorded rule, which makes the
+  contradiction mechanical: search a log line with the rule, give it the row's
+  own `must_reject` string, and it matches. `ERROR` (line 16) is written without
+  word boundaries so it finds `ERRORS`, although its sentence asks for a whole
+  word, which makes it unsound. The stack-frame rule (line 21) is written without
+  a `^` so it finds `  at ` in the middle of a line; its sentence, "always begins
+  the line", can be read as a requirement or as a fact about the log, so the key
+  calls it contestable. On lines 13 and 24 the note agrees with the rule - `\d+,\d+` really does reject
   `"1"`, and `password` really does reject `PASSWORD` - and both are wrong
   against their own *sentence*, which is why only a reader finds them, and why
   the row review is the thing that raises the cap.
@@ -177,9 +187,10 @@ Each row was assigned one stratum by the hardest feature its answer needs:
 as text, after the tidying its docstring lists and nothing more: it strips
 surrounding whitespace, reads `[0-9]` as `\d` and `[A-Za-z0-9_]` (in either
 letter order) as `\w`, drops
-a `{1}` repeat, and drops one redundant outer group - a `(?:...)` always, and a
-plain `(...)` only when nothing inside it captures, because wrapping a rule that
-captures its value moves that value to another group. It returns 1.0 for equal
+a `{1}` repeat, and drops redundant outer groups until none is left - a
+`(?:...)` always, and a plain `(...)` only when nothing inside it captures,
+because wrapping a rule that captures its value moves that value to another
+group. It returns 1.0 for equal
 and 0.0 for not. It does not remove a markdown code fence and does not touch
 whitespace inside the expression. The catalog declares this as
 `normalized-exact`.

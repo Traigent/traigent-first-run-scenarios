@@ -21,8 +21,8 @@
       "reason": "One or two capitals then one or two digits is the outward code as described."
     },
     "line-5": {
-      "class": "sound",
-      "reason": "The literal word Bearer, one space, then a token class covering the characters such tokens use."
+      "class": "contestable",
+      "reason": "The literal Bearer, a space, and a token class; but bearer tokens may also carry ~, +, / and trailing =, so masking Bearer ab+c/d== would cover only Bearer ab. A reader may take the class as the desk's token alphabet or hold it to the standard one."
     },
     "line-6": {
       "class": "sound",
@@ -85,8 +85,8 @@
       "reason": "An optional slash and a tag name directly followed by the closing bracket, which leaves no room for attributes."
     },
     "line-21": {
-      "class": "unsound",
-      "reason": "The description says the frame always begins the line and the rule has no ^, so it finds two spaces and at in the middle of a line, which the row's own must_reject says it must not."
+      "class": "contestable",
+      "reason": "The rule has no ^, so it finds two spaces and at in the middle of a line, which the row's own must_reject says it must not; but \"always begins the line\" can also be read as a fact about the log rather than a requirement on the rule, so careful readers settle it either way."
     },
     "line-22": {
       "class": "sound",
@@ -105,8 +105,8 @@
       "reason": "A single quote, a run without one, and a closing quote, found anywhere in the line as described."
     },
     "line-26": {
-      "class": "sound",
-      "reason": "The rule keys on the literal token, allows whitespace around the colon, and puts the value in the one capturing group, which is what capturing only the value means."
+      "class": "contestable",
+      "reason": "The rule keys on the literal token and captures the value; but [^\"]* stops at an escaped quote, so a value containing one is captured and masked only in part. The description does not say whether escapes occur, while the file treats them separately elsewhere (lines 10 and 32)."
     },
     "line-27": {
       "class": "sound",
@@ -125,8 +125,8 @@
       "reason": "A captured word, one space, and a backreference to it, bounded as whole words."
     },
     "line-31": {
-      "class": "sound",
-      "reason": "A hash and everything after it to the end of the line."
+      "class": "contestable",
+      "reason": "A hash and everything after it to the end of the line; but it starts at the first hash, so in #fff # note it takes the colour as the comment. A reader may accept that or hold the rule to a trailing comment."
     },
     "line-32": {
       "class": "sound",

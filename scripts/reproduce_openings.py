@@ -15,7 +15,9 @@ $MEASURE to a scratch directory, and $ROW_REVIEW to the committed read that goes
 with the contract being checked. A step writes its JSON to the $MEASURE file the
 later steps name for it. Replaying the record rather than rebuilding the commands
 is the point: a flag the record carries and this script forgot would otherwise
-produce a disagreement that is this script's own mistake.
+produce a disagreement that is this script's own mistake. A step the record says
+refused (`refusals`, the step and the message it refuses with) must refuse with
+that message again; nothing else counts as the same refusal.
 
 A scenario whose opening turns on what a reader of its answers found declares a
 second contract for a read that found nothing wrong (`expected_route.
@@ -139,6 +141,11 @@ def replay(
         steps = invocation.get("steps")
         if not isinstance(steps, dict) or "readiness" not in steps:
             raise CouldNotMeasure("invocation.json records no readiness step")
+        refusals = invocation.get("refusals", {})
+        if not isinstance(refusals, dict) or not set(refusals) <= set(steps):
+            raise CouldNotMeasure(
+                "invocation.json names a refusal for no recorded step"
+            )
         read_later = {
             STEP_OUTPUTS[name]: any(
                 f"$MEASURE/{STEP_OUTPUTS[name]}" in argument
@@ -171,15 +178,26 @@ def replay(
             wrote = bool(done.stdout.strip())
             # A non-zero exit with a payload is a step reporting findings. A step
             # nothing reads is recorded because it refused -- the readiness
-            # command then carries that refusal as a flag -- so it must still
-            # refuse; one that now measures means the record has gone stale.
-            if name != "readiness" and not read_later[output]:
-                if wrote:
+            # command then carries that refusal as a flag -- and the record names
+            # the refusal, so the replay must refuse the same way. Any other
+            # failure, a crash included, is not that refusal.
+            if name in refusals:
+                if read_later[output]:
                     raise CouldNotMeasure(
-                        f"{name} now writes a result no recorded step reads, so "
-                        "the record's account of it is stale"
+                        f"{name} is recorded as refusing, yet a later step reads its "
+                        "output"
+                    )
+                if wrote or done.returncode == 0 or refusals[name] not in done.stderr:
+                    raise CouldNotMeasure(
+                        f"{name} was recorded refusing with {refusals[name]!r} and "
+                        f"now does not (rc={done.returncode}): {last_line(done.stderr)}"
                     )
                 continue
+            if name != "readiness" and not read_later[output]:
+                raise CouldNotMeasure(
+                    f"no recorded step reads what {name} writes, and the record "
+                    "names no refusal for it"
+                )
             if not wrote:
                 raise CouldNotMeasure(
                     f"{name} wrote nothing (rc={done.returncode}): "
@@ -260,6 +278,8 @@ for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
             invocation = json.loads(
                 (scenario / "verifier/measurement/invocation.json").read_text()
             )
+            if not isinstance(invocation, dict):
+                raise CouldNotMeasure("invocation.json is not a JSON object")
             if invocation.get("guide_revision") != AT:
                 raise CouldNotMeasure(
                     f"measured at {str(invocation.get('guide_revision'))[:8]}, "
@@ -276,7 +296,7 @@ for manifest in sorted(REPO.glob("scenarios/*/scenario.json")):
             rows.append((label, "DIFFERS" if differing else "MATCH", detail))
         except CouldNotMeasure as reason:
             rows.append((label, "COULD NOT READ", str(reason)))
-        except (OSError, KeyError, TypeError, ValueError) as failure:
+        except (AttributeError, OSError, KeyError, TypeError, ValueError) as failure:
             rows.append(
                 (label, "COULD NOT READ", f"{type(failure).__name__}: {failure}")
             )

@@ -4581,6 +4581,20 @@ def _grade_read(
     rows = read.get("rows", _MISSING)
     if not isinstance(rows, list):
         raise _contract_error(path, "rows", "must be an array")
+    # Before the run's rows are selected the guide has the read omit both
+    # membership declarations, and the contracts were measured without them:
+    # with them, readiness judges the answer key against the selected rows
+    # instead, which moves the band and the action.
+    declared = sorted(
+        {"selected_row_ids"} & set(read)
+        | {"in_run" for row in rows if isinstance(row, dict) and "in_run" in row}
+    )
+    if declared:
+        return [
+            f"an opening read declares no run membership, and this one declares "
+            f"{', '.join(declared)}; the contracts were measured for the read the "
+            "guide asks for before the run's rows are selected"
+        ], False
     if len(rows) != OPENING_READ_ROWS:
         return [
             f"the contracts were measured for the {OPENING_READ_ROWS}-row opening "
@@ -4591,7 +4605,10 @@ def _grade_read(
     marks_unsound = False
     for index, row in enumerate(rows):
         row = _contract_object(path, f"rows[{index}]", row)
-        row_id = _contract_string(path, f"rows[{index}].id", row.get("id", _MISSING))
+        # Stripped as readiness strips it, so both read the same row.
+        row_id = _contract_string(
+            path, f"rows[{index}].id", row.get("id", _MISSING)
+        ).strip()
         verdict = row.get("verdict", _MISSING)
         if verdict not in READ_VERDICTS:
             problems.append(f"{row_id}: verdict {verdict!r} is not yes, no or unsure")

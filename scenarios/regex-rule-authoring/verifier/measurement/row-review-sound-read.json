@@ -8,10 +8,10 @@
   },
   "rows": [
     {
-      "id": "line-5",
+      "id": "line-4",
       "origin": "collected",
       "verdict": "yes",
-      "note": "The literal word Bearer, one space, then a token class covering the characters such tokens use."
+      "note": "One or two capitals then one or two digits is the outward code as described."
     },
     {
       "id": "line-9",

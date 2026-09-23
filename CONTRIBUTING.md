@@ -319,7 +319,11 @@ Everything else that counts them is manual, and this is the list:
    or because `caps` carries `dataset-unsound-expected-outputs`, which
    `readiness.py` builds out of a review's verdicts and out of nothing else.
    `tests/test_scenario.py` derives that set from the contracts, so a review
-   that is needed and missing, or shipped and unnecessary, fails.
+   that is needed and missing, or shipped and unnecessary, fails. A step the
+   measurement ran and the guide refused - clinic's calibration, whose readiness
+   command then carries `--calibration-scope-refused` - is named under
+   `refusals` in `invocation.json` with the message it refused with, and
+   `scripts/reproduce_openings.py` requires the same refusal on every replay.
 7. A contract that depends on the draw. When a scenario's opening turns on
    whether the worker's read finds an unsound answer, and a five-row draw can
    miss every unsound row, publish both openings: declare

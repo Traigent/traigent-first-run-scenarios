@@ -2248,36 +2248,81 @@ class ScenarioBankTests(unittest.TestCase):
                         f"the {family} row of the family table",
                     )
 
-        for case, found in rows("README.md").items():
-            slug = case.split(" ")[0]
-            contract = json.loads(
-                (
-                    root / "scenarios" / slug / "verifier" / "expected-opening.json"
-                ).read_text()
+        # How each document spells a contract, and the phrase that introduces
+        # a read-dependent scenario's second one.
+        spellings = {
+            "README.md": (
+                3,
+                "{band} · {status} · `{action}` · ",
+                "none",
+                "a read that finds every answer sound opens ",
+            ),
+            "docs/scenario-coverage.md": (
+                -1,
+                "`{band}` / `{status}` / `{action}` / ",
+                "no caps",
+                "for a read that finds every answer sound, ",
+            ),
+        }
+
+        def assert_renders(text: str, contract: dict, empty: str) -> None:
+            prefix = spelling.format(
+                band=contract["band"],
+                status=contract["status"],
+                action=contract["recommended_action"],
             )
-            cell = found[0][3]
-            prefix = (
-                f"{contract['band']} · {contract['status']} · "
-                f"`{contract['recommended_action']}` · "
-            )
-            with self.subTest(case=case):
-                self.assertTrue(cell.startswith(prefix), f"{cell!r} vs {prefix!r}")
-                caps = re.split(r"[;(]", cell[len(prefix) :], maxsplit=1)[0]
-                if contract["caps"]:
-                    self.assertEqual(
-                        set(contract["caps"]), set(re.findall(r"`([^`]+)`", caps))
+            self.assertTrue(text.startswith(prefix), f"{text!r} vs {prefix!r}")
+            caps = re.split(r"[;(]", text[len(prefix) :], maxsplit=1)[0]
+            if contract["caps"]:
+                self.assertEqual(
+                    set(contract["caps"]),
+                    set(re.findall(r"`([^`]+)`", caps)),
+                )
+            else:
+                self.assertEqual(empty, caps.strip())
+
+        rendered = 0
+        for document, (column, spelling, empty, second) in spellings.items():
+            for case, found in rows(document).items():
+                verifier = root / "scenarios" / case.split(" ")[0] / "verifier"
+                manifest = json.loads((verifier.parent / "scenario.json").read_text())
+                dependent = manifest["catalog"]["expected_route"].get("read_dependent")
+                cell = found[0][column]
+                with self.subTest(document=document, case=case):
+                    assert_renders(
+                        cell,
+                        json.loads((verifier / "expected-opening.json").read_text()),
+                        empty,
                     )
-                else:
-                    self.assertEqual("none", caps.strip())
+                    rendered += 1
+                    self.assertEqual(dependent is not None, second in cell)
+                    if dependent is not None:
+                        assert_renders(
+                            cell.split(second, 1)[1],
+                            json.loads(
+                                (
+                                    verifier.parent / dependent["sound_read_contract"]
+                                ).read_text()
+                            ),
+                            empty,
+                        )
+                        rendered += 1
+        dependent_count = sum(
+            "read_dependent"
+            in json.loads(path.read_text())["catalog"]["expected_route"]
+            for path in manifests
+        )
+        self.assertEqual(len(spellings) * (len(family_of) + dependent_count), rendered)
 
     def test_case_58_scorer_drops_only_an_outer_group_that_changes_nothing(
         self,
     ) -> None:
         """The redundant-group rule is the one place the scorer reads structure.
 
-        It must see escapes and character classes, drop a `(?:...)` group and
-        a plain group with no capture inside, and keep any group whose removal
-        would change what the rule captures or asserts.
+        It must see escapes and character classes, drop `(?:...)` groups and
+        plain groups with no capture inside until none is left, keep any group
+        whose removal would change what the rule captures or asserts, and keep
+        whitespace inside a group, which the pattern matches literally.
         """
 
         path = (
@@ -2301,6 +2346,9 @@ class ScenarioBankTests(unittest.TestCase):
             ("(?=a)", "a", 0.0),
             ("(a)|(b)", "a)|(b", 0.0),
             ("a|b", "[ab]", 0.0),
+            ("( \\d{4} )", "\\d{4}", 0.0),
+            ("(?:(a))", "a", 1.0),
+            ("((a))", "a", 0.0),
         ):
             with self.subTest(written=written):
                 self.assertEqual(score, scorer.score(written, recorded))
@@ -5635,7 +5683,7 @@ class ScenarioBankTests(unittest.TestCase):
         )
         finds_none = self.write_read(
             {
-                "line-5": "yes",
+                "line-4": "yes",
                 "line-9": "yes",
                 "line-14": "no",
                 "line-17": "yes",
@@ -5645,7 +5693,7 @@ class ScenarioBankTests(unittest.TestCase):
         )
         finds_none_and_unsure = self.write_read(
             {
-                "line-5": "yes",
+                "line-4": "yes",
                 "line-9": "yes",
                 "line-14": "unsure",
                 "line-17": "yes",
@@ -5692,7 +5740,7 @@ class ScenarioBankTests(unittest.TestCase):
                 {
                     "line-13": "yes",
                     "line-3": "yes",
-                    "line-5": "yes",
+                    "line-4": "yes",
                     "line-9": "yes",
                     "line-17": "yes",
                 },
@@ -5703,7 +5751,7 @@ class ScenarioBankTests(unittest.TestCase):
                 {
                     "line-13": "unsure",
                     "line-3": "yes",
-                    "line-5": "yes",
+                    "line-4": "yes",
                     "line-9": "yes",
                     "line-17": "yes",
                 },
@@ -5712,23 +5760,23 @@ class ScenarioBankTests(unittest.TestCase):
             ),
             (
                 {
-                    "line-5": "no",
+                    "line-4": "no",
                     "line-3": "yes",
                     "line-9": "yes",
                     "line-17": "yes",
                     "line-30": "yes",
                 },
                 published,
-                "line-5: its answer is sound",
+                "line-4: its answer is sound",
             ),
             (
-                {"line-5": "yes", "line-9": "yes", "line-17": "yes", "line-30": "yes"},
+                {"line-4": "yes", "line-9": "yes", "line-17": "yes", "line-30": "yes"},
                 sound,
                 "measured for the 5-row opening read, and this read has 4",
             ),
             (
                 {
-                    "line-5": "yes",
+                    "line-4": "yes",
                     "line-9": "yes",
                     "line-17": "yes",
                     "line-30": "yes",
@@ -5754,6 +5802,84 @@ class ScenarioBankTests(unittest.TestCase):
                 self.assertEqual("", output)
                 self.assertIn(reason, error)
 
+    def test_verify_reads_the_opening_read_the_way_readiness_does(self) -> None:
+        root = self.copy_read_dependent_scenario()
+        run_record = self.prepare_run_record("58", name="read-shape-run")
+        sound = self.write_result(
+            json.loads((root / "verifier/expected-opening-sound-read.json").read_text())
+        )
+        verdicts = {
+            " line-4 ": "yes",
+            "line-9": "yes",
+            "line-15": "yes",
+            "line-17": "yes",
+            "line-30": "yes",
+        }
+        padded = self.write_read(verdicts, name="padded.json")
+        status, output, error = self.run_cli(
+            "verify",
+            "58",
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(sound),
+            "--row-review",
+            str(padded),
+        )
+        self.assertEqual(0, status, error)
+        self.assertIn("finds every answer sound", output)
+
+        declared = json.loads(padded.read_text())
+        for row in declared["rows"]:
+            row["in_run"] = True
+        membership = self.write_result(declared, name="membership.json")
+        status, output, error = self.run_cli(
+            "verify",
+            "58",
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(sound),
+            "--row-review",
+            str(membership),
+        )
+        self.assertEqual(1, status)
+        self.assertIn("declares in_run", error)
+
+    def test_verify_grades_the_read_against_the_recorded_verdicts(self) -> None:
+        root = self.copy_read_dependent_scenario()
+        run_record = self.prepare_run_record("58", name="recorded-verdicts-run")
+        published = self.write_result(
+            json.loads((root / "verifier/expected-opening.json").read_text())
+        )
+        key = root / "verifier" / "row-verdicts.json"
+        text = key.read_text(encoding="utf-8")
+        self.assertEqual(3, text.count('"class": "unsound"'))
+        key.write_text(text.replace('"class": "unsound"', '"class": "sound"'))
+        self.commit_repository_paths(key, message="Change the verdicts later")
+        read = self.write_read(
+            {
+                "line-3": "yes",
+                "line-13": "no",
+                "line-14": "unsure",
+                "line-26": "yes",
+                "line-29": "yes",
+            },
+            name="published-read.json",
+        )
+        status, output, error = self.run_cli(
+            "verify",
+            "58",
+            "--run-record",
+            str(run_record),
+            "--result",
+            str(published),
+            "--row-review",
+            str(read),
+        )
+        self.assertEqual(0, status, error)
+        self.assertIn("marks an answer unsound", output)
+
     def test_verify_requires_the_read_exactly_where_the_contract_depends_on_it(
         self,
     ) -> None:
@@ -5763,7 +5889,7 @@ class ScenarioBankTests(unittest.TestCase):
         plain_record = self.prepare_run_record("one-contract", name="plain-run")
         read = self.write_read(
             {
-                "line-5": "yes",
+                "line-4": "yes",
                 "line-9": "yes",
                 "line-15": "yes",
                 "line-17": "yes",
@@ -5822,7 +5948,7 @@ class ScenarioBankTests(unittest.TestCase):
             ),
             (
                 "verifier/measurement/row-review-sound-read.json",
-                '"id": "line-5",\n      "origin": "collected",\n      "verdict": "yes"',
+                '"id": "line-4",\n      "origin": "collected",\n      "verdict": "yes"',
                 '"id": "line-14",\n      "origin": "collected",\n      "verdict": "no"',
                 "must mark no answer 'no'",
             ),

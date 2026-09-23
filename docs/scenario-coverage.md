@@ -27,7 +27,7 @@ captured worker run, baseline, managed optimization, or result improvement.
 | `returns-email-replies` (55) | Missing material | Agent ready; the data is declared `limited` because it holds inputs only, and the evaluator is declared `missing` | 150 synthetic inbound emails with no expected reply, no split, and no difficulty strata; label shape `absent` | None ships; no calibration record | `PARTIAL` / `BLOCKED` / `label-data` / `dataset-no-expected-outputs`, `evaluator-absent` |
 | `freight-quote-estimator` (56) | Evidence strength | Agent and evaluator ready; the data is declared `limited` because 20 tuning rows make a coarse comparison | 24 synthetic worked quotes; 20 / 4; four balanced strata of six; numeric | Deterministic numeric tolerance, with two calibration cases | `STRONG` / `OK` / `add-examples` / `dataset-coarse-resolution` |
 | `chatbot-on-vendor-flow` (57) | Missing material | Data and evaluator ready; the agent is declared `missing` because routing runs on a hosted vendor flow that nothing in the project can call; a flow export and a project note ship as records | 90 synthetic first messages; 75 / 15; four near-balanced strata; 6 distinct intent labels | Deterministic intent comparison, declared as normalized exact match, with two calibration cases | `NOT READY` / `BLOCKED` / `connect-agent` / `agent-absent` |
-| `regex-rule-authoring` (58) | Dataset integrity | Agent and evaluator ready; the data is declared `limited` because four of its thirty-two answers do not answer their own question, and the published read of five found one of them | 32 synthetic redaction-rule descriptions with one hand-written regular expression each; 24 / 8; four balanced strata of eight; free text | Deterministic normalized text comparison that never compiles either side, with three calibration cases | `WORKABLE` / `OK` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; for a read that finds every answer sound, `STRONG` / `OK` / `proceed` / `dataset-coarse-resolution` |
+| `regex-rule-authoring` (58) | Dataset integrity | Agent and evaluator ready; the data is declared `limited` because three of its thirty-two answers do not answer their own question, and the published read of five found one of them | 32 synthetic redaction-rule descriptions with one hand-written regular expression each; 24 / 8; four balanced strata of eight; free text | Deterministic normalized text comparison that never compiles either side, with three calibration cases | `WORKABLE` / `OK` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; for a read that finds every answer sound, `STRONG` / `OK` / `proceed` / `dataset-coarse-resolution` |
 
 Splits read tuning / holdout. Every dataset is Traigent-authored synthetic
 content; the catalog describes each evaluator and does not verify it. The
@@ -144,8 +144,9 @@ Both are committed, per scenario, under `verifier/measurement/`:
   because the cheapest available answer and the recorded answer being the same
   answer is a thing a reader should be told rather than left to discover.
 - `invocation.json` — the commands the measurement ran, with this machine's
-  paths replaced by `$GUIDE`, `$PROJECT`, `$SCENARIO` and `$MEASURE`, and the
-  committed read bound as `$ROW_REVIEW`.
+  paths replaced by `$PYTHON`, `$GUIDE`, `$PROJECT`, `$SCENARIO` and
+  `$MEASURE`, the committed read bound as `$ROW_REVIEW`, and any step the
+  measurement recorded refusing named under `refusals` with its message.
 
 Six scenarios ship a review, because those are the six whose published contract
 cannot be re-derived without one; the other seven record that none was passed.
@@ -158,8 +159,8 @@ the same inputs without `--row-review` return the same band, status and action,
 and drop that cap.
 
 Case 58 also publishes the opening for a read that finds every answer sound,
-because five rows drawn from its thirty-two miss all four unsound answers a
-little under half the time: `verifier/expected-opening-sound-read.json`,
+because five rows drawn from its thirty-two miss all three unsound answers
+about three times in five: `verifier/expected-opening-sound-read.json`,
 `STRONG` / `OK` / `proceed` / `dataset-coarse-resolution`, measured with
 `row-review-sound-read.json`. `verify` grades the worker's read against the
 scenario's verdict for every row (`verifier/row-verdicts.json`) and compares

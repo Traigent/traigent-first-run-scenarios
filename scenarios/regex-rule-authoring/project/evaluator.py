@@ -11,10 +11,11 @@ Two expressions count as the same rule when they match after the tidying below,
 which covers the ways one pattern gets typed differently and nothing more:
 
 - surrounding whitespace is dropped;
-- a redundant pair of outer parentheses is dropped, once: a `(?:...)` group
-  always, and a plain `(...)` group only when nothing inside it captures, since
-  wrapping a rule that captures its value moves that value to another group.
-  A named group or a lookaround is part of the rule and stays;
+- redundant outer parentheses are dropped until none is left: a `(?:...)`
+  group always, and a plain `(...)` group only when nothing inside it captures,
+  since wrapping a rule that captures its value moves that value to another
+  group. A named group or a lookaround is part of the rule and stays, and so
+  does any whitespace inside a group, which a pattern matches literally;
 - `[0-9]` and `\\d` are the same class, as are `[A-Za-z0-9_]` and `\\w`;
 - a `{1}` repeat is dropped.
 
@@ -68,15 +69,16 @@ def _captures(text, start):
 
 
 def _without_redundant_outer_group(text):
-    groups = _groups(text)
-    if (0, len(text) - 1) not in groups:
-        return text
-    if text.startswith("(?:"):
-        return text[3:-1].strip()
-    if text.startswith("(?"):
-        return text
-    captures_inside = any(start > 0 and _captures(text, start) for start, _ in groups)
-    return text if captures_inside else text[1:-1].strip()
+    while (0, len(text) - 1) in (groups := _groups(text)):
+        if text.startswith("(?:"):
+            text = text[3:-1]
+        elif text.startswith("(?") or any(
+            start > 0 and _captures(text, start) for start, _ in groups
+        ):
+            break
+        else:
+            text = text[1:-1]
+    return text
 
 
 def normalise(pattern):
