@@ -24,7 +24,14 @@ Expected output:
 
 ```text
 PASS: incident-severity-triage opening result matches band, status, recommended_action, caps in the captain-recorded contract
+note: the recorded contract is schema 1, which records cap conditions only; ceilings, blocks and asks were not compared, and no readiness schema_version was required
+intended opening: none is recorded at this revision
 ```
+
+The pinned revision predates contract schema 2, which records each cap's
+ceiling, blocks and asks beside its condition, and predates the hand-written
+intended openings. `verify` compares what the recorded revision holds and says
+what it could not compare; it does not read today's contract in its place.
 
 The verifier reads `expected-opening.json` from the Git object store at the scenario revision in
 `run-record.json`. It reconstructs the scenario project and contract inventories at that revision

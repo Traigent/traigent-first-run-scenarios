@@ -9,7 +9,16 @@ Semantic verification compares these fields exactly:
 - `band`
 - `status`
 - `recommended_action`
-- `caps`
+- `caps` - each cap's condition, ceiling, blocks and asks
+
+`intended-opening.json` is the hand-written answer beside the contract. It was
+written with this contract's band, status, action and cap conditions already in
+view. Each cap's ceiling was read off the guide's `readiness.py` constants, and
+whether it blocks or asks from the guide's routing reference together with
+`readiness.py`'s comments on its cap type. So its agreement on ceilings is the
+code agreeing with itself, and on blocks and asks only partly an independent
+check; `docs/methodology.md` says what it can show. `verify` notes whether a
+result agrees with it; a `PASS` still means the measured contract matched.
 
 The `display` section records the expected scorecard values for an honest
 customer-facing rendering. It does not broaden the semantic pass criteria and

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "band": "PARTIAL",
+  "status": "BLOCKED",
+  "recommended_action": "repair-evaluator",
+  "caps": [
+    {
+      "condition": "evaluator-unresolved",
+      "ceiling": 40,
+      "blocks": true,
+      "asks": false
+    }
+  ],
+  "divergence": null
+}

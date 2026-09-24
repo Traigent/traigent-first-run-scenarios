@@ -31,7 +31,9 @@ scenarios/<slug>/
   project/
   verifier/
     README.md
+    intended-opening.json
     expected-opening.json
+    measurement/
 ```
 
 The manifest follows `schema/scenario.schema.json` and includes:
@@ -253,14 +255,35 @@ current verifier compares:
 - `recommended_action`
 - `caps`
 
-The contract itself must contain `schema_version: 1`,
-`scope: phase-a-opening`, non-empty strings for the three verdict fields, and a
-unique array of non-empty strings for `caps`. `display` must contain an
+The contract itself must contain `schema_version: 2`,
+`readiness_schema_version` (the `schema_version` of the readiness payload it
+was measured from, which a result must match), `scope: phase-a-opening`, a band
+and a status the guide prints, a non-empty `recommended_action`, and `caps`:
+one object per cap with exactly `condition` (unique), `ceiling` (an integer 0
+to 100, or null for a cap that discloses and bounds nothing), `blocks` and
+`asks` (booleans), copied from the measurement. `display` must contain an
 `overall` score and at least one named pillar. Every display score is finite and
 between 0 and 100; every confidence is finite and between 0 and 1. Pillar names
 are scenario-defined rather than hard-coded by the catalog.
-Unknown top-level, `display`, and scorecard keys are rejected for schema version
-1.
+Unknown top-level, cap, `display`, and scorecard keys are rejected. `check`
+refuses a schema 1 contract, which recorded cap conditions only; `verify` still
+reads one at a recorded revision that predates schema 2 and compares
+conditions there.
+
+`verifier/intended-opening.json` is the hand-written answer beside it:
+`schema_version: 1`, `band`, `status`, `recommended_action` and `caps` in the
+contract's shape, and `divergence` - null, or `{issue, reason, fields}` where
+`reason` says what the guide does differently from its own documentation,
+`issue` is a public `traigent-first-run` issue URL or null when none has been
+filed, and `fields` maps every field that differs from the measured contract to
+`{intended, measured}`. A read-dependent scenario has one intended opening per
+contract: `intended-opening-sound-read.json` answers
+`expected-opening-sound-read.json`. `check` fails an intended opening that
+differs from its measured contract without declaring a divergence, one whose
+declared fields are not exactly the fields that differ, one that records a
+value either opening does not have, one whose divergence the measurement no
+longer shows, and one that answers no contract. It cannot tell when an intended
+opening was written.
 
 Any display scores must remain explicitly informational until a referenced run
 artifact has been captured and verified. Never turn an expected value into a
@@ -310,9 +333,35 @@ Everything else that counts them is manual, and this is the list:
    the bank, the families the deck's `SCENARIO_BANK` gives, and - in the README
    - each contract's band, status, action and caps. The tally of committed row
    reviews in `docs/scenario-coverage.md` is still kept by hand.
-6. The measured opening. `verifier/expected-opening.json` records what the
+6. The intended opening, written first. Before measuring, write
+   `verifier/intended-opening.json` from the scenario's stated purpose - its
+   README and the catalog's `expected_route.rationale` - and the guide's
+   documentation, `SKILL.md` and its `references/`. Do not take it from
+   `readiness.py`'s constants or tables, or from any measured file: a value
+   read off the code the measurement runs can only agree with that code. Where
+   the documentation states no value - most ceilings are numbers only the code
+   states - you may take that value from the code, and the pull request names
+   each value that came from the code. Keep the reasoning in the pull request,
+   and say there what you had already seen; `check` cannot establish the order.
+   Never edit the file after reading the measurement to make the two agree.
+   Where the measurement differs, decide honestly which is wrong: correct your
+   intent and say so in the pull request, or, where the guide departs from its
+   own documentation, keep the intent and record the departure under
+   `divergence`, naming each differing field with both values.
+7. The measured opening. `verifier/expected-opening.json` records what the
    guide at the pinned revision returned for the project as shipped -- it is
    measured, never authored, and a scenario whose bytes change is re-measured.
+   The two principles are one rule seen from both sides: the contract `verify`
+   passes on is only ever measured, and the answer it is weighed against is
+   written by hand from the guide's documentation. `check` holds the two equal
+   unless the intended opening declares where they part; it cannot establish
+   which was written first. The intended openings this release shipped were
+   written with the measured band, status, action and conditions already in
+   view, their ceilings read off `readiness.py`'s constants - apart from case
+   49's cap, which `readiness.py` does not have and whose null ceiling is a
+   choice - and whether each cap blocks or asks read from the routing reference
+   together with `readiness.py`'s comments; `docs/methodology.md` says what that
+   leaves them able to show.
    Commit the measurement beside it under `verifier/measurement/`:
    `agent-read.json`, `invocation.json`, and `row-review.json` when the contract
    depends on a review -- either because the band sits above the answer-key hold
@@ -330,17 +379,24 @@ Everything else that counts them is manual, and this is the list:
    placeholder, a path inside the project, or a plain word. A measurement that
    needs another flag adds it to that table by name, after checking the
    guide's argument parser at the pinned revision accepts it.
-7. A contract that depends on the draw. When a scenario's opening turns on
+   `agent-read.json` names exactly the settings in
+   `catalog.components.agent.controls` - `check` holds that, because the
+   controls are what a worker's `--agent-read` is graded against. A new
+   contract that reads the same as another one on every compared field joins
+   a group in `KNOWN_OPENING_TWINS` in `tests/test_scenario.py`, with why the
+   scenarios still differ, and the README names the group.
+8. A contract that depends on the draw. When a scenario's opening turns on
    whether the worker's read finds an unsound answer, and a five-row draw can
    miss every unsound row, publish both openings: declare
    `expected_route.read_dependent` in the manifest, give a verdict and a reason
    for every row in `verifier/row-verdicts.json`, and commit the sound read
    beside the published one as `verifier/measurement/row-review-sound-read.json`
-   with its measured contract in `verifier/expected-opening-sound-read.json`.
+   with its measured contract in `verifier/expected-opening-sound-read.json`
+   and its own hand-written `verifier/intended-opening-sound-read.json`.
    Bind the read in `invocation.json` as `$ROW_REVIEW`. `scenario.py check`
    grades both committed reads against the verdicts, and
    `scripts/reproduce_openings.py` measures both contracts.
-8. A project that does not name its own test. A worker receives every file
+9. A project that does not name its own test. A worker receives every file
    under `project/`, so `check` reads each one's name and bytes for what
    would tell it what is being measured. The text is folded first: a
    lower-case letter or digit followed by a capital gains a hyphen
@@ -372,7 +428,7 @@ For every scenario change, run:
 python -m pip install -r requirements-dev.txt
 black --check scenario.py scripts tests
 ruff check scenario.py scripts tests
-mypy --strict scenario.py scripts/check_public_surface.py scripts/reproduce_openings.py
+mypy --strict scenario.py scripts/check_public_surface.py scripts/reproduce_openings.py scripts/check_ask_shape.py
 python scenario.py list
 python scenario.py show CASE
 python scenario.py check CASE
@@ -380,10 +436,14 @@ python scenario.py check
 python -m unittest discover -s tests -p 'test_*.py' -v
 python scripts/check_public_surface.py
 GUIDE=/path/to/traigent-first-run python scripts/reproduce_openings.py
+GUIDE=/path/to/traigent-first-run python -m unittest discover -s tests -p test_check_ask_shape.py -v
+GUIDE=/path/to/traigent-first-run python -m unittest discover -s tests -p test_opening_in_prepared_project.py -v
 ```
 
-The last command needs a clean guide checkout on the revision the scenarios
-were measured at; CI checks one out and runs it on every change.
+The last three commands need a clean guide checkout on the revision the
+scenarios were measured at; CI checks one out and runs them on every change.
+The last one runs every recorded opening in a prepared project and verifies it
+with `--project-dir`; like the replay, it runs each scenario's own evaluator.
 
 `check` validates catalog paths and declared dataset/calibration facts, then the
 strict expected-opening structure and value ranges, that no project file names
@@ -414,6 +474,12 @@ that read against the scenario's verdict for every row, then compares the
 result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
 
+Three more options - `--agent-read`, `--project-dir` and `--response` - grade
+the run beyond the measured contract, and `verify` also notes whether the result
+agrees with the scenario's hand-written intended opening; that note never
+changes a `PASS`. What each option checks, and what it leaves ungraded, is in
+[GUIDE.md step 5](GUIDE.md#5-capture-and-verify-the-opening).
+
 Keep complete command output and final exit statuses. Do not use a successful
 catalog check as evidence that a worker run passed.
 
@@ -426,7 +492,7 @@ designed away: the evaluator is exactly what the measurement measures. Neither
 the runner nor `scenario.py` is a sandbox, and the replay is bounded instead:
 
 - Before anything runs, each record passes the validator `scenario.py check`
-  uses, described in step 6 of "Adding a scenario". A record naming another
+  uses, described in step 7 of "Adding a scenario". A record naming another
   executable, script, flag or path is refused with the scenario, the step and
   the token.
 - A scenario containing a symbolic link is refused before its project is

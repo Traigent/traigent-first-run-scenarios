@@ -1,11 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "readiness_schema_version": 6,
   "scope": "phase-a-opening",
   "band": "PARTIAL",
   "status": "BLOCKED",
   "recommended_action": "repair-evaluator",
   "caps": [
-    "evaluator-unresolved"
+    {
+      "condition": "evaluator-unresolved",
+      "ceiling": 40,
+      "blocks": true,
+      "asks": false
+    }
   ],
   "display": {
     "overall": {

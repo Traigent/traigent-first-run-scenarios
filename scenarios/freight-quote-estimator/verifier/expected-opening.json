@@ -1,11 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "readiness_schema_version": 6,
   "scope": "phase-a-opening",
   "band": "STRONG",
   "status": "OK",
   "recommended_action": "add-examples",
   "caps": [
-    "dataset-coarse-resolution"
+    {
+      "condition": "dataset-coarse-resolution",
+      "ceiling": 89,
+      "blocks": false,
+      "asks": true
+    }
   ],
   "display": {
     "overall": {

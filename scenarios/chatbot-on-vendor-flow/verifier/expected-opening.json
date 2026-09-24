@@ -1,11 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "readiness_schema_version": 6,
   "scope": "phase-a-opening",
   "band": "NOT READY",
   "status": "BLOCKED",
   "recommended_action": "connect-agent",
   "caps": [
-    "agent-absent"
+    {
+      "condition": "agent-absent",
+      "ceiling": 25,
+      "blocks": true,
+      "asks": false
+    }
   ],
   "display": {
     "overall": {

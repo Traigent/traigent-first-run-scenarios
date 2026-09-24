@@ -1,11 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "readiness_schema_version": 6,
   "scope": "phase-a-opening",
   "band": "WORKABLE",
   "status": "OK",
   "recommended_action": "review-answer-key",
   "caps": [
-    "dataset-generated-answer-key"
+    {
+      "condition": "dataset-generated-answer-key",
+      "ceiling": 74,
+      "blocks": false,
+      "asks": true
+    }
   ],
   "display": {
     "overall": {

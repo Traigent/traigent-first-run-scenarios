@@ -87,7 +87,9 @@ The expected opening of every row is the four fields `verify` compares —
 `band · status · recommended_action · caps` — as measured by the guide's own
 scripts over the project bytes at guide revision `d07b62cd`. Each is a
 case-specific contract for that scenario at that revision, not a target for
-another project. The evidence scope of every row is the same: an expected
+another project. The caps column names each cap's condition; the contract also
+records its ceiling and whether it blocks the run or asks first, and `verify`
+compares all four. The evidence scope of every row is the same: an expected
 Phase A opening contract, with no captured worker run and no live
 optimization.
 
@@ -96,7 +98,7 @@ optimization.
 | `incident-severity-triage` (46)      | Ready reference        | Closed-label severity classifier; agent, labeled rows, evaluator, and four varying settings present                                 | EXCELLENT · OK · `proceed` · none                                                                         |
 | `helpdesk-queue-router` (47)         | Ready reference        | Six-queue ticket router whose evaluator folds three ticketing tools' spellings together; all components ready                       | EXCELLENT · OK · `proceed` · none                                                                         |
 | `policy-handbook-rag` (48)           | Ready reference        | Retrieval-augmented short-answer QA over a 20-document handbook; all components ready                                               | EXCELLENT · OK · `proceed` · none                                                                         |
-| `warehouse-text-to-sql` (49)         | Evaluator quality      | Text-to-SQL over a shipped SQLite database; the scorer compares SQL as text, the wrong kind of check for the task                    | EXCELLENT · OK · `proceed` · none (the mismatch is a task-fit finding on the card, not a cap)              |
+| `warehouse-text-to-sql` (49)         | Evaluator quality      | Text-to-SQL over a shipped SQLite database; the scorer compares SQL as text, the wrong kind of check for the task                    | EXCELLENT · OK · `proceed` · none (the mismatch is a task-fit finding on the card, not a cap; the hand-written intended opening asks for an evaluator repair and declares that divergence, field by field) |
 | `clinic-scheduling-sql-exec` (50)    | Execution safety       | Text-to-SQL whose scorer executes the generated query against the shipped database; calibration of the original is declined        | WORKABLE · OK · `confirm-evaluator-connection` · `evaluator-calibration-refused`                          |
 | `booking-assistant-next-action` (51) | Dataset integrity      | Next-action selection from a flat chat transcript; six tuning transcripts repeat on the holdout side                                | PARTIAL · BLOCKED · `resplit-dataset` · `dataset-tune-holdout-overlap`, `dataset-repeated-rows`           |
 | `tool-dispatch-selector` (52)        | Search-space readiness | Tool-call selection with one model, one fixed instruction, and no setting that varies                                               | PARTIAL · BLOCKED · `vary-knobs` · `agent-no-varying-knobs`                                               |
@@ -106,6 +108,23 @@ optimization.
 | `freight-quote-estimator` (56)       | Evidence strength      | Numeric estimation with a tolerance scorer over 24 worked quotes                                                                    | STRONG · OK · `add-examples` · `dataset-coarse-resolution`                                                |
 | `chatbot-on-vendor-flow` (57)        | Missing material       | Intent routing on a hosted vendor flow; labeled rows and a calibratable evaluator, but no local agent                               | NOT READY · BLOCKED · `connect-agent` · `agent-absent`                                                    |
 | `regex-rule-authoring` (58)          | Dataset integrity      | Regular-expression authoring against a hand-written answer key in which three answers do not answer their own question             | WORKABLE · OK · `review-answer-key` · `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; a read that finds every answer sound opens STRONG · OK · `proceed` · `dataset-coarse-resolution` |
+
+### Scenarios that open the same way
+
+A contract is four fields, so scenarios that differ in every other way can
+publish the same one - down to each cap's ceiling and routing. Every such group
+is registered, with why its scenarios still differ, in `KNOWN_OPENING_TWINS` in
+`tests/test_scenario.py`, which derives the groups from the contracts and fails
+on one that is not registered:
+
+- `incident-severity-triage` (46), `helpdesk-queue-router` (47),
+  `policy-handbook-rag` (48) and `warehouse-text-to-sql` (49) all open
+  EXCELLENT · OK · `proceed` with no cap. They are four agent types over four
+  datasets and four evaluators; what they share is the one reading the guide
+  gives a project with nothing that caps it. The hand-written intended openings
+  separate case 49: its intended opening asks for an evaluator repair, and it
+  declares where the guide departs from that (see
+  [docs/methodology.md](docs/methodology.md#hand-written-answers)).
 
 Each scenario's primary dataset is declared and checked as data rather than
 presentation copy:
@@ -240,11 +259,13 @@ python scenario.py verify 46 \
   --result /path/to/opening-result.json
 ```
 
-`verify` compares `band`, `status`, `recommended_action`, and `caps` against
-the contract loaded via local Git at the revision recorded in `run.json`,
-reading the result as data. A `PASS` means the four fields matched the
-contract at that recorded revision — nothing more; [GUIDE.md](GUIDE.md)
-states the exact claim boundary.
+`verify` compares `band`, `status`, `recommended_action`, and `caps` - each
+cap's condition, ceiling, blocks and asks - against the contract loaded via
+local Git at the revision recorded in `run.json`, reading the result as data,
+and requires the result's readiness `schema_version` to be the one the contract
+was measured at. A `PASS` means those fields matched the contract at that
+recorded revision — nothing more; [GUIDE.md](GUIDE.md) states the exact claim
+boundary.
 
 One scenario, `regex-rule-authoring` (58), publishes two contracts because its
 opening turns on what the worker's read of its answers found. For it, also pass
@@ -252,6 +273,12 @@ the row review the worker gave readiness as `--row-review FILE`: `verify` grades
 that read against the scenario's verdict for every row, then compares the
 result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
+
+Three more options - `--agent-read`, `--project-dir` and `--response` - grade
+the run beyond the measured contract, and `verify` also notes whether the result
+agrees with the scenario's hand-written intended opening; that note never
+changes a `PASS`. What each option checks, and what it leaves ungraded, is in
+[GUIDE.md step 5](GUIDE.md#5-capture-and-verify-the-opening).
 
 From there the route continues, not the exercise: with your approvals,
 credentials, and cost boundaries in place, the same `customer-project/`
@@ -323,9 +350,11 @@ scenario.py                         Catalog, preparation, and verification CLI
 scenarios/<slug>/README.md          The scenario's starting state, in prose
 scenarios/<slug>/scenario.json      Public scenario identity, catalog, and content terms
 scenarios/<slug>/project/           Files copied into the worker project
-scenarios/<slug>/verifier/          Captain-side expected opening contract
+scenarios/<slug>/verifier/          Captain-side measured contract and hand-written intended opening
 schema/scenario.schema.json         Scenario manifest schema
 scripts/check_public_surface.py     Public-surface guard over tracked bytes and paths
+scripts/reproduce_openings.py       Re-measures every contract against the pinned guide
+scripts/check_ask_shape.py          Grades a worker's final message for the guide's ask shape
 docs/scenario-coverage.md           Released scenarios by family and dataset-origin rules
 docs/customer-pc-runbook.md         Customer-machine operating procedure
 docs/methodology.md                 Claims, isolation, and evidence model

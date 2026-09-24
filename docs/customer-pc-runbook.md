@@ -186,9 +186,10 @@ python scenario.py verify 46 \
 
 Verification reads JSON as data, validates the contract inventory against the
 scenario Git revision in `run.json`, and compares only `band`, `status`,
-`recommended_action`, and `caps` with that recorded expected opening. Expected
-caps are condition slugs; full captured cap objects are compared by their
-`condition` fields. It reports every mismatch and does not execute the verifier.
+`recommended_action`, and `caps` with that recorded expected opening, at the
+readiness `schema_version` it was measured at. Each expected cap records its
+condition, ceiling, blocks and asks, and each captured cap object is compared on
+those four fields. It reports every mismatch and does not execute the verifier.
 
 One scenario, `regex-rule-authoring` (58), publishes two contracts because its
 opening turns on what the worker's read of its answers found. For it, also pass
@@ -196,6 +197,12 @@ the row review the worker gave readiness as `--row-review FILE`: `verify` grades
 that read against the scenario's verdict for every row, then compares the
 result with the contract for the read the worker gave. `--row-review` is
 refused for every other scenario.
+
+Three more options - `--agent-read`, `--project-dir` and `--response` - grade
+the run beyond the measured contract, and `verify` also notes whether the result
+agrees with the scenario's hand-written intended opening; that note never
+changes a `PASS`. What each option checks, and what it leaves ungraded, is in
+[GUIDE.md step 5](../GUIDE.md#5-capture-and-verify-the-opening).
 
 A matching result may be labeled **Verified run evidence** only when the report
 also retains the captured result, both repository revisions, `run.json`, worker

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "band": "NOT READY",
+  "status": "BLOCKED",
+  "recommended_action": "connect-agent",
+  "caps": [
+    {
+      "condition": "agent-absent",
+      "ceiling": 25,
+      "blocks": true,
+      "asks": false
+    }
+  ],
+  "divergence": null
+}

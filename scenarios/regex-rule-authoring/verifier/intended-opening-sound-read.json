@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "band": "STRONG",
+  "status": "OK",
+  "recommended_action": "proceed",
+  "caps": [
+    {
+      "condition": "dataset-coarse-resolution",
+      "ceiling": 89,
+      "blocks": false,
+      "asks": false
+    }
+  ],
+  "divergence": null
+}

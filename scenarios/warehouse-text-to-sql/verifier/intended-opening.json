@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "band": "EXCELLENT",
+  "status": "OK",
+  "recommended_action": "repair-evaluator",
+  "caps": [
+    {
+      "condition": "evaluator-task-mismatch",
+      "ceiling": null,
+      "blocks": false,
+      "asks": true
+    }
+  ],
+  "divergence": {
+    "issue": null,
+    "reason": "The guide's evaluation reference names a task-inappropriate evaluator a material finding (Quality diagnosis and repair choice: optimization rewards the wrong behavior; recommended: repair a working copy and re-run validation), its Evaluation selection table routes code or SQL to a composite or structural comparison and away from exact-string comparison, and SKILL.md section 2 puts quality findings on the one ask. readiness.py at d07b62cd has no cap or ask for evaluator task fit - it scores fit inside the evaluation pillar only - so the measured opening for this text-comparing SQL scorer is EXCELLENT, OK, proceed, with no cap and nothing asked. evaluator-task-mismatch is this repository's name for the intended cap; the guide has none. Its ceiling is null because neither the guide's documentation nor readiness.py gives this finding a number - a choice, not a reading. No public guide issue has been filed for this.",
+    "fields": {
+      "recommended_action": {
+        "intended": "repair-evaluator",
+        "measured": "proceed"
+      },
+      "caps": {
+        "intended": [
+          {
+            "condition": "evaluator-task-mismatch",
+            "ceiling": null,
+            "blocks": false,
+            "asks": true
+          }
+        ],
+        "measured": []
+      }
+    }
+  }
+}
