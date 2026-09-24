@@ -23,6 +23,7 @@ from unittest import mock
 from jsonschema import Draft202012Validator
 
 import scenario
+from git_fixtures import init_quiet_repository
 
 TEST_DATASET_ROW = (
     json.dumps(
@@ -493,9 +494,7 @@ class ScenarioBankTests(unittest.TestCase):
         self.scenarios_dir = self.repository_root / "scenarios"
         self.scenarios_dir.mkdir()
         self.guide_counter = 0
-        subprocess.run(
-            ["git", "init", "-q", os.fspath(self.repository_root)], check=True
-        )
+        init_quiet_repository(self.repository_root)
 
     def commit_repository_paths(self, *paths: Path, message: str) -> None:
         relative_paths = [
@@ -622,7 +621,7 @@ class ScenarioBankTests(unittest.TestCase):
         ignored_cache = skill / "scripts" / "__pycache__"
         ignored_cache.mkdir()
         (ignored_cache / "readiness.pyc").write_bytes(b"untracked cache")
-        subprocess.run(["git", "init", "-q", os.fspath(root)], check=True)
+        init_quiet_repository(root)
         subprocess.run(
             [
                 "git",
@@ -2105,7 +2104,7 @@ class ScenarioBankTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as outer_name:
             outer = Path(outer_name)
-            subprocess.run(["git", "init", "-q", os.fspath(outer)], check=True)
+            init_quiet_repository(outer)
             foreign_root = outer / "unpacked-bank"
             shutil.copytree(
                 self.repository_root,

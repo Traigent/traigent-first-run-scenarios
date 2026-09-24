@@ -31,6 +31,8 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from git_fixtures import init_quiet_repository
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 
@@ -489,11 +491,7 @@ class StepScriptTestCase(unittest.TestCase):
     def build_repository(self, files: dict[str, str], *, pad: bool = True) -> Path:
         repository = self.workspace / "repository"
         repository.mkdir(exist_ok=True)
-        subprocess.run(
-            ("git", "-C", str(repository), "init", "--quiet"),
-            check=True,
-            capture_output=True,
-        )
+        init_quiet_repository(repository)
         if self.installs_floor_source:
             self.install_floor_source(repository)
         if pad:
