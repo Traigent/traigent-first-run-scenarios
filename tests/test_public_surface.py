@@ -14,6 +14,8 @@ import zlib
 from pathlib import Path
 from unittest import mock
 
+from git_fixtures import init_quiet_repository
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 GUARD_PATH = REPOSITORY_ROOT / "scripts" / "check_public_surface.py"
 
@@ -44,7 +46,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.repo = Path(self.temporary_directory.name)
-        self._git("init", "--quiet")
+        init_quiet_repository(self.repo)
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -527,12 +529,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
     def test_directory_outside_a_work_tree_is_rejected(self) -> None:
         bare_repository = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, bare_repository)
-        subprocess.run(
-            ("git", "init", "--bare", "--quiet", str(bare_repository)),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        init_quiet_repository(bare_repository, bare=True)
 
         result = self._run_guard(repo=bare_repository)
 
@@ -666,7 +663,7 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         leak has to be caught, and this test keeps its own subject.
         """
         export = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, export, True)
+        self.addCleanup(shutil.rmtree, export)
 
         archive = subprocess.run(
             ("git", "-C", str(REPOSITORY_ROOT), "archive", "HEAD"),
@@ -681,8 +678,8 @@ class PublicSurfaceGuardTests(unittest.TestCase):
         # for everything the repository publishes.
         shutil.copyfile(GUARD_PATH, export / "scripts" / GUARD_PATH.name)
 
+        init_quiet_repository(export)
         for arguments in (
-            ("init", "--quiet"),
             ("add", "--all"),
             (
                 "-c",

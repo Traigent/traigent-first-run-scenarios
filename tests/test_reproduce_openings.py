@@ -19,6 +19,8 @@ import time
 import unittest
 from pathlib import Path
 
+from git_fixtures import init_quiet_repository
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "reproduce_openings.py"
 
@@ -139,7 +141,7 @@ class ReproduceOpeningsTests(unittest.TestCase):
         ):
             (scripts / name).write_text(source, encoding="utf-8")
         git = ["git", "-C", str(self.guide)]
-        subprocess.run([*git, "init", "-q"], check=True)
+        init_quiet_repository(self.guide)
         subprocess.run([*git, "add", "."], check=True)
         subprocess.run(
             [*git, "-c", "user.name=t", "-c", "user.email=t@example.invalid"]

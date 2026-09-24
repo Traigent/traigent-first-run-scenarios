@@ -30,6 +30,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY))
 
 import scenario  # noqa: E402
+from git_fixtures import init_quiet_repository  # noqa: E402
 
 # Where the opening keeps each scoring's evidence (component-creation.md,
 # "Opening readiness procedure"); the recorded steps write their JSON there.
@@ -51,8 +52,8 @@ class RecordedOpeningInPreparedProjectTests(unittest.TestCase):
             self.repository / "scenarios",
             ignore=shutil.ignore_patterns("__pycache__"),
         )
+        init_quiet_repository(self.repository)
         for arguments in (
-            ["init", "-q"],
             ["add", "scenarios"],
             [
                 "-c",

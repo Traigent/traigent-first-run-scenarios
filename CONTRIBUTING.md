@@ -440,6 +440,9 @@ GUIDE=/path/to/traigent-first-run python -m unittest discover -s tests -p test_c
 GUIDE=/path/to/traigent-first-run python -m unittest discover -s tests -p test_opening_in_prepared_project.py -v
 ```
 
+The unit tests need Git 2.30 or newer and stop with a message naming that
+floor on an older Git; `tests/git_fixtures.py` says why.
+
 The last three commands need a clean guide checkout on the revision the
 scenarios were measured at; CI checks one out and runs them on every change.
 The last one runs every recorded opening in a prepared project and verifies it
