@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "band": "STRONG",
+  "band": "WORKABLE",
   "status": "OK",
-  "recommended_action": "proceed",
+  "recommended_action": "review-evaluator-fit",
   "caps": [
     {
       "condition": "dataset-coarse-resolution",

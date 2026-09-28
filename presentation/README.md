@@ -33,7 +33,7 @@ files under `dist/`.
 
 The Stage 2 scoring and cap slides are a reviewed snapshot of the public
 Guided First Run scorer at revision
-[`d07b62cd`](https://github.com/Traigent/traigent-first-run/blob/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199/skills/traigent-first-run/scripts/readiness.py).
+[`d7c6c97e`](https://github.com/Traigent/traigent-first-run/blob/d7c6c97e49cd71023d17de5c200fc8e6fc8e8ffa/skills/traigent-first-run/scripts/readiness.py).
 Their evidence footer records that revision. Re-check the source constants,
 check display names, confidence behavior, and cap semantics whenever the guide
 changes; do not adjust a number merely to improve slide layout.

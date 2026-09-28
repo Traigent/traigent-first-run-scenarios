@@ -44,20 +44,23 @@ recorded as the lower-case literal `password`, with `PASSWORD` under
 
 Five rows drawn from thirty-two miss all three unsound answers about three
 times in five (C(29,5)/C(32,5) is about 0.59 for a uniform draw). A faithful
-read of such a draw can find nothing wrong, and the guide then opens at `STRONG`
-with `proceed`. That is not a failed run, so this scenario publishes both
-openings, each measured from a committed read:
+read of such a draw can find nothing wrong with the key. The guide still
+holds the opening at `WORKABLE` with `review-evaluator-fit`, because the
+text-comparing evaluator is the wrong kind of check for code. That is not a
+failed run, so this scenario publishes both openings, each measured from a
+committed read:
 
 | The worker's read | Contract | Band / action / caps |
 |---|---|---|
 | marks some answer `no` | `verifier/expected-opening.json` | `WORKABLE` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution` |
-| marks no answer `no` | `verifier/expected-opening-sound-read.json` | `STRONG` / `proceed` / `dataset-coarse-resolution` |
+| marks no answer `no` | `verifier/expected-opening-sound-read.json` | `WORKABLE` / `review-evaluator-fit` / `dataset-coarse-resolution` |
 
 For the read the guide asks for at the opening - five rows, with no
 `selected_row_ids` and no `in_run`, since the run's rows are not selected yet -
-every published field, scores included, depends on that one fact: reads with
+the contract selection depends on that one fact: reads with
 one, two and four `no` verdicts, and reads with one or two `unsure`, were each
-measured and land on one of these two rows. A read that declares run membership
+measured and land on one of these two rows. Both retain the evaluator-fit ask; the
+unsound-answer finding determines which action takes priority. A read that declares run membership
 is judged against the selected rows instead, which moves the band and the
 action, so `verify` refuses one rather than compare it with contracts measured
 for a different read.

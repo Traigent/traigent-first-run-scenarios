@@ -212,29 +212,22 @@ REVIEW_DERIVED_CAP = "dataset-unsound-expected-outputs"
 # scenarios are still different scenarios and where a reader sees that, since
 # the contract cannot show it. The test derives the groups from the contracts,
 # so an unregistered group and a stale entry both fail. `separated_by_intent`
-# names the twins whose hand-written intended opening departs from the measured
-# one, which is where the intended openings tell twins apart.
+# names any twins whose hand-written intended opening departs from the measured one.
 KNOWN_OPENING_TWINS: dict[frozenset[str], dict[str, object]] = {
     frozenset(
         {
             "incident-severity-triage",
             "helpdesk-queue-router",
             "policy-handbook-rag",
-            "warehouse-text-to-sql",
         }
     ): {
         "differ": (
-            "four agent types, four datasets and four evaluators - a closed-label "
-            "classifier, a queue router, a retrieval agent and a text-to-SQL "
-            "agent - none of which carries anything that caps it, and the guide "
-            "gives every such project one reading"
+            "three agent types, three datasets and three evaluators - a closed-label "
+            "classifier, a queue router and a retrieval agent - none of which "
+            "carries anything that caps it"
         ),
-        "visible": (
-            "each scenario's README and scenario.json; for warehouse-text-to-sql "
-            "also the task-fit finding on its readiness card and its intended "
-            "opening, which asks for an evaluator repair"
-        ),
-        "separated_by_intent": ("warehouse-text-to-sql",),
+        "visible": "each scenario's README and scenario.json",
+        "separated_by_intent": (),
     },
 }
 
@@ -359,7 +352,7 @@ def _rubric_findings(repository: Path) -> tuple[list[str], int, int]:
 
 
 def _opening_needs_a_row_review(opening: dict[str, object]) -> bool:
-    """Whether this published opening is one a review has to be committed for.
+    """Whether this published contract requires a review to reproduce it.
 
     Asked of the contract rather than of a list, so the answer follows the bank
     instead of being maintained beside it.
@@ -2285,11 +2278,10 @@ class ScenarioBankTests(unittest.TestCase):
                 )
                 reviewed += 1
         # Not "at least one". The rule is that a scenario commits a review
-        # exactly when its published opening cannot be reproduced without one,
-        # and a floor of one cannot see four of them go missing -- deleting a
-        # load-bearing review was green in every gate this repository runs.
-        # Derived from the contracts rather than written down, so it follows the
-        # bank.
+        # whenever its published opening cannot be reproduced without one.
+        # An additional recorded review may be part of the guide workflow even
+        # when another hold makes it irrelevant to the measured fields.
+        # Derived from contracts, so deleting a load-bearing review is red.
         #
         # Two ways an opening depends on a review, and both are compared fields:
         #
@@ -2299,9 +2291,9 @@ class ScenarioBankTests(unittest.TestCase):
         #   `readiness.py` builds `dataset-unsound-expected-outputs` from the
         #   review's own verdicts and from nothing else, so a scenario that
         #   publishes it and ships no review publishes a cap it cannot re-derive.
-        #   Measured on regex-rule-authoring rather than assumed: the same
-        #   inputs without `--row-review` return the same band, status and
-        #   action, and drop that cap.
+        #   Measured on regex-rule-authoring rather than assumed: without
+        #   `--row-review`, the band and status stay, the cap drops, and the
+        #   action changes to `review-evaluator-fit`.
         needs_review = sorted(
             manifest_path.parent.name
             for manifest_path in (scenario.REPOSITORY_ROOT / "scenarios").glob(
@@ -2321,12 +2313,20 @@ class ScenarioBankTests(unittest.TestCase):
                 "*/verifier/measurement/row-review.json"
             )
         )
-        self.assertEqual(
-            needs_review,
-            shipping,
-            "the scenarios shipping a row review are not the ones whose opening "
-            "needs one",
+        self.assertTrue(
+            set(needs_review) <= set(shipping),
+            f"required row reviews missing: {sorted(set(needs_review) - set(shipping))}",
         )
+        for slug in set(shipping) - set(needs_review):
+            record = json.loads(
+                (
+                    scenario.REPOSITORY_ROOT
+                    / "scenarios"
+                    / slug
+                    / "verifier/measurement/invocation.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertIn("--row-review", record["steps"]["readiness"])
         self.assertGreater(reviewed, 0, "no committed row review was read")
 
     def test_every_group_of_opening_twins_is_registered(self) -> None:
@@ -6248,7 +6248,12 @@ class ScenarioBankTests(unittest.TestCase):
             (finds_none_and_unsure, sound, 0, "finds every answer sound"),
             # A contestable row marked `no` is a finding the guide acts on.
             (finds_none, published, 0, "marks an answer unsound"),
-            (finds_none_and_unsure, published, 1, "band: expected 'STRONG'"),
+            (
+                finds_none_and_unsure,
+                published,
+                1,
+                "recommended_action: expected 'review-evaluator-fit'",
+            ),
         )
         for read, contract, want, message in cases:
             with self.subTest(read=read.name, band=contract["band"]):
@@ -6811,8 +6816,8 @@ class ScenarioBankTests(unittest.TestCase):
         self.assertEqual(1, status)
         self.assertIn("intended opening", error)
 
-    def test_a_declared_divergence_covers_only_the_fields_it_names(self) -> None:
-        """Re-measuring case 49 onto anything but its declared gap fails check."""
+    def test_a_changed_contract_must_reconcile_its_intended_opening(self) -> None:
+        """A changed measurement cannot silently reuse the old intent."""
         root = self.copy_bank_scenario("warehouse-text-to-sql")
         contract_path = root / "verifier" / "expected-opening.json"
         original = contract_path.read_text(encoding="utf-8")
@@ -6822,27 +6827,20 @@ class ScenarioBankTests(unittest.TestCase):
             (
                 "blocked",
                 {"band": "PARTIAL", "status": "BLOCKED"},
-                "now differs on band, caps, recommended_action, status",
+                "differs from expected-opening.json on band, status and declares no divergence",
             ),
             (
                 "another action",
                 {"recommended_action": "review-answer-key"},
-                "divergence.fields.recommended_action.measured: records 'proceed'",
+                "differs from expected-opening.json on recommended_action and declares no divergence",
             ),
             (
-                "the guide adopts the finding",
+                "old proceed route",
                 {
-                    "recommended_action": "repair-evaluator",
-                    "caps": [
-                        {
-                            "condition": "evaluator-task-mismatch",
-                            "ceiling": None,
-                            "blocks": False,
-                            "asks": True,
-                        }
-                    ],
+                    "band": "EXCELLENT",
+                    "recommended_action": "proceed",
                 },
-                "declares a divergence that no longer holds",
+                "differs from expected-opening.json on band, recommended_action and declares no divergence",
             ),
         ):
             with self.subTest(label=label):
@@ -6882,18 +6880,14 @@ class ScenarioBankTests(unittest.TestCase):
                 self.assertIn(f"verifier/{relative}", error)
                 self.assertIn("answers no contract", error)
 
-    def test_check_refuses_a_project_naming_the_intended_opening_or_its_caps(
+    def test_check_refuses_a_project_naming_the_intended_opening(
         self,
     ) -> None:
-        """An intended opening is captain-side, so its name and a cap only it
-        names tell a worker what is being measured, as the contract's do."""
+        """The captain's intended opening must not leak into the worker project."""
         root = self.copy_bank_scenario("warehouse-text-to-sql")
         agent = root / "project" / "agent.py"
         original = agent.read_text(encoding="utf-8")
-        for tell, line in (
-            ("intended-opening", "# see intended_opening.json\n"),
-            ("evaluator-task-mismatch", "# EVALUATOR_TASK_MISMATCH\n"),
-        ):
+        for tell, line in (("intended-opening", "# see intended_opening.json\n"),):
             with self.subTest(tell=tell):
                 agent.write_text(original + line, encoding="utf-8")
                 status, output, error = self.run_cli("check", "49")
@@ -6903,12 +6897,7 @@ class ScenarioBankTests(unittest.TestCase):
                 self.assertIn(tell, error)
 
     def test_every_contract_has_its_own_hand_written_intended_opening(self) -> None:
-        """One intended opening per measured contract, and the bank's divergence.
-
-        Warehouse text-to-SQL is the one scenario whose intent departs from its
-        measurement: the guide documents a text-comparing SQL scorer as a
-        finding to repair, and its readiness script has no cap for it.
-        """
+        """One intended opening per measured contract, with no stale divergence."""
         departing = []
         for manifest_path in sorted(
             (scenario.REPOSITORY_ROOT / "scenarios").glob("*/scenario.json")
@@ -6926,7 +6915,7 @@ class ScenarioBankTests(unittest.TestCase):
             for name in intended:
                 if json.loads((verifier / name).read_text())["divergence"] is not None:
                     departing.append(f"{manifest_path.parent.name}/{name}")
-        self.assertEqual(["warehouse-text-to-sql/intended-opening.json"], departing)
+        self.assertEqual([], departing)
 
     def test_verify_notes_whether_the_result_agrees_with_the_intended_opening(
         self,

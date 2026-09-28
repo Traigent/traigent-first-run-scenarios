@@ -3397,7 +3397,7 @@ REPLAY_SCRIPTS = "$GUIDE/skills/traigent-first-run/scripts/"
 # The longest the guide lets a calibration budget for itself:
 # `CALIBRATION_TIMEOUT_CEILING_SECONDS` in the guide's
 # `skills/traigent-first-run/scripts/calibrate_evaluator.py` (line 103 at
-# d07b62cd). A recorded `--timeout` may not exceed it, which is what lets the
+# d7c6c97e). A recorded `--timeout` may not exceed it, which is what lets the
 # runner derive its own deadline for the calibration step from this number.
 CALIBRATION_TIMEOUT_CEILING_SECONDS = 900
 
@@ -5781,7 +5781,7 @@ def _validate_hand_written_answers(scenario: Scenario) -> None:
 
 
 # The files the guide's opening writes into the project, named from its text
-# at the pinned revision, d07b62cd:
+# at the pinned revision, d7c6c97e:
 # - references/component-creation.md, "Opening readiness procedure": each
 #   scoring's evidence document, preflight JSON and notes go in one fresh
 #   `traigent-runs/readiness/<YYYYMMDDTHHMMSSZ>/` directory (its example writes
@@ -5805,15 +5805,12 @@ def _validate_hand_written_answers(scenario: Scenario) -> None:
 # review lives in the readiness directory. Any other change to a file `prepare`
 # copied fails.
 #
-# Python writes bytecode for what the opening imports. The guide's calibration
-# command (references/evaluation-and-dataset.md, the `calibrate_evaluator.py`
-# block) runs without `-B`, and so does every recorded replay; the script loads
-# the scorer and the guide's own `preflight.py` with importlib's
-# `spec_from_file_location` and `exec_module` (calibrate_evaluator.py lines
-# 647-653 and 1689-1693 at d07b62cd), and an import writes
-# `<dir>/__pycache__/<stem>.<cache tag>.pyc` beside its source unless bytecode
-# writing is off. So such a file passes, reported as a rewrite is, only where
-# `<dir>/<stem>.py` is a file `prepare` copied.
+# An opening that imports a prepared Python source may leave its bytecode beside
+# that source. The current guide's calibration command disables bytecode before
+# importing, but this verifier also accepts a valid Python cache for a copied
+# source when a different opening path or interpreter writes one. It reports
+# that file as an allowed opening write; a cache without a matching prepared
+# source is refused.
 OPENING_WRITE_FILES = frozenset(
     {
         "traigent-runs/calibration-cases.json",

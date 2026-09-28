@@ -34,6 +34,9 @@ result agrees with it; a `PASS` still means the measured contract matched.
 
 Each of the two contracts has its own intended opening:
 `intended-opening-sound-read.json` answers `expected-opening-sound-read.json`.
+The sound read clears the answer-key finding, but the normalized-text scorer
+still cannot compare regex behavior; the guide holds its band at WORKABLE and
+routes `review-evaluator-fit` without adding a score cap.
 
 The `display` section records the expected scorecard values for an honest
 customer-facing rendering. It does not broaden the semantic pass criteria and

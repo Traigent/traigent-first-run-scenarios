@@ -7,8 +7,8 @@ expected opening below is the contract in that scenario's
 `verifier/expected-opening.json`: the four fields `verify` compares, as
 measured by running the public guide's own preflight, calibration, and
 readiness scripts offline over the scenario's project bytes at guide revision
-[`d07b62cd`](https://github.com/Traigent/traigent-first-run/tree/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199)
-(readiness `schema_version` 6). That is a captain measurement of the guide's
+[`d7c6c97e`](https://github.com/Traigent/traigent-first-run/tree/d7c6c97e49cd71023d17de5c200fc8e6fc8e8ffa)
+(readiness `schema_version` 8). That is a captain measurement of the guide's
 scripts over the bytes, not a worker run. Each is a case-specific contract,
 not a target or promise for another project. The repository includes no
 captured worker run, baseline, managed optimization, or result improvement.
@@ -18,7 +18,7 @@ captured worker run, baseline, managed optimization, or result improvement.
 | `incident-severity-triage` (46) | Ready reference | Agent, labeled data, evaluator, and four varying controls are present | 120 synthetic incident reports; 100 tuning / 20 holdout; four balanced difficulty strata; 12 distinct label strings with their row counts | Deterministic table lookup, declared as normalized exact match, with two supplied calibration cases | `EXCELLENT` / `OK` / `proceed` / no caps |
 | `helpdesk-queue-router` (47) | Ready reference | Agent, labeled data, evaluator, and four varying controls are present | 96 synthetic support tickets across six queues; 80 / 16; four balanced strata; 18 distinct label strings (three ticketing tools' spellings) | Deterministic queue lookup that folds the three tools' spellings together, declared as normalized exact match, with three calibration cases | `EXCELLENT` / `OK` / `proceed` / no caps |
 | `policy-handbook-rag` (48) | Ready reference | Agent, labeled data, evaluator, and four varying controls are present; a 20-document synthetic handbook ships as records | 90 synthetic short-answer questions; 75 / 15; four near-balanced strata; 69 distinct answer strings, counted but not listed | Deterministic normalized match with per-question accepted aliases, with three calibration cases | `EXCELLENT` / `OK` / `proceed` / no caps |
-| `warehouse-text-to-sql` (49) | Evaluator quality | Agent and data ready; the evaluator is declared `limited` because it compares SQL as normalized text, the wrong kind of check for a task where different queries return the same rows | 80 synthetic stock questions with one gold SQLite query each; 66 / 14; four balanced strata; free text | Deterministic normalized text comparison of two queries, with four calibration cases; a shipped SQLite database and its schema are records | `EXCELLENT` / `OK` / `proceed` / no caps; the task-fit mismatch is a finding on the card, which `verify` does not compare |
+| `warehouse-text-to-sql` (49) | Evaluator quality | Agent and data ready; the evaluator is declared `limited` because it compares SQL as normalized text, the wrong kind of check for a task where different queries return the same rows | 80 synthetic stock questions with one gold SQLite query each; 66 / 14; four balanced strata; free text | Deterministic normalized text comparison of two queries, with four calibration cases; a shipped SQLite database and its schema are records | `WORKABLE` / `OK` / `review-evaluator-fit` / no caps; the evaluator-fit ask holds the band, not the score |
 | `clinic-scheduling-sql-exec` (50) | Execution safety | Agent and data ready; the evaluator is declared `unsafe` because it scores by executing the generated query against the shipped database | 72 synthetic scheduling questions with one gold SQLite query each; 60 / 12; four balanced strata; free text | Executes both queries against the shipped database and compares the returned rows; declared method `execution`, with three calibration cases the guide declines to run on the original | `WORKABLE` / `OK` / `confirm-evaluator-connection` / `evaluator-calibration-refused` |
 | `booking-assistant-next-action` (51) | Dataset integrity | Agent and evaluator ready; the data is declared `needs-repair` because six tuning transcripts appear a second time, byte for byte, as holdout rows | 100 rows over 94 unique synthetic chat transcripts; 83 / 17 as written; four balanced strata; 8 distinct action labels | Deterministic action-name comparison, declared as normalized exact match, with two calibration cases | `PARTIAL` / `BLOCKED` / `resplit-dataset` / `dataset-tune-holdout-overlap`, `dataset-repeated-rows` |
 | `tool-dispatch-selector` (52) | Search-space readiness | Data and evaluator ready; the agent is declared `limited` with an empty control list because one model and one fixed instruction are all it sends | 90 synthetic spoken requests mapped to one of seven tool calls; 75 / 15; four near-balanced strata; structured | Deterministic tool-call comparison, declared as normalized exact match, with two calibration cases | `PARTIAL` / `BLOCKED` / `vary-knobs` / `agent-no-varying-knobs` |
@@ -27,7 +27,7 @@ captured worker run, baseline, managed optimization, or result improvement.
 | `returns-email-replies` (55) | Missing material | Agent ready; the data is declared `limited` because it holds inputs only, and the evaluator is declared `missing` | 150 synthetic inbound emails with no expected reply, no split, and no difficulty strata; label shape `absent` | None ships; no calibration record | `PARTIAL` / `BLOCKED` / `label-data` / `dataset-no-expected-outputs`, `evaluator-absent` |
 | `freight-quote-estimator` (56) | Evidence strength | Agent and evaluator ready; the data is declared `limited` because 20 tuning rows make a coarse comparison | 24 synthetic worked quotes; 20 / 4; four balanced strata of six; numeric | Deterministic numeric tolerance, with two calibration cases | `STRONG` / `OK` / `add-examples` / `dataset-coarse-resolution` |
 | `chatbot-on-vendor-flow` (57) | Missing material | Data and evaluator ready; the agent is declared `missing` because routing runs on a hosted vendor flow that nothing in the project can call; a flow export and a project note ship as records | 90 synthetic first messages; 75 / 15; four near-balanced strata; 6 distinct intent labels | Deterministic intent comparison, declared as normalized exact match, with two calibration cases | `NOT READY` / `BLOCKED` / `connect-agent` / `agent-absent` |
-| `regex-rule-authoring` (58) | Dataset integrity | Agent and evaluator ready; the data is declared `limited` because three of its thirty-two answers do not answer their own question, and the published read of five found one of them | 32 synthetic redaction-rule descriptions with one hand-written regular expression each; 24 / 8; four balanced strata of eight; free text | Deterministic normalized text comparison that never compiles either side, with three calibration cases | `WORKABLE` / `OK` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; for a read that finds every answer sound, `STRONG` / `OK` / `proceed` / `dataset-coarse-resolution` |
+| `regex-rule-authoring` (58) | Dataset integrity | Agent and evaluator ready; the data is declared `limited` because three of its thirty-two answers do not answer their own question, and the published read of five found one of them | 32 synthetic redaction-rule descriptions with one hand-written regular expression each; 24 / 8; four balanced strata of eight; free text | Deterministic normalized text comparison that never compiles either side, with three calibration cases | `WORKABLE` / `OK` / `review-answer-key` / `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; for a read that finds every answer sound, `WORKABLE` / `OK` / `review-evaluator-fit` / `dataset-coarse-resolution` |
 
 Splits read tuning / holdout. Every dataset is Traigent-authored synthetic
 content; the catalog describes each evaluator and does not verify it. The
@@ -82,7 +82,7 @@ its conditions lead to different actions; a contract for one case is not a
 contract for the theme, and two scenarios in one family exercise two
 conditions, not the family twice. The routing in the "Behavior to exercise"
 column is implemented at public guide revision
-[`d07b62cd`](https://github.com/Traigent/traigent-first-run/tree/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199).
+[`d7c6c97e`](https://github.com/Traigent/traigent-first-run/tree/d7c6c97e49cd71023d17de5c200fc8e6fc8e8ffa).
 The guide's own offline, isolated behavioral suite exercises missing, weak,
 invalid, and no-usable-component-anchor contracts, and its unit tests cover
 the execution-evaluator refusal. Those are code and contract tests, not public
@@ -107,7 +107,7 @@ containment design and review is separate and is not supplied by the guide.
 ## What the published contracts assume
 
 Each `verifier/expected-opening.json` is what the guide's own scripts returned for
-that project's bytes at `d07b62cd`, measured by a captain rather than produced by a
+that project's bytes at `d7c6c97e`, measured by a captain rather than produced by a
 worker run. Two inputs shape it that the project files do not contain, and both are
 part of the opening the guide asks a worker to perform:
 
@@ -117,7 +117,7 @@ part of the opening the guide asks a worker to perform:
   project.
 - **The row review.** `readiness.py` withholds STRONG and EXCELLENT until a read of
   the expected answers has entered (`--row-review`); `SKILL.md` lists writing that
-  review among the opening's own steps for any project that has rows. The four
+  review among the opening's own steps for any project that has rows. The three
   contracts that publish EXCELLENT are readings taken WITH that review, because the
   rows behind them were in fact read. A reproduction that skips it gets the same
   scores and a held band -- `WORKABLE` with `review-answer-key` -- which is the hold
@@ -148,21 +148,26 @@ Both are committed, per scenario, under `verifier/measurement/`:
   `$MEASURE`, the committed read bound as `$ROW_REVIEW`, and any step the
   measurement recorded refusing named under `refusals` with its message.
 
-Six scenarios ship a review, because those are the six whose published contract
-cannot be re-derived without one; the other seven record that none was passed.
-Five of the six publish a band above the answer-key hold, which the guide
-withholds until a read of the answers enters. The sixth is case 58, whose band
-is below the hold and whose `caps` carry
-`dataset-unsound-expected-outputs` -- a cap `readiness.py` builds out of the
-review's own verdicts and out of nothing else. Measured rather than assumed:
-the same inputs without `--row-review` return the same band, status and action,
-and drop that cap.
+Six scenarios ship a review; the other seven record that none was passed. Four
+of the six publish a band above the answer-key hold, which the guide withholds
+until a read of the answers enters. Case 49 also ships the five-row review the
+guide asks for, but at this pin its evaluator-fit hold means omitting the review
+in a diagnostic replay leaves every published field unchanged. Case 58's
+published read carries `dataset-unsound-expected-outputs` -- a cap
+`readiness.py` builds out of the review's verdicts. Without that read, a
+diagnostic replay keeps WORKABLE / OK, drops the unsound-answer cap, moves the
+score from 70 to 82, and routes `review-evaluator-fit` instead of
+`review-answer-key`. The review is therefore necessary to reproduce case 58's
+published contract. Neither diagnostic omission describes the guide's intended
+opening workflow.
 
 Case 58 also publishes the opening for a read that finds every answer sound,
 because five rows drawn from its thirty-two miss all three unsound answers
 about three times in five: `verifier/expected-opening-sound-read.json`,
-`STRONG` / `OK` / `proceed` / `dataset-coarse-resolution`, measured with
-`row-review-sound-read.json`. `verify` grades the worker's read against the
+`WORKABLE` / `OK` / `review-evaluator-fit` / `dataset-coarse-resolution`, measured
+with `row-review-sound-read.json`. Even when the key passes review, the
+text-comparing regex evaluator remains the wrong kind of check for code. `verify`
+grades the worker's read against the
 scenario's verdict for every row (`verifier/row-verdicts.json`) and compares
 the result with the contract for that read; the scenario's README gives the
 detail.
@@ -189,22 +194,20 @@ than a defect in a scenario.
 
 The opening contract this repository publishes is four fields -- band, status,
 recommended action and caps, each cap with its ceiling and routing -- so
-scenarios that differ in every other way can land on the same one. Four of the
+scenarios that differ in every other way can land on the same one. Three of the
 thirteen do:
 
-- `incident-severity-triage` (46), `helpdesk-queue-router` (47),
-  `policy-handbook-rag` (48) and `warehouse-text-to-sql` (49) all read
+- `incident-severity-triage` (46), `helpdesk-queue-router` (47) and
+  `policy-handbook-rag` (48) all read
   `EXCELLENT` / `OK` / `proceed` / no caps.
 
-That is not four copies of one scenario. They are a closed-label classifier, a
-routing agent, a retrieval agent over a twenty-document handbook, and a
-text-to-SQL agent over a shipped SQLite database -- four agent types, four
-datasets, four evaluators. What they share is the one reading the guide gives a
-project with nothing that caps it, and there is only one of those. Case 49
-carries a task-fit warning on its card that the contract does not compare,
-which is why it sits in a different family from the other three.
+That is not three copies of one scenario. They are a closed-label classifier, a
+routing agent and a retrieval agent over a twenty-document handbook -- three
+agent types, datasets and evaluators. Case 49 now differs in its measured
+contract: its SQL scorer's task-fit ask holds WORKABLE and routes
+`review-evaluator-fit`, without a score cap.
 
-It is written down here because a reader comparing four identical right-hand
+It is written down here because a reader comparing three identical right-hand
 cells cannot otherwise tell a deliberate coincidence from a copy-paste, and
 because a new scenario landing on an existing contract should be a
 decision rather than an accident. `tests/test_scenario.py` derives the groups
@@ -212,9 +215,8 @@ from every contract, a read-dependent scenario's second included, and fails on
 any group missing from its `KNOWN_OPENING_TWINS` registry, which records why the
 scenarios still differ and where that shows.
 
-The hand-written intended openings separate case 49 from the other three: its
-intended opening asks for an evaluator repair, and it records that the guide at
-`d07b62cd` has no cap for a scorer that is the wrong kind of check.
+The hand-written intended opening for case 49 now agrees with the guide's
+measured evaluator-fit hold; the prior declared divergence is resolved.
 
 ## Dataset origin rules
 

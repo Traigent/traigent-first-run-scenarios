@@ -59,8 +59,8 @@ every current result is labeled **Scenario contract · no recorded run**, not
 **Verified run evidence**.
 
 At public guide revision
-[`d07b62cd`](https://github.com/Traigent/traigent-first-run/tree/d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199)
-(readiness `schema_version` 6), the Guided First Run implements the route
+[`d7c6c97e`](https://github.com/Traigent/traigent-first-run/tree/d7c6c97e49cd71023d17de5c200fc8e6fc8e8ffa)
+(readiness `schema_version` 8), the Guided First Run implements the route
 families summarized below: a ready project advances to baseline approval;
 incomplete material is preserved, created, repaired, or reviewed with the
 required human decisions; invalid measurement stops before paid work; and,
@@ -85,7 +85,7 @@ revision — never a recorded run or a measured outcome. ("Published" and
 
 The expected opening of every row is the four fields `verify` compares —
 `band · status · recommended_action · caps` — as measured by the guide's own
-scripts over the project bytes at guide revision `d07b62cd`. Each is a
+scripts over the project bytes at guide revision `d7c6c97e`. Each is a
 case-specific contract for that scenario at that revision, not a target for
 another project. The caps column names each cap's condition; the contract also
 records its ceiling and whether it blocks the run or asks first, and `verify`
@@ -98,7 +98,7 @@ optimization.
 | `incident-severity-triage` (46)      | Ready reference        | Closed-label severity classifier; agent, labeled rows, evaluator, and four varying settings present                                 | EXCELLENT · OK · `proceed` · none                                                                         |
 | `helpdesk-queue-router` (47)         | Ready reference        | Six-queue ticket router whose evaluator folds three ticketing tools' spellings together; all components ready                       | EXCELLENT · OK · `proceed` · none                                                                         |
 | `policy-handbook-rag` (48)           | Ready reference        | Retrieval-augmented short-answer QA over a 20-document handbook; all components ready                                               | EXCELLENT · OK · `proceed` · none                                                                         |
-| `warehouse-text-to-sql` (49)         | Evaluator quality      | Text-to-SQL over a shipped SQLite database; the scorer compares SQL as text, the wrong kind of check for the task                    | EXCELLENT · OK · `proceed` · none (the mismatch is a task-fit finding on the card, not a cap; the hand-written intended opening asks for an evaluator repair and declares that divergence, field by field) |
+| `warehouse-text-to-sql` (49)         | Evaluator quality      | Text-to-SQL over a shipped SQLite database; the scorer compares SQL as text, the wrong kind of check for the task                    | WORKABLE · OK · `review-evaluator-fit` · none (the evaluator-fit ask holds the band without a score cap) |
 | `clinic-scheduling-sql-exec` (50)    | Execution safety       | Text-to-SQL whose scorer executes the generated query against the shipped database; calibration of the original is declined        | WORKABLE · OK · `confirm-evaluator-connection` · `evaluator-calibration-refused`                          |
 | `booking-assistant-next-action` (51) | Dataset integrity      | Next-action selection from a flat chat transcript; six tuning transcripts repeat on the holdout side                                | PARTIAL · BLOCKED · `resplit-dataset` · `dataset-tune-holdout-overlap`, `dataset-repeated-rows`           |
 | `tool-dispatch-selector` (52)        | Search-space readiness | Tool-call selection with one model, one fixed instruction, and no setting that varies                                               | PARTIAL · BLOCKED · `vary-knobs` · `agent-no-varying-knobs`                                               |
@@ -107,24 +107,23 @@ optimization.
 | `returns-email-replies` (55)         | Missing material       | Reply drafting from 150 logged emails; no expected outputs, no evaluator, no calibration record                                     | PARTIAL · BLOCKED · `label-data` · `dataset-no-expected-outputs`, `evaluator-absent`                      |
 | `freight-quote-estimator` (56)       | Evidence strength      | Numeric estimation with a tolerance scorer over 24 worked quotes                                                                    | STRONG · OK · `add-examples` · `dataset-coarse-resolution`                                                |
 | `chatbot-on-vendor-flow` (57)        | Missing material       | Intent routing on a hosted vendor flow; labeled rows and a calibratable evaluator, but no local agent                               | NOT READY · BLOCKED · `connect-agent` · `agent-absent`                                                    |
-| `regex-rule-authoring` (58)          | Dataset integrity      | Regular-expression authoring against a hand-written answer key in which three answers do not answer their own question             | WORKABLE · OK · `review-answer-key` · `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; a read that finds every answer sound opens STRONG · OK · `proceed` · `dataset-coarse-resolution` |
+| `regex-rule-authoring` (58)          | Dataset integrity      | Regular-expression authoring against a hand-written answer key in which three answers do not answer their own question             | WORKABLE · OK · `review-answer-key` · `dataset-unsound-expected-outputs`, `dataset-coarse-resolution`; a read that finds every answer sound opens WORKABLE · OK · `review-evaluator-fit` · `dataset-coarse-resolution` |
 
 ### Scenarios that open the same way
 
 A contract is four fields, so scenarios that differ in every other way can
-publish the same one - down to each cap's ceiling and routing. Every such group
-is registered, with why its scenarios still differ, in `KNOWN_OPENING_TWINS` in
-`tests/test_scenario.py`, which derives the groups from the contracts and fails
-on one that is not registered:
+publish the same one - down to each cap's ceiling and routing. The current
+group is:
 
-- `incident-severity-triage` (46), `helpdesk-queue-router` (47),
-  `policy-handbook-rag` (48) and `warehouse-text-to-sql` (49) all open
-  EXCELLENT · OK · `proceed` with no cap. They are four agent types over four
-  datasets and four evaluators; what they share is the one reading the guide
-  gives a project with nothing that caps it. The hand-written intended openings
-  separate case 49: its intended opening asks for an evaluator repair, and it
-  declares where the guide departs from that (see
-  [docs/methodology.md](docs/methodology.md#hand-written-answers)).
+- `incident-severity-triage` (46), `helpdesk-queue-router` (47) and
+  `policy-handbook-rag` (48) all open EXCELLENT · OK · `proceed` with no cap.
+  They have different agents, datasets and evaluators.
+
+Case 49 now opens WORKABLE · OK · `review-evaluator-fit` with no cap: the guide
+withholds a higher band until the SQL scorer's task fit is reviewed. Every
+group with identical contracts is registered in `KNOWN_OPENING_TWINS` in
+`tests/test_scenario.py`; the test derives the groups and fails on an
+unregistered or stale entry.
 
 Each scenario's primary dataset is declared and checked as data rather than
 presentation copy:

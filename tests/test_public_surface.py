@@ -4,9 +4,9 @@ from __future__ import annotations
 import importlib.util
 import io
 import shutil
+import sqlite3
 import subprocess
 import sys
-import sqlite3
 import tarfile
 import tempfile
 import unittest

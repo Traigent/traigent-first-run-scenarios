@@ -95,7 +95,7 @@ SOUND_READ_SUFFIX = "-sound-read"
 # How long each replayed step may run before it is stopped, whole. Calibration
 # is the one step that runs the scenario's own code, and the guide bounds it
 # itself: CALIBRATION_TIMEOUT_CEILING_SECONDS is the longest the guide's
-# calibrate_evaluator.py budgets a calibration for (line 103 at d07b62cd), and
+# calibrate_evaluator.py budgets a calibration for (line 103 at d7c6c97e), and
 # `check` refuses a recorded `--timeout` above it. The margin covers starting
 # the interpreter and writing the record after the guide's own deadline fires.
 # Preflight and readiness only read files -- preflight.py's docstring: it

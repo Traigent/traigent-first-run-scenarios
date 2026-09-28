@@ -6,8 +6,8 @@ writes. Tests that build a project by hand only check what their author
 thought the guide writes, so this one runs the guide itself: each scenario is
 prepared from a `traigent-first-run` checkout named by `GUIDE`, its recorded
 preflight, calibration and readiness commands run in the prepared project
-against the guide copy `prepare` made - as a worker's would, with Python left
-free to write bytecode, as the guide leaves it - and `verify` must then pass
+against the guide copy `prepare` made - as a worker's would, leaving the
+guide's bytecode policy intact - and `verify` must then pass
 with `--project-dir`. Skipped without `GUIDE`; CI's re-measure job sets it to
 the pinned revision.
 
@@ -78,10 +78,10 @@ class RecordedOpeningInPreparedProjectTests(unittest.TestCase):
         )
         return status, output.getvalue()
 
-    def run_recorded_opening(self, slug: str) -> tuple[Path, Path, dict[str, object]]:
+    def run_recorded_opening(self, slug: str) -> tuple[Path, Path]:
         """Prepare `slug` and run its recorded steps in the project, as recorded.
 
-        Returns the run record, the readiness result and the invocation record.
+        Returns the run record and readiness result.
         """
         root = self.repository / "scenarios" / slug
         output_path = self.root / f"run-{slug}"
@@ -108,8 +108,8 @@ class RecordedOpeningInPreparedProjectTests(unittest.TestCase):
             "$MEASURE": str(measure),
             "$ROW_REVIEW": str(root / "verifier" / "measurement" / "row-review.json"),
         }
-        # Nothing here turns bytecode off: the guide runs its calibration
-        # without `-B`, and so does the recorded command.
+        # This harness does not change bytecode policy; the guide's calibration
+        # script decides whether its imports write bytecode.
         environment = {
             key: value
             for key, value in os.environ.items()
@@ -139,10 +139,10 @@ class RecordedOpeningInPreparedProjectTests(unittest.TestCase):
                 done.stdout, encoding="utf-8"
             )
         result = measure / scenario.REPLAY_STEPS["readiness"].output
-        return output_path / "run.json", result, invocation
+        return output_path / "run.json", result
 
     def test_every_recorded_opening_passes_verify_with_its_project(self) -> None:
-        bytecode = (
+        guide_preflight_cache = (
             f"{scenario.PREPARED_GUIDE_DIRECTORY}/skills/traigent-first-run/scripts/"
             f"__pycache__/preflight.{sys.implementation.cache_tag}.pyc"
         )
@@ -151,14 +151,12 @@ class RecordedOpeningInPreparedProjectTests(unittest.TestCase):
         self.assertEqual(13, len(slugs))
         for slug in slugs:
             with self.subTest(slug=slug):
-                run_record, result, invocation = self.run_recorded_opening(slug)
+                run_record, result = self.run_recorded_opening(slug)
                 project = run_record.parent / scenario.PREPARED_PROJECT_DIRECTORY
-                steps = invocation["steps"]
-                assert isinstance(steps, dict)
-                if "calibration" in steps:
-                    # Calibration loads the guide's preflight.py through
-                    # importlib, so Python wrote its bytecode into the copy.
-                    self.assertTrue((project / bytecode).is_file(), slug)
+                # Current guide calibration disables bytecode before importing
+                # preflight. Keep this separate from verify's broader allowance
+                # for valid caches left by other opening paths.
+                self.assertFalse((project / guide_preflight_cache).exists(), slug)
                 manifest = json.loads(
                     (scenarios / slug / "scenario.json").read_text(encoding="utf-8")
                 )

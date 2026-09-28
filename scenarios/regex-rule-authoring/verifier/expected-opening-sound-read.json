@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "readiness_schema_version": 6,
+  "readiness_schema_version": 8,
   "scope": "phase-a-opening",
-  "band": "STRONG",
+  "band": "WORKABLE",
   "status": "OK",
-  "recommended_action": "proceed",
+  "recommended_action": "review-evaluator-fit",
   "caps": [
     {
       "condition": "dataset-coarse-resolution",
