@@ -1301,7 +1301,8 @@ def _normalize_scenario_path(
         value,
         allow_none=False,
     )
-    assert normalized is not None
+    if normalized is None:
+        raise _manifest_error(manifest_path, field, "must not be null")
     return normalized
 
 
@@ -2296,7 +2297,12 @@ def _validate_materialized_dataset(
         )
 
     relative_path = dataset["path"]
-    assert isinstance(relative_path, str)
+    if not isinstance(relative_path, str):
+        raise _catalog_materialized_error(
+            scenario,
+            f"{field}.path",
+            "must be a string",
+        )
     dataset_path = _catalog_regular_file(
         scenario,
         relative_path,
