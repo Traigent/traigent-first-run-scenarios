@@ -226,33 +226,21 @@ contract is written by hand, and three `verify` options grade a run beyond the
 contract. They check different things, and each is bounded to exactly what it
 reads.
 
-- **Intended opening** - `verifier/intended-opening.json`, written by hand. How
-  this release's files were written, stated exactly: their author had already
-  read the measured band, status, action and cap conditions, which the README's
-  scenario table publishes. Each cap's ceiling came from `readiness.py`'s
-  ceiling constants. Whether each cap blocks or asks came from the guide's
-  routing reference (`evaluation-and-dataset.md`, "Routing readiness findings",
-  and `run-safety.md` on the refused calibration) read together with
-  `readiness.py`'s comments on its cap type. Case 49's one cap is this
-  repository's, because `readiness.py` has none: its condition is named here,
-  whether it blocks or asks came from the evaluation reference and `SKILL.md`
-  section 2, and its ceiling is null because neither the documentation nor the
-  code gives the finding a number - a choice, not a reading. So the
-  agreement shows different things by field: on ceilings, `readiness.py`
-  agreeing with itself; on blocks and asks, partly the documentation agreeing
-  with the code; on band, status, action and conditions, nothing independent,
-  since those were in view. What the exercise did surface is where the guide's
-  documentation and its code part. Case 49 is that place: the evaluation
-  reference treats a scorer that compares SQL as text as a finding to repair,
-  and `readiness.py` has no cap or ask for it, so the intended opening declares
-  a divergence naming both fields and both values. The files cannot detect a
-  ceiling that drifts between the code and the documentation, because the
-  ceilings were read off the code. `check` holds each intended opening equal
-  to its contract unless it declares a divergence naming exactly the fields
-  that differ, with both values; it cannot tell an intended opening written
-  after the measurement from one written before, and nothing in the repository
-  records the order. `verify` notes whether a result agrees with it; that note
-  never changes a `PASS`.
+- **Intended opening** - `verifier/intended-opening.json`, written by hand.
+  The author had already read the measured band, status, action and cap
+  conditions, so agreement is not an independent oracle for those fields.
+  Cap ceilings were read from `readiness.py`; blocking and asking semantics
+  were checked against the guide's routing references. Case 49 previously
+  declared a divergence because the guide described its SQL scorer as a task-fit
+  problem but did not ask about it in readiness. At the current pin the guide
+  holds the band at WORKABLE and routes `review-evaluator-fit` without a score
+  cap, so the intended opening now agrees and that divergence is closed. The
+  files cannot detect a ceiling that drifts between code and documentation,
+  because ceilings were read off the code. `check` holds each intended opening
+  equal to its contract unless it declares a divergence naming exactly the
+  fields that differ, with both values; it cannot tell an intended opening
+  written after measurement from one written before. `verify` notes whether a
+  result agrees with it; that note never changes a `PASS`.
 - **Agent read** (`--agent-read`) - graded against the controls the manifest
   declares by hand, which `check` holds equal to the committed read the
   contracts were measured with. *Catches:* a setting name the worker's read
@@ -268,9 +256,10 @@ reads.
   *Proves:* at the moment of the check, no prepared file was changed or removed
   - apart from a rewrite of a shipped `traigent-runs/calibration-cases.json`,
   which the guide documents and the output reports - nothing was added beyond
-  the guide's documented opening writes and Python's bytecode of a prepared
-  module, which the guide's calibration imports without `-B` and the output
-  reports, no directory was added beyond the ones those writes create, and
+  the guide's documented opening writes and validated Python bytecode of a
+  prepared module, if another opening path or interpreter creates it; the
+  current guide's calibration disables bytecode writes. The output reports
+  accepted cache files. No directory was added beyond those writes, and
   every directory could be read. A bytecode file passes only with a supported
   CPython's name, magic and header over the prepared source's size, a body
   after the header, and - where `verify` runs that version - a body that opens

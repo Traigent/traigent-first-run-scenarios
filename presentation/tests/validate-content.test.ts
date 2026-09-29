@@ -297,7 +297,7 @@ describe("presentation content validation", () => {
     expect(
       guideSlides.every(
         (slide) =>
-          slide.sourceRevision === "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199",
+          slide.sourceRevision === "d7c6c97e49cd71023d17de5c200fc8e6fc8e8ffa",
       ),
     ).toBe(true);
   });

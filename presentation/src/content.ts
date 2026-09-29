@@ -661,7 +661,7 @@ for (const [label, cases] of [
 const customerPrompt =
   "Help me run my first Traigent optimization.\nClone https://github.com/Traigent/traigent-first-run and follow GUIDE.md.";
 
-const guideRevision = "d07b62cd4abb6ecb6d2edcdcb2d535f02bb2c199";
+const guideRevision = "d7c6c97e49cd71023d17de5c200fc8e6fc8e8ffa";
 const readinessEvidence = `Traigent/traigent-first-run@${guideRevision.slice(0, 8)} readiness scorer`;
 const bankEvidence = `${bankSize} scenario manifests and expected-opening contracts under scenarios/`;
 
@@ -854,6 +854,7 @@ const rawPresentation = {
         "Confidence is the share of check weight the scorer could actually measure - measurement coverage, not statistical confidence.",
         "The confidence rule is a ceiling, not a floor. It never promotes NOT READY or PARTIAL to WORKABLE.",
         "A second hold shares the same WORKABLE ceiling: until a read of the expected answers has entered - whether they answer their own questions - STRONG and EXCELLENT are withheld too. It is a hold on the band, not a number on the score, and the card reports each hold separately.",
+        "A task-inappropriate evaluator creates an ask and also holds the band at WORKABLE until a fitting method replaces it. The score and caps remain separate from that hold.",
       ],
     },
     {
@@ -867,9 +868,9 @@ const rawPresentation = {
       steps: [],
       matrix: [
         {
-          startingPoint: `Agent, data, and evaluator are usable; no cap fires (${caseList(noCapCases)})`,
+          startingPoint: `No score cap fires; a separate evaluator-fit hold may still apply (${caseList(noCapCases)})`,
           safestNextStep:
-            "No ceiling from a cap; explain readiness and stop at baseline approval",
+            "Explain any band hold and evaluator-fit ask before baseline approval",
           coverage: "published",
         },
         {
@@ -1382,9 +1383,9 @@ const rawPresentation = {
       scenarioMatrix: [
         {
           family: "Evaluator quality",
-          setup: `${caseList(evaluatorQualityCases)}: SQL compared as normalized text, which the card flags as a task-fit warning without a cap (49); grading delegated to a package nobody can run (53)`,
+          setup: `${caseList(evaluatorQualityCases)}: SQL compared as normalized text, which opens a task-fit ask and holds the band without a score cap (49); grading delegated to a package nobody can run (53)`,
           expectedRoute:
-            "Calibrate, repair, or replace it; on a timeout, ask the human one bounded question - never call a slow evaluator broken",
+            "Review a mismatched method before using it, repair or replace a broken one; on a timeout, ask the human one bounded question",
           coverage: "published",
         },
         {
@@ -1429,7 +1430,7 @@ const rawPresentation = {
       notes: [
         "Read the family column as the deck's grouping and the other columns as the manifest's and the contract's own values.",
         `The ready references are ${numberWord(readyCases.length)} because a ready project is the shortest route; the bank exists for the other ${numberWord(gapScenarioCount)}.`,
-        "Case 49 is a ready-looking opening with a warning inside it: the card flags SQL compared as text as a task-fit concern without capping the score, which is why the deck files it under evaluator quality.",
+        "Case 49 scores highly but opens at WORKABLE: the SQL text-comparison mismatch asks for evaluator-fit review and holds the band without capping the score.",
       ],
     },
     {

@@ -146,9 +146,11 @@ DDL.
 bytes at the pinned revision, and two of its inputs are committed beside it under
 `verifier/measurement/`: the read of the agent's settings, and the row review.
 
-The guide withholds its top two bands until a read of the expected answers has
-entered, so this scenario's band depends on that review. It covers 5 of the
-80 rows -- the five the opening asks for, drawn at random with the seed the
+The guide asks for a read of the expected answers, and this recorded opening
+includes one. At this pin the evaluator-fit ask independently holds the band at
+WORKABLE: a diagnostic replay without the review produces the same published
+payload. The review covers 5 of the 80 rows -- the five the opening asks for,
+drawn at random with the seed the
 document records -- and the guide's own card says what that means: *a sample, so
 unreviewed answers are assumed sound rather than verified*.
 
