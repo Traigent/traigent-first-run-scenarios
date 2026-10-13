@@ -1,10 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { viteSingleFile } from "vite-plugin-singlefile";
+import { inlineSingleFile } from "./scripts/inline-single-file";
 
 export default defineConfig({
   base: "./",
-  plugins: [react(), viteSingleFile()],
+  plugins: [react(), inlineSingleFile()],
   build: {
     outDir: "dist",
     emptyOutDir: true,
