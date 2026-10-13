@@ -453,7 +453,7 @@ describe("customer bundle", () => {
     expect(notices).toContain("react@19.2.8");
     expect(notices).toContain("react-dom@19.2.8");
     expect(notices).toContain("scheduler@0.27.0");
-    expect(notices).toContain("zod@4.5.4");
+    expect(notices).toContain("zod@4.6.7");
     expect(notices).toContain("MIT License");
     expect(notices).toContain("Copyright");
     expect(notices).not.toContain("pptxgenjs@");
