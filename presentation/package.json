@@ -30,13 +30,13 @@
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",
     "@vitejs/plugin-react": "6.1.1",
-    "jszip": "3.10.1",
     "image-size": "file:vendor/image-size-disabled",
+    "jszip": "3.10.1",
     "pptxgenjs": "4.0.1",
     "prettier": "3.9.6",
     "tsx": "4.23.13",
     "typescript": "7.0.2",
-    "vite": "8.2.2",
+    "vite": "8.2.4",
     "vitest": "4.1.11"
   },
   "overrides": {
