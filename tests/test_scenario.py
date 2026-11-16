@@ -456,16 +456,127 @@ class PublishedDatasetTableTests(unittest.TestCase):
         ):
             self.assert_dataset_table_matches_catalogs(readme)
 
+    def test_dataset_table_rejects_extra_and_duplicate_rows_at_any_spacing(
+        self,
+    ) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        published = scenario.ScenarioBank().discover()
+        extra_id = max(item.legacy_id for item in published) + 1
+        for item in published:
+            row = next(
+                line
+                for line in readme.splitlines()
+                if line.startswith(f"| {item.legacy_id} |")
+            )
+            cells = [cell.strip() for cell in row.strip("|").split("|")]
+            for kind, row_id in (("extra", extra_id), ("duplicate", item.legacy_id)):
+                for padding in ("", " ", "  "):
+                    for edges in (True, False):
+                        with self.subTest(
+                            scenario=item.slug, kind=kind, padding=padding, edges=edges
+                        ):
+                            added = "|".join(
+                                padding + cell + padding
+                                for cell in [str(row_id), *cells[1:]]
+                            )
+                            if edges:
+                                added = "|" + added + "|"
+                            mutated = readme.replace(row, row + "\n" + added, 1)
+                            self.assertNotEqual(readme, mutated)
+                            with self.assertRaisesRegex(
+                                AssertionError, "cover the bank once and in order"
+                            ):
+                                self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_accepts_equivalent_pipe_spacing(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        start = readme.index("| Scenario | Dataset |")
+        end = readme.index("\n\n", start)
+        table = readme[start:end]
+        for padding in ("", "  "):
+            for leading, trailing in (
+                (False, False),
+                (True, False),
+                (False, True),
+                (True, True),
+            ):
+                with self.subTest(padding=padding, leading=leading, trailing=trailing):
+                    lines = []
+                    for line in table.splitlines():
+                        cells = [cell.strip() for cell in line.strip("|").split("|")]
+                        line = "|".join(padding + cell + padding for cell in cells)
+                        lines.append(
+                            ("|" if leading else "") + line + ("|" if trailing else "")
+                        )
+                    mutated = readme[:start] + "\n".join(lines) + readme[end:]
+                    self.assertNotEqual(readme, mutated)
+                    self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_ignores_separate_unrelated_table(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        row_id = scenario.ScenarioBank().discover()[0].legacy_id
+        unrelated = f"\n\n| Example | Note |\n| --- | --- |\n| {row_id} | unrelated |\n"
+        for mutated in (unrelated + "\n" + readme, readme + unrelated):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_rejects_malformed_body_rows_clearly(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        row_id = scenario.ScenarioBank().discover()[0].legacy_id
+        row = next(
+            line for line in readme.splitlines() if line.startswith(f"| {row_id} |")
+        )
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        for added in (
+            "|".join(["unknown", *cells[1:]]),
+            "|".join(cells[:-1]),
+            "malformed body row",
+        ):
+            with self.subTest(added=added):
+                mutated = readme.replace(row, row + "\n" + added, 1)
+                self.assertNotEqual(readme, mutated)
+                with self.assertRaisesRegex(AssertionError, "dataset table body row"):
+                    self.assert_dataset_table_matches_catalogs(mutated)
+
     def assert_dataset_table_matches_catalogs(self, readme: str) -> None:
         published = scenario.ScenarioBank().discover()
-        table_lines = [
-            line
-            for line in readme.splitlines()
-            if line.startswith("| ") and re.match(r"\| \d+ \|", line)
+
+        def cells_of(line: str) -> list[str]:
+            return [
+                cell.strip()
+                for cell in line.strip().removeprefix("|").removesuffix("|").split("|")
+            ]
+
+        header = [
+            "Scenario",
+            "Dataset",
+            "Task",
+            "Rows",
+            "Splits",
+            "Difficulty strata",
+            "Label shape",
         ]
+        lines = readme.splitlines()
+        headers = [
+            index for index, line in enumerate(lines) if cells_of(line) == header
+        ]
+        self.assertEqual(1, len(headers), "README must have one dataset table header")
+        start = headers[0] + 1
+        self.assertLess(start, len(lines), "dataset table separator is missing")
+        separator = cells_of(lines[start])
+        self.assertEqual(len(header), len(separator), "dataset table separator width")
+        for cell in separator:
+            self.assertRegex(cell, r"^:?-+:?$", "invalid dataset table separator")
+
+        # Account for every body line up to the table's blank-line boundary.
+        # Validate cells before interpreting IDs; never filter rows by spelling.
         parsed: list[tuple[list[str], str]] = []
-        for line in table_lines:
-            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        for line in lines[start + 1 :]:
+            if not line.strip():
+                break
+            cells = cells_of(line)
+            message = f"malformed dataset table body row: {line}"
+            self.assertEqual(len(header), len(cells), message)
+            self.assertIsNotNone(re.fullmatch(r"[0-9]+", cells[0]), message)
             parsed.append((cells, line))
 
         expected_ids = [item.legacy_id for item in published]
