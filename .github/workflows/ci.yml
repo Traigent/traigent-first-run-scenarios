@@ -21,6 +21,8 @@ jobs:
   quality:
     name: Quality gates
     runs-on: ubuntu-latest
+    # Successful sample max 20s (n=5); 5m leaves a 280s margin.
+    timeout-minutes: 5
 
     steps:
       - name: Check out repository
@@ -108,6 +110,8 @@ jobs:
   verify:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    # Both legs maxed at 87s (n=5 each); 10m leaves a 513s margin.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -180,6 +184,8 @@ jobs:
   reproduce:
     name: Re-measure published openings
     runs-on: ubuntu-latest
+    # Successful sample max 74s (n=5); 10m leaves a 526s margin.
+    timeout-minutes: 10
     permissions:
       contents: read
 
@@ -229,6 +235,8 @@ jobs:
   presentation:
     name: Presentation artifacts
     runs-on: ubuntu-latest
+    # Successful sample max 111s (n=5); 10m leaves a 489s margin.
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository

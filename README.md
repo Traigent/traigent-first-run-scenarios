@@ -142,6 +142,7 @@ presentation copy:
 | 55 | `inbound-returns-emails` | Free-text reply drafting | 150 unique | no split | no strata | absent |
 | 56 | `worked-quotes` | Numeric estimation | 24 unique | 20 / 4 | 6 / 6 / 6 / 6 | numeric |
 | 57 | `first-messages` | Intent routing | 90 unique | 75 / 15 | 23 / 23 / 22 / 22 | 6 mapped label strings |
+| 58 | `redaction-rules` | Regex authoring | 32 unique | 24 / 8 | 8 / 8 / 8 / 8 | free text |
 
 Difficulty strata are listed as easy / medium / hard / very hard. Every
 dataset is Traigent-authored synthetic content with no customer data and no

@@ -24,6 +24,8 @@ jobs:
   drift:
     name: Re-measure against the guide's head
     runs-on: ubuntu-latest
+    # Successful sample max 45s (n=5); 5m leaves a 255s margin.
+    timeout-minutes: 5
     permissions:
       contents: read
 
