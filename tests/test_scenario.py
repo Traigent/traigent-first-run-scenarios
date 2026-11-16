@@ -408,6 +408,139 @@ TELL_SNIPPETS = (
 )
 
 
+class PublishedDatasetTableTests(unittest.TestCase):
+    """Keep the README inventory tied to every discovered catalog profile."""
+
+    def test_readme_dataset_table_matches_every_published_primary_dataset(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assert_dataset_table_matches_catalogs(readme)
+
+    def test_dataset_table_rejects_stale_absent_split(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        mutated = readme.replace("| no split |", "| 999 / 1 |")
+        self.assertNotEqual(readme, mutated, "corpus must exercise absent splits")
+        with self.assertRaisesRegex(AssertionError, "no split"):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_rejects_swapped_split_labels(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        mutated = re.sub(
+            r"(\d+) tuning / (\d+) holdout", r"\1 holdout / \2 tuning", readme
+        )
+        self.assertNotEqual(readme, mutated, "corpus must exercise named splits")
+        with self.assertRaisesRegex(AssertionError, "tuning"):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_rejects_missing_published_scenario(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        last_id = scenario.ScenarioBank().discover()[-1].legacy_id
+        mutated = "\n".join(
+            line
+            for line in readme.splitlines()
+            if not line.startswith(f"| {last_id} |")
+        )
+        self.assertNotEqual(readme, mutated)
+        with self.assertRaisesRegex(AssertionError, "cover the bank once and in order"):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_uses_dimension_names_not_catalog_key_order(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        published = scenario.ScenarioBank().discover()
+        for item in published:
+            for dataset in item.manifest["catalog"]["datasets"]:
+                for dimension in ("splits", "difficulty_strata"):
+                    counts = dataset[dimension]["counts"]
+                    dataset[dimension]["counts"] = dict(reversed(list(counts.items())))
+        with mock.patch.object(
+            scenario.ScenarioBank, "discover", return_value=published
+        ):
+            self.assert_dataset_table_matches_catalogs(readme)
+
+    def assert_dataset_table_matches_catalogs(self, readme: str) -> None:
+        published = scenario.ScenarioBank().discover()
+        table_lines = [
+            line
+            for line in readme.splitlines()
+            if line.startswith("| ") and re.match(r"\| \d+ \|", line)
+        ]
+        parsed: list[tuple[list[str], str]] = []
+        for line in table_lines:
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            parsed.append((cells, line))
+
+        expected_ids = [item.legacy_id for item in published]
+        actual_ids = [int(cells[0]) for cells, _ in parsed]
+        self.assertEqual(
+            expected_ids,
+            actual_ids,
+            "README dataset rows must cover the bank once and in order",
+        )
+
+        for item, (cells, line) in zip(published, parsed):
+            profiles = item.manifest["catalog"]["datasets"]
+            self.assertEqual(
+                1, len(profiles), f"{item.slug} must have one primary dataset"
+            )
+            dataset = profiles[0]
+            self.assertEqual(7, len(cells), line)
+            self.assertEqual(f"`{dataset['id']}`", cells[1], line)
+
+            task_words = re.sub(r"[^a-z0-9]+", " ", dataset["task"].lower()).split()
+            displayed_task = re.sub(r"[^a-z0-9]+", " ", cells[2].lower()).split()
+            self.assertEqual(
+                task_words, displayed_task, f"{item.slug} task semantics: {line}"
+            )
+
+            rows = dataset["rows"]
+            unique = dataset["unique_inputs"]
+            row_text = (
+                f"{unique} unique"
+                if rows == unique
+                else f"{rows} rows, {unique} unique"
+            )
+            self.assertEqual(row_text, cells[3], line)
+
+            split_counts = dataset["splits"]["counts"]
+            if not split_counts:
+                self.assertEqual("no split", cells[4], line)
+            else:
+                # The table uses tuning / holdout, with optional explicit labels.
+                split_order = ("tuning", "holdout")
+                self.assertEqual(set(split_order), set(split_counts), line)
+                plain_splits = " / ".join(str(split_counts[key]) for key in split_order)
+                named_splits = " / ".join(
+                    f"{split_counts[key]} {key}" for key in split_order
+                )
+                self.assertIn(cells[4], (plain_splits, named_splits), line)
+            difficulty_counts = dataset["difficulty_strata"]["counts"]
+            difficulty_text = (
+                "no strata"
+                if not difficulty_counts
+                else " / ".join(
+                    str(difficulty_counts[key])
+                    for key in ("easy", "medium", "hard", "very-hard")
+                )
+            )
+            self.assertEqual(difficulty_text, cells[5], line)
+
+            shape = dataset["label_shape"]
+            kind = shape["kind"]
+            if kind == "mapped-labels":
+                label_text = f"{shape['surface_label_count']} mapped label strings"
+            elif kind == "unmapped-labels":
+                label_text = f"{shape['surface_label_count']} unmapped label strings"
+            elif kind == "free-text":
+                label_text = "free text"
+            elif kind in {"absent", "numeric", "structured"}:
+                label_text = kind
+            else:
+                self.fail(f"unsupported label shape {kind!r} in {item.slug}")
+            displayed_label = cells[6]
+            if dataset["task"] == "text-to-sql":
+                displayed_label = displayed_label.removesuffix(" (SQL)")
+            self.assertEqual(label_text, displayed_label, line)
+
+
 class TellStreamTests(unittest.TestCase):
     """The block-at-a-time leak scan names what folding the whole file names."""
 
