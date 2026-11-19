@@ -1,0 +1,14 @@
+# Code owners for review routing. Changes to these paths need review from the
+# owner before merge. No org team has access to this repo, so the owner is a
+# named login.
+
+# CI workflows: a change here can alter what runs with repo secrets.
+/.github/workflows/                       @nimrodbusany
+
+# Scenario project dependencies (pinned per scenario).
+/scenarios/*/project/requirements.txt     @nimrodbusany
+
+# Verifier code (checks that run against scenario openings).
+/scripts/check_ask_shape.py               @nimrodbusany
+/scripts/check_public_surface.py          @nimrodbusany
+/scripts/reproduce_openings.py            @nimrodbusany
