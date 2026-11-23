@@ -408,6 +408,250 @@ TELL_SNIPPETS = (
 )
 
 
+class PublishedDatasetTableTests(unittest.TestCase):
+    """Keep the README inventory tied to every discovered catalog profile."""
+
+    def test_readme_dataset_table_matches_every_published_primary_dataset(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assert_dataset_table_matches_catalogs(readme)
+
+    def test_dataset_table_rejects_stale_absent_split(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        mutated = readme.replace("| no split |", "| 999 / 1 |")
+        self.assertNotEqual(readme, mutated, "corpus must exercise absent splits")
+        with self.assertRaisesRegex(AssertionError, "no split"):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_rejects_swapped_split_labels(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        mutated = re.sub(
+            r"(\d+) tuning / (\d+) holdout", r"\1 holdout / \2 tuning", readme
+        )
+        self.assertNotEqual(readme, mutated, "corpus must exercise named splits")
+        with self.assertRaisesRegex(AssertionError, "tuning"):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_rejects_missing_published_scenario(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        last_id = scenario.ScenarioBank().discover()[-1].legacy_id
+        mutated = "\n".join(
+            line
+            for line in readme.splitlines()
+            if not line.startswith(f"| {last_id} |")
+        )
+        self.assertNotEqual(readme, mutated)
+        with self.assertRaisesRegex(AssertionError, "cover the bank once and in order"):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_uses_dimension_names_not_catalog_key_order(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        published = scenario.ScenarioBank().discover()
+        for item in published:
+            for dataset in item.manifest["catalog"]["datasets"]:
+                for dimension in ("splits", "difficulty_strata"):
+                    counts = dataset[dimension]["counts"]
+                    dataset[dimension]["counts"] = dict(reversed(list(counts.items())))
+        with mock.patch.object(
+            scenario.ScenarioBank, "discover", return_value=published
+        ):
+            self.assert_dataset_table_matches_catalogs(readme)
+
+    def test_dataset_table_rejects_extra_and_duplicate_rows_at_any_spacing(
+        self,
+    ) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        published = scenario.ScenarioBank().discover()
+        extra_id = max(item.legacy_id for item in published) + 1
+        for item in published:
+            row = next(
+                line
+                for line in readme.splitlines()
+                if line.startswith(f"| {item.legacy_id} |")
+            )
+            cells = [cell.strip() for cell in row.strip("|").split("|")]
+            for kind, row_id in (("extra", extra_id), ("duplicate", item.legacy_id)):
+                for padding in ("", " ", "  "):
+                    for edges in (True, False):
+                        with self.subTest(
+                            scenario=item.slug, kind=kind, padding=padding, edges=edges
+                        ):
+                            added = "|".join(
+                                padding + cell + padding
+                                for cell in [str(row_id), *cells[1:]]
+                            )
+                            if edges:
+                                added = "|" + added + "|"
+                            mutated = readme.replace(row, row + "\n" + added, 1)
+                            self.assertNotEqual(readme, mutated)
+                            with self.assertRaisesRegex(
+                                AssertionError, "cover the bank once and in order"
+                            ):
+                                self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_accepts_equivalent_pipe_spacing(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        start = readme.index("| Scenario | Dataset |")
+        end = readme.index("\n\n", start)
+        table = readme[start:end]
+        for padding in ("", "  "):
+            for leading, trailing in (
+                (False, False),
+                (True, False),
+                (False, True),
+                (True, True),
+            ):
+                with self.subTest(padding=padding, leading=leading, trailing=trailing):
+                    lines = []
+                    for line in table.splitlines():
+                        cells = [cell.strip() for cell in line.strip("|").split("|")]
+                        line = "|".join(padding + cell + padding for cell in cells)
+                        lines.append(
+                            ("|" if leading else "") + line + ("|" if trailing else "")
+                        )
+                    mutated = readme[:start] + "\n".join(lines) + readme[end:]
+                    self.assertNotEqual(readme, mutated)
+                    self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_ignores_separate_unrelated_table(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        row_id = scenario.ScenarioBank().discover()[0].legacy_id
+        unrelated = f"\n\n| Example | Note |\n| --- | --- |\n| {row_id} | unrelated |\n"
+        for mutated in (unrelated + "\n" + readme, readme + unrelated):
+            self.assert_dataset_table_matches_catalogs(mutated)
+
+    def test_dataset_table_rejects_malformed_body_rows_clearly(self) -> None:
+        readme = (scenario.REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+        row_id = scenario.ScenarioBank().discover()[0].legacy_id
+        row = next(
+            line for line in readme.splitlines() if line.startswith(f"| {row_id} |")
+        )
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        for added in (
+            "|".join(["unknown", *cells[1:]]),
+            "|".join(cells[:-1]),
+            "malformed body row",
+        ):
+            with self.subTest(added=added):
+                mutated = readme.replace(row, row + "\n" + added, 1)
+                self.assertNotEqual(readme, mutated)
+                with self.assertRaisesRegex(AssertionError, "dataset table body row"):
+                    self.assert_dataset_table_matches_catalogs(mutated)
+
+    def assert_dataset_table_matches_catalogs(self, readme: str) -> None:
+        published = scenario.ScenarioBank().discover()
+
+        def cells_of(line: str) -> list[str]:
+            return [
+                cell.strip()
+                for cell in line.strip().removeprefix("|").removesuffix("|").split("|")
+            ]
+
+        header = [
+            "Scenario",
+            "Dataset",
+            "Task",
+            "Rows",
+            "Splits",
+            "Difficulty strata",
+            "Label shape",
+        ]
+        lines = readme.splitlines()
+        headers = [
+            index for index, line in enumerate(lines) if cells_of(line) == header
+        ]
+        self.assertEqual(1, len(headers), "README must have one dataset table header")
+        start = headers[0] + 1
+        self.assertLess(start, len(lines), "dataset table separator is missing")
+        separator = cells_of(lines[start])
+        self.assertEqual(len(header), len(separator), "dataset table separator width")
+        for cell in separator:
+            self.assertRegex(cell, r"^:?-+:?$", "invalid dataset table separator")
+
+        # Account for every body line up to the table's blank-line boundary.
+        # Validate cells before interpreting IDs; never filter rows by spelling.
+        parsed: list[tuple[list[str], str]] = []
+        for line in lines[start + 1 :]:
+            if not line.strip():
+                break
+            cells = cells_of(line)
+            message = f"malformed dataset table body row: {line}"
+            self.assertEqual(len(header), len(cells), message)
+            self.assertIsNotNone(re.fullmatch(r"[0-9]+", cells[0]), message)
+            parsed.append((cells, line))
+
+        expected_ids = [item.legacy_id for item in published]
+        actual_ids = [int(cells[0]) for cells, _ in parsed]
+        self.assertEqual(
+            expected_ids,
+            actual_ids,
+            "README dataset rows must cover the bank once and in order",
+        )
+
+        for item, (cells, line) in zip(published, parsed):
+            profiles = item.manifest["catalog"]["datasets"]
+            self.assertEqual(
+                1, len(profiles), f"{item.slug} must have one primary dataset"
+            )
+            dataset = profiles[0]
+            self.assertEqual(7, len(cells), line)
+            self.assertEqual(f"`{dataset['id']}`", cells[1], line)
+
+            task_words = re.sub(r"[^a-z0-9]+", " ", dataset["task"].lower()).split()
+            displayed_task = re.sub(r"[^a-z0-9]+", " ", cells[2].lower()).split()
+            self.assertEqual(
+                task_words, displayed_task, f"{item.slug} task semantics: {line}"
+            )
+
+            rows = dataset["rows"]
+            unique = dataset["unique_inputs"]
+            row_text = (
+                f"{unique} unique"
+                if rows == unique
+                else f"{rows} rows, {unique} unique"
+            )
+            self.assertEqual(row_text, cells[3], line)
+
+            split_counts = dataset["splits"]["counts"]
+            if not split_counts:
+                self.assertEqual("no split", cells[4], line)
+            else:
+                # The table uses tuning / holdout, with optional explicit labels.
+                split_order = ("tuning", "holdout")
+                self.assertEqual(set(split_order), set(split_counts), line)
+                plain_splits = " / ".join(str(split_counts[key]) for key in split_order)
+                named_splits = " / ".join(
+                    f"{split_counts[key]} {key}" for key in split_order
+                )
+                self.assertIn(cells[4], (plain_splits, named_splits), line)
+            difficulty_counts = dataset["difficulty_strata"]["counts"]
+            difficulty_text = (
+                "no strata"
+                if not difficulty_counts
+                else " / ".join(
+                    str(difficulty_counts[key])
+                    for key in ("easy", "medium", "hard", "very-hard")
+                )
+            )
+            self.assertEqual(difficulty_text, cells[5], line)
+
+            shape = dataset["label_shape"]
+            kind = shape["kind"]
+            if kind == "mapped-labels":
+                label_text = f"{shape['surface_label_count']} mapped label strings"
+            elif kind == "unmapped-labels":
+                label_text = f"{shape['surface_label_count']} unmapped label strings"
+            elif kind == "free-text":
+                label_text = "free text"
+            elif kind in {"absent", "numeric", "structured"}:
+                label_text = kind
+            else:
+                self.fail(f"unsupported label shape {kind!r} in {item.slug}")
+            displayed_label = cells[6]
+            if dataset["task"] == "text-to-sql":
+                displayed_label = displayed_label.removesuffix(" (SQL)")
+            self.assertEqual(label_text, displayed_label, line)
+
+
 class TellStreamTests(unittest.TestCase):
     """The block-at-a-time leak scan names what folding the whole file names."""
 
